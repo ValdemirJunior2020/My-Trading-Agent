@@ -18,6 +18,14 @@ npm run build
 npm run preview
 ```
 
+## Coinbase Advanced Trade
+
+Copy `.env.example` to a local `.env` only when the backend Coinbase connection is implemented. The template includes the current CDP API key variables, Coinbase REST/WebSocket endpoints, optional portfolio UUID, Ollama settings, and safe trading defaults.
+
+See `docs/COINBASE_SETUP.md` for the Coinbase credential and security setup.
+
+**Never put the Coinbase API secret in a `VITE_*` variable, React code, Netlify Pages, or Cloudflare Pages.** Coinbase credentials belong only in the server-side/local backend.
+
 ## Netlify
 
 The repository includes `netlify.toml`.
@@ -37,3 +45,5 @@ Use:
 ## Safety
 
 Live automatic trading is not implemented in this phase. The frontend follows the base architecture rule that hard risk checks live outside the LLM and live trading must be opt-in.
+
+The default environment template keeps paper mode enabled, live Coinbase execution disabled, automatic trading disabled, and manual approval required.
