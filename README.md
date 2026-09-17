@@ -1,49 +1,71 @@
 # My Trading Agent
 
-Local-first crypto AI research and trading workspace. This first frontend phase implements the responsive Trading Agent Pixel Office, professional terminal preview, agent inspector, emergency-stop UI, and persistent English/Portuguese language switching.
+Local-first crypto AI research and trading workspace with a responsive bilingual Pixel Agent Office, local Node server, SQLite persistence, Ollama agent runtime, Coinbase Advanced Trade server adapter, paper-trading risk engine, live backend events, and Windows one-click launchers.
 
-> Current screen data is explicitly **DEMO / SIMULATION**. No live orders are sent and no exchange credentials are used by this frontend.
+> Live automatic trading remains OFF by default. The current execution endpoint is paper-only. Coinbase account/product access is server-side and real secrets never enter React.
 
-## Local development
+## Windows - easiest way
+
+1. Download or clone the repository.
+2. Double-click `INSTALL.bat`.
+3. The installer checks Node.js, npm, Git, Ollama, dependencies, `.env`, and the build **before installing anything**.
+4. It skips items already installed and never overwrites an existing `.env`.
+5. Double-click `START.bat`.
+6. Use `STOP.bat` to stop the local server.
+7. Use `UPDATE.bat` to pull, re-check dependencies, and rebuild.
+
+The app opens at `http://127.0.0.1:8787`.
+
+## Client + server
+
+Development:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Production build:
+Production/local desktop-style run:
 
 ```bash
 npm run build
-npm run preview
+npm start
 ```
+
+The Node server serves the built React client and exposes local `/api/*` routes. Local state is stored in `data/my-trading-agent.db` using Node's built-in SQLite support.
+
+Current backend capabilities include server/Ollama/Coinbase status, persistent emergency stop, Server-Sent Events for the live activity feed, local Ollama agent runs, paper-order risk checks, paper-trade storage, Coinbase account reads, and Coinbase product reads.
 
 ## Coinbase Advanced Trade
 
-Copy `.env.example` to a local `.env` only when the backend Coinbase connection is implemented. The template includes the current CDP API key variables, Coinbase REST/WebSocket endpoints, optional portfolio UUID, Ollama settings, and safe trading defaults.
+Copy `.env.example` to `.env` and add the dedicated Coinbase CDP API key only on your local machine.
 
-See `docs/COINBASE_SETUP.md` for the Coinbase credential and security setup.
+See `docs/COINBASE_SETUP.md`.
 
-**Never put the Coinbase API secret in a `VITE_*` variable, React code, Netlify Pages, or Cloudflare Pages.** Coinbase credentials belong only in the server-side/local backend.
+Coinbase authentication is generated on the server with short-lived JWTs. The secret is never returned by the API and must never be placed in a `VITE_*` variable.
 
-## Netlify
+## Ollama
 
-The repository includes `netlify.toml`.
+`START.bat` checks whether Ollama is installed and whether its local service is already running. If Ollama exists but is stopped, it starts it. Set `OLLAMA_MODEL` in `.env` to pin a model, or leave it blank and the server will use the first installed model.
 
-- Build command: `npm run build`
-- Publish directory: `dist`
+## Netlify / Cloudflare Pages
 
-## Cloudflare Pages
+The repository still supports a static frontend build:
 
-Use:
+- Build command: `npm run build:client`
+- Output directory: `dist`
 
-- Build command: `npm run build`
-- Build output directory: `dist`
-
-`public/_redirects` and `public/_headers` are copied into the production build and work with Cloudflare Pages static assets.
+A static host does **not** run the local trading server. For the full tool, run the server on your PC. For protected remote access, the clean setup is to point a Cloudflare Tunnel at `http://127.0.0.1:8787` and put Cloudflare Access in front of that hostname. Then the client and API stay same-origin and your Coinbase secrets remain on your PC.
 
 ## Safety
 
-Live automatic trading is not implemented in this phase. The frontend follows the base architecture rule that hard risk checks live outside the LLM and live trading must be opt-in.
+Defaults in `.env.example`:
 
-The default environment template keeps paper mode enabled, live Coinbase execution disabled, automatic trading disabled, and manual approval required.
+```env
+TRADING_MODE=paper
+COINBASE_LIVE_TRADING_ENABLED=false
+AUTO_TRADING_ENABLED=false
+MANUAL_APPROVAL_REQUIRED=true
+```
+
+The server currently does not expose a live Coinbase order-placement route. Paper orders must pass deterministic risk checks outside Ollama, and the emergency-stop state is persisted locally.

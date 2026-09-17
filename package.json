@@ -1,24 +1,35 @@
 {
   "name": "my-trading-agent",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
+    "dev": "concurrently -k -n SERVER,CLIENT -c cyan,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:client": "vite --host 0.0.0.0",
+    "dev:server": "tsx watch server/index.ts",
+    "build": "npm run build:server && npm run build:client",
+    "build:client": "tsc -b && vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start": "node server-dist/index.js",
+    "start:local": "npm run build && npm start",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@coinbase/cdp-sdk": "latest",
+    "dotenv": "latest",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@types/node": "latest",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
     "autoprefixer": "10.4.21",
+    "concurrently": "latest",
     "postcss": "8.5.6",
     "tailwindcss": "3.4.17",
+    "tsx": "latest",
     "typescript": "7.0.2",
     "vite": "8.2.2"
   }

@@ -17,7 +17,7 @@ const en: Dictionary = {
   terminal:'Pro Trading Terminal', watchlist:'Watchlist', orderBook:'Order Book', recentTrades:'Recent Trades', riskSummary:'Signal & Risk Summary', trend:'Trend', bullish:'Bullish', momentum:'Momentum', positive:'Positive', volatility:'Volatility', moderate:'Moderate', liquidity:'Liquidity', high:'High', riskReward:'Risk / Reward', exposure:'Current Exposure', aiDecision:'AI Decision', wait:'WAIT',
   activity:'Live Activity Feed', activePaper:'Active Paper Trades', decisionFlow:'AI Decision Flow', backtestResults:'Strategy Backtest Results', journal:'Journal / Recent Decisions',
   data:'Data', analysis:'Analysis', signal:'Signal', risk:'Risk', paperTrade:'Paper Trade', approval:'Approval',
-  makeMoneyRule:'Protect capital first. Every trade must earn the right to exist.', localPrivate:'Local • Private • Modular', systemsOperational:'Frontend simulation ready',
+  makeMoneyRule:'Protect capital first. Every trade must earn the right to exist.', localPrivate:'Local • Private • Modular', systemsOperational:'Local server connected', serverConnected:'Server Connected', serverOffline:'Server Offline', startBatHint:'Run START.bat', ollamaOffline:'Ollama Offline', coinbaseReady:'Coinbase Ready', coinbaseLive:'COINBASE LIVE', demoData:'DEMO DATA', liveBackend:'LIVE BACKEND',
   clickAgent:'Click any agent room to inspect what that agent is doing.', mobileHint:'Swipe sideways inside dense terminal tables if needed.'
 }
 
@@ -34,7 +34,7 @@ const pt: Dictionary = {
   terminal:'Terminal Profissional', watchlist:'Lista de Monitoramento', orderBook:'Livro de Ofertas', recentTrades:'Trades Recentes', riskSummary:'Resumo de Sinal e Risco', trend:'Tendência', bullish:'Altista', momentum:'Momentum', positive:'Positivo', volatility:'Volatilidade', moderate:'Moderada', liquidity:'Liquidez', high:'Alta', riskReward:'Risco / Retorno', exposure:'Exposição Atual', aiDecision:'Decisão da IA', wait:'AGUARDAR',
   activity:'Feed de Atividade', activePaper:'Paper Trades Ativos', decisionFlow:'Fluxo de Decisão da IA', backtestResults:'Resultados de Backtest', journal:'Diário / Decisões Recentes',
   data:'Dados', analysis:'Análise', signal:'Sinal', risk:'Risco', paperTrade:'Paper Trade', approval:'Aprovação',
-  makeMoneyRule:'Proteja o capital primeiro. Todo trade precisa merecer existir.', localPrivate:'Local • Privado • Modular', systemsOperational:'Simulação do frontend pronta',
+  makeMoneyRule:'Proteja o capital primeiro. Todo trade precisa merecer existir.', localPrivate:'Local • Privado • Modular', systemsOperational:'Servidor local conectado', serverConnected:'Servidor Conectado', serverOffline:'Servidor Offline', startBatHint:'Execute START.bat', ollamaOffline:'Ollama Offline', coinbaseReady:'Coinbase Pronta', coinbaseLive:'COINBASE AO VIVO', demoData:'DADOS DEMO', liveBackend:'BACKEND AO VIVO',
   clickAgent:'Clique em qualquer sala para ver o que o agente está fazendo.', mobileHint:'Em telas menores, deslize as tabelas do terminal para o lado se precisar.'
 }
 

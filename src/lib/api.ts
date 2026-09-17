@@ -1,0 +1,21 @@
+export interface SystemStatus {
+  server:{online:boolean;version:string;startedAt:string}
+  ollama:{online:boolean;models:string[]}
+  coinbase:{configured:boolean}
+  safety:{emergencyStop:boolean;mode:string;liveTradingEnabled:boolean;automaticTradingEnabled:boolean;manualApprovalRequired:boolean}
+}
+const base=(import.meta.env.VITE_API_BASE_URL||'').replace(/\/$/,'')
+const request=async<T>(path:string,init?:RequestInit):Promise<T>=>{
+  const response=await fetch(`${base}${path}`,{...init,headers:{'Content-Type':'application/json',...(init?.headers||{})},credentials:'include'})
+  if(!response.ok){let message=`HTTP ${response.status}`;try{const data=await response.json();message=data.error||message}catch{}throw new Error(message)}
+  return response.json()
+}
+export const api={
+  getStatus:()=>request<SystemStatus>('/api/status'),
+  setEmergency:(active:boolean)=>request<{ok:boolean;active:boolean}>('/api/emergency-stop',{method:'POST',body:JSON.stringify({active})}),
+  getProduct:(productId:string)=>request<{product:any}>(`/api/coinbase/product/${encodeURIComponent(productId)}`),
+  getRecentEvents:()=>request<{events:any[]}>('/api/events/recent'),
+  paperOrder:(body:{productId:string;side:'BUY'|'SELL';size:number;price:number})=>request('/api/paper/orders',{method:'POST',body:JSON.stringify(body)}),
+  runAgent:(body:{agentId:string;asset:string;summary:string})=>request('/api/agents/run',{method:'POST',body:JSON.stringify(body)}),
+  eventUrl:`${base}/api/events`
+}
