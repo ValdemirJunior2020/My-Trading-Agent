@@ -1,26 +1,26 @@
 # Coinbase Advanced Trade setup
 
-My Trading Agent uses the current Coinbase Advanced Trade authentication model based on Coinbase Developer Platform (CDP) API keys.
+My Trading Agent uses server-side Coinbase Developer Platform (CDP) Secret API Keys and short-lived JWT authentication for Advanced Trade.
 
-## What you need from Coinbase
+## What to create in Coinbase
 
-Create a dedicated CDP API key for this trading project and keep it scoped as tightly as possible to the intended Advanced Trade portfolio.
+Create a **dedicated Secret API Key** for My Trading Agent and scope it as tightly as possible to the intended Coinbase account or Advanced Trade portfolio.
 
-Copy these values into your local `.env` file:
+Coinbase currently supports both **Ed25519** and **ECDSA** keys for direct Advanced Trade API calls. Ed25519 is the recommended default for new keys. ECDSA remains supported and is required by some older Coinbase SDKs. My Trading Agent uses the current CDP JWT helper for direct API calls, so either current key type can be used.
+
+Copy the values Coinbase gives you into your local `.env`:
 
 ```env
 CDP_API_KEY_ID=organizations/YOUR_ORG_ID/apiKeys/YOUR_KEY_ID
-CDP_API_KEY_SECRET="-----BEGIN EC PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----END EC PRIVATE KEY-----\n"
+CDP_API_KEY_SECRET=PASTE_THE_SECRET_EXACTLY_AS_COINBASE_GIVES_IT
 COINBASE_PORTFOLIO_UUID=
 ```
 
-The API key ID may be a full resource path such as `organizations/{orgId}/apiKeys/{keyId}`. The API key secret must be copied exactly as Coinbase provides it. Current Coinbase authentication tools support current CDP key formats, including ECDSA/ES256 private-key secrets.
+If Coinbase gives you a multi-line ECDSA PEM secret, preserve its line breaks. In a one-line `.env` value you can use escaped `\n` line breaks. If Coinbase gives you an Ed25519 secret value, paste that value exactly as issued.
 
-Advanced Trade API requests use short-lived JWT authentication generated from the CDP API key and secret. The application should generate those tokens on the backend. Do not manually save a JWT in `.env`.
+Do not save generated JWTs in `.env`. The backend creates a new short-lived JWT for each authenticated Coinbase request.
 
-## Endpoints
-
-The project template uses:
+## Endpoints used by the project
 
 ```env
 COINBASE_API_BASE_URL=https://api.coinbase.com
@@ -28,34 +28,36 @@ COINBASE_WS_MARKET_URL=wss://advanced-trade-ws.coinbase.com
 COINBASE_WS_USER_URL=wss://advanced-trade-ws-user.coinbase.com
 ```
 
-The market WebSocket is for real-time market data. The user WebSocket is for authenticated account/order events.
+The current server uses authenticated REST access for Coinbase account and product reads. The WebSocket variables are already reserved for the later real-time market/user stream layer.
 
 ## Permissions
 
-Use a dedicated Coinbase key for My Trading Agent. Start with the minimum access needed for account/market analysis. Only grant trading capability when the live-trading backend is intentionally implemented and tested.
+Use a dedicated key for this tool. Start with the minimum permissions needed for read-only account/market analysis.
 
-Do not give the trading bot transfer or withdrawal access just because it is available. My Trading Agent does not need withdrawal capability to analyze markets, paper trade, or place ordinary Advanced Trade orders.
+Do **not** give the bot transfer or withdrawal permissions. My Trading Agent does not need withdrawal access to analyze markets, backtest, paper trade, or place normal Advanced Trade orders later.
 
-If you use a separate Advanced Trade portfolio, Coinbase recommends a dedicated API key scoped to that portfolio.
+Live order placement is intentionally not exposed by the current server. The default project mode remains paper trading.
 
 ## Security rules
 
-- Never put `CDP_API_KEY_SECRET` in React code.
-- Never create a variable such as `VITE_CDP_API_KEY_SECRET`. Any `VITE_` variable can be exposed to the browser bundle.
-- Do not place Coinbase private credentials in Netlify or Cloudflare Pages for the static frontend.
-- Keep real credentials only in the local backend `.env`, or later in a protected server-side secret store.
-- Keep `.env` out of Git. The repository already ignores it.
-- Never print the secret, private key, or generated JWT to logs.
-- Keep `COINBASE_LIVE_TRADING_ENABLED=false` until live trading is deliberately activated.
+- Never put `CDP_API_KEY_SECRET` in React.
+- Never create a `VITE_CDP_API_KEY_SECRET` variable.
+- Never put Coinbase private credentials into Netlify Pages or Cloudflare Pages frontend environment variables.
+- Keep the real key only in the local server `.env` or a protected server-side secret store.
+- Keep `.env` out of Git.
+- Never print the secret or generated JWT into logs.
+- Keep `COINBASE_LIVE_TRADING_ENABLED=false` until live execution is deliberately added and tested.
 - Keep `AUTO_TRADING_ENABLED=false` by default.
-- Keep the deterministic risk engine able to reject every order, regardless of what Ollama recommends.
+- Keep the deterministic risk engine able to reject an order regardless of what Ollama recommends.
 
-## What you do NOT need for Advanced Trade
+## What you do not need
 
-You do not need an old Coinbase Pro/Exchange-style API passphrase for the current Advanced Trade/CDP authentication flow.
+You do not need an old Coinbase Pro-style API passphrase for Advanced Trade CDP authentication.
 
-You also do not need `CDP_WALLET_SECRET` for normal Coinbase Advanced Trade brokerage access. That secret belongs to separate CDP wallet/onchain SDK workflows and should not be added unless the project later intentionally uses those features.
+You also do not need `CDP_WALLET_SECRET` for normal Advanced Trade brokerage access. That belongs to separate CDP wallet/onchain workflows.
 
-## Current development mode
+## Server/client separation
 
-The current frontend is still a demo/simulation interface. Coinbase credentials should not be entered into the frontend yet. The next backend phase will load these server-only variables and expose only safe, filtered data to the UI.
+The React client only receives safe status and filtered account/product data from the local Node server. The Coinbase secret never leaves the server process.
+
+For remote access, prefer putting a Cloudflare Tunnel and Cloudflare Access in front of the local server rather than moving Coinbase secrets to a static host.
