@@ -1,0 +1,14 @@
+import { watchlist } from '../data/demo'
+import { MarketChart } from './MarketChart'
+interface Props {t:(key:string)=>string}
+export function TradingTerminal({t}:Props){return <section className="panel terminal-panel">
+  <header className="terminal-top"><div><span className="eyebrow">BTC / USD</span><div className="price-line"><h2>$67,432.18</h2><span>+1.94%</span></div></div><div className="terminal-stats"><span><small>24H HIGH</small>68,210</span><span><small>24H LOW</small>65,102</span><span><small>VOLUME</small>2.41B</span></div></header>
+  <div className="timeframes"><button>1m</button><button>5m</button><button>15m</button><button className="active">1h</button><button>4h</button><button>1D</button></div>
+  <div className="chart-wrap"><MarketChart/><div className="chart-float"><span>MA20 66,821</span><span>MA50 66,102</span></div></div>
+  <div className="terminal-grid">
+    <div className="terminal-card order-card"><h3>{t('orderBook')} <small>BTC-USD</small></h3><div className="book-cols"><span>PRICE</span><span>SIZE</span><span>TOTAL</span></div>{['67,436.21','67,435.12','67,434.18'].map((p,i)=><div className="book-row ask" key={p}><span>{p}</span><span>0.{58-i}21</span><span>{(4.12-i*.58).toFixed(2)}</span></div>)}<div className="mid-price">67,432.18 ↑</div>{['67,432.17','67,431.66','67,431.01'].map((p,i)=><div className="book-row bid" key={p}><span>{p}</span><span>0.{31+i}02</span><span>{(0.31+i*.52).toFixed(2)}</span></div>)}</div>
+    <div className="terminal-card trades-card"><h3>{t('recentTrades')}</h3>{['67,432.18','67,431.62','67,431.48','67,430.91','67,431.77'].map((p,i)=><div className={`trade-row ${i%3===1?'sell':'buy'}`} key={i}><span>{p}</span><span>0.0{12+i}4</span><small>14:32:{18-i}</small></div>)}</div>
+    <div className="terminal-card risk-card"><h3>{t('riskSummary')}</h3>{[[t('trend'),t('bullish')],[t('momentum'),t('positive')],[t('volatility'),t('moderate')],[t('liquidity'),t('high')],[t('riskReward'),'2.1 : 1'],[t('exposure'),'14.2%']].map(([a,b])=><div className="risk-row" key={a}><span>{a}</span><strong>{b}</strong></div>)}<div className="decision-chip">{t('aiDecision')}: {t('wait')}</div></div>
+    <div className="terminal-card watch-card"><h3>{t('watchlist')}</h3>{watchlist.map(([s,p,c])=><div className="watch-row" key={s}><strong>{s}</strong><span>{p}</span><em className={c.startsWith('-')?'neg':''}>{c}</em></div>)}</div>
+  </div>
+</section>}

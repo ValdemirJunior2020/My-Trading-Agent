@@ -1,0 +1,7 @@
+import { activities } from '../data/demo'
+interface Props {t:(key:string)=>string}
+export function BottomPanels({t}:Props){return <div className="bottom-panels">
+  <section className="panel compact-panel"><header className="mini-heading"><h3>{t('activity')}</h3><span>● LIVE DEMO</span></header><div className="activity-list">{activities.map(([time,agent,event,status])=><div className="activity-row" key={time+agent}><i className={status==='ok'?'ok':'warn'}/><time>{time}</time><strong>{agent}</strong><span>{event}</span></div>)}</div></section>
+  <section className="panel compact-panel"><header className="mini-heading"><h3>{t('decisionFlow')}</h3></header><div className="flow">{['data','analysis','signal','risk','backtesting','paperTrade','approval'].map((k,i)=><div className={`flow-step ${i<6?'done':''}`} key={k}><b>{i<6?'✓':'○'}</b><span>{t(k)}</span></div>)}</div><div className="paper-summary"><div><small>ETH-USD</small><strong>+0.05%</strong></div><div><small>SOL-USD</small><strong>+0.72%</strong></div><div><small>ADA-USD</small><strong>+0.64%</strong></div></div></section>
+  <section className="panel compact-panel"><header className="mini-heading"><h3>{t('backtestResults')}</h3></header><div className="backtest-table"><div><strong>MA Crossover</strong><span>68.4%</span><em>+142.7%</em></div><div><strong>RSI Mean Rev.</strong><span>62.1%</span><em>+87.3%</em></div><div><strong>Bollinger</strong><span>56.8%</span><em>+61.2%</em></div></div></section>
+</div>}
