@@ -1,6 +1,6 @@
 export interface SystemStatus {
   server:{online:boolean;version:string;startedAt:string}
-  ollama:{online:boolean;models:string[]}
+  ollama:{online:boolean;models:string[];chatModel?:string}
   coinbase:{configured:boolean}
   engines:{available?:boolean;vectorbt?:{installed?:boolean;version?:string};nautilusTrader?:{installed?:boolean;version?:string};rdAgent?:{installed?:boolean;transport?:string};python?:string|null}
   safety:{emergencyStop:boolean;mode:string;liveTradingEnabled:boolean;automaticTradingEnabled:boolean;manualApprovalRequired:boolean}
