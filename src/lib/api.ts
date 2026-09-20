@@ -18,6 +18,7 @@ export const api={
   getRecentEvents:()=>request<{events:any[]}>('/api/events/recent'),
   paperOrder:(body:{productId:string;side:'BUY'|'SELL';size:number;price:number})=>request('/api/paper/orders',{method:'POST',body:JSON.stringify(body)}),
   runAgent:(body:{agentId:string;asset:string;summary:string})=>request('/api/agents/run',{method:'POST',body:JSON.stringify(body)}),
+  runPipeline:(body:{productId?:string;deepResearch?:boolean})=>request<{ok:boolean;result:any}>('/api/agents/pipeline',{method:'POST',body:JSON.stringify(body)}),
   quantStatus:()=>request('/api/quant/status'),
   vectorbtSma:(body:{prices:number[];fast?:number;slow?:number;initialCash?:number})=>request('/api/quant/vectorbt/sma',{method:'POST',body:JSON.stringify(body)}),
   nautilusSmoke:()=>request('/api/quant/nautilus/smoke',{method:'POST',body:'{}'}),
