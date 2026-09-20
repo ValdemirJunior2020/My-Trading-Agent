@@ -32,12 +32,13 @@ export const runFullAgentPipeline=async(options:PipelineOptions={})=>{
 
   publish('pipeline_started',{productId,deepResearch},'manager')
 
-  const [product,candles,accounts,engines]=await Promise.all([
+  const [product,candles,accounts,engineStatus]=await Promise.all([
     getProduct(productId),
     getCandles(productId,'ONE_HOUR',120),
     listAccounts(),
     quantStatus()
   ])
+  const engines:any=engineStatus
 
   if(candles.length<40) throw new Error('Only '+candles.length+' Coinbase candles were returned; at least 40 are required.')
 
