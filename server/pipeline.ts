@@ -1,4 +1,4 @@
-import { coinbaseConfigured } from './config.js'
+import { config,coinbaseConfigured } from './config.js'
 import { getCandles,getProduct,listAccounts } from './coinbase.js'
 import { publish } from './events.js'
 import { runAgent } from './ollama.js'
@@ -147,6 +147,25 @@ export const runFullAgentPipeline=async(options:PipelineOptions={})=>{
     instruction:'Return a candidate decision only. Do not claim an order was placed.'
   })
 
+  publish('agent_started',{asset:productId,stage:'candidate-preflight'},'paper')
+  const candidateDecision=String(decision.output?.decision||'WAIT')
+  const paperPreflight={
+    eligible:['BUY_CANDIDATE','SELL_CANDIDATE'].includes(candidateDecision),
+    decision:candidateDecision,
+    note:'Candidate preflight only. No paper order was automatically opened.'
+  }
+  publish('agent_completed',{asset:productId,output:paperPreflight},'paper')
+
+  publish('agent_started',{asset:productId,stage:'execution-gate'},'execution')
+  const executionGate={
+    liveTradingEnabled:config.liveTradingEnabled,
+    automaticTradingEnabled:config.autoTradingEnabled,
+    manualApprovalRequired:config.manualApprovalRequired,
+    emergencyStop:'checked by deterministic risk layer',
+    action:'NO_AUTOMATIC_ORDER'
+  }
+  publish('agent_completed',{asset:productId,output:executionGate},'execution')
+
   const result={
     productId,
     generatedAt:new Date().toISOString(),
@@ -159,9 +178,11 @@ export const runFullAgentPipeline=async(options:PipelineOptions={})=>{
     risk:risk.output,
     critic:critic.output,
     decision:decision.output,
+    paperPreflight,
+    executionGate,
     quantitative:{vectorbt,nautilus,rdAgent}
   }
 
-  publish('pipeline_completed',{productId,decision:decision.output?.decision||'WAIT'},'manager')
+  publish('pipeline_completed',{productId,decision:candidateDecision},'manager')
   return result
 }
