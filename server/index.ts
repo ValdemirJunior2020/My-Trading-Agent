@@ -41,7 +41,7 @@ const serveStatic=(pathname:string,res:ServerResponse)=>{
   return true
 }
 
-const statusPayload=async()=>{const [ollama,engines]=await Promise.all([getOllamaStatus(),quantStatus()]);return {server:{online:true,version:'0.3.0',startedAt},ollama,coinbase:{configured:coinbaseConfigured()},engines,safety:{emergencyStop:emergencyStopActive(),mode:config.tradingMode,liveTradingEnabled:config.liveTradingEnabled,automaticTradingEnabled:config.autoTradingEnabled,manualApprovalRequired:config.manualApprovalRequired}}}
+const statusPayload=async()=>{const [ollama,engines]=await Promise.all([getOllamaStatus(),quantStatus()]);return {server:{online:true,version:'0.4.0',startedAt},ollama,coinbase:{configured:coinbaseConfigured()},engines,safety:{emergencyStop:emergencyStopActive(),mode:config.tradingMode,liveTradingEnabled:config.liveTradingEnabled,automaticTradingEnabled:config.autoTradingEnabled,manualApprovalRequired:config.manualApprovalRequired}}}
 
 const server=createServer(async(req,res)=>{
  try{
