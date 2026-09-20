@@ -8,12 +8,13 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
  const quantCount=[system?.engines?.vectorbt?.installed,system?.engines?.nautilusTrader?.installed,system?.engines?.rdAgent?.installed].filter(Boolean).length
  const [running,setRunning]=useState(false)
  const [message,setMessage]=useState('')
+ const rdReady=Boolean(system?.engines?.rdAgent?.installed)
 
- const runAgents=async()=>{
+ const runAgents=async(deepResearch=false)=>{
   if(running)return
   setRunning(true);setMessage('')
   try{
-   const result=await api.runPipeline({productId:'BTC-USD',deepResearch:false})
+   const result=await api.runPipeline({productId:'BTC-USD',deepResearch})
    const decision=result.result?.decision?.decision||'DONE'
    setMessage(decision)
   }catch(error){
@@ -32,7 +33,8 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
    <div className="simulation-chip">{system?.coinbase.configured?t('coinbaseReady'):t('simulation')}</div>
   </div>
   <div className="top-actions">
-   <button className="language-btn" onClick={runAgents} disabled={running||!system?.coinbase.configured||!ollama} title={message||'Run the complete agent pipeline'}>{runLabel}</button>
+   <button className="language-btn" onClick={()=>void runAgents(false)} disabled={running||!system?.coinbase.configured||!ollama} title={message||'Run the complete agent pipeline'}>{runLabel}</button>
+   <button className="language-btn" onClick={()=>void runAgents(true)} disabled={running||!system?.coinbase.configured||!ollama||!rdReady} title={rdReady?'Run pipeline with RD-Agent factor research':'Install RD-Agent to enable deep research'}>◆ DEEP RESEARCH</button>
    <button className="language-btn" onClick={onLanguage}>🌐 {t('language')}</button>
    <button className={'emergency-btn '+(emergency?'is-active':'')} onClick={onEmergency}>⚠ {emergency?t('emergencyActive'):t('emergencyStop')}</button>
   </div>
