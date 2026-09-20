@@ -23,7 +23,7 @@ export function BottomPanels({t,backendOnline}:Props){
  const rows=(liveEvents.length?liveEvents.slice(0,6).map(event=>[
   new Date(event.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
   event.agentId||'System',
-  String(event.type).replaceAll('_',' '),
+  String(event.type).replace(/_/g,' '),
   String(event.type).includes('failed')||String(event.type).includes('rejected')||String(event.type).includes('emergency')?'warn':'ok'
  ]):demoActivities) as any[]
 
