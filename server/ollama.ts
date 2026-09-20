@@ -34,3 +34,42 @@ decision must be one of BUY_CANDIDATE, SELL_CANDIDATE, HOLD, WAIT, REJECT.`
   const raw=data.message?.content||'{}'
   try{return {model,output:JSON.parse(raw)}}catch{return {model,output:{status:'error',summary:raw,decision:'WAIT'}}}
 }
+
+
+export const runToolCopilot=async(message:string,context:unknown,language:'en'|'pt'='en')=>{
+  const status=await getOllamaStatus()
+  if(!status.online) throw new Error('Ollama is offline.')
+  const model=config.ollamaModel||status.models[0]
+  if(!model) throw new Error('No Ollama model is installed.')
+
+  const system=language==='pt'
+    ? `Você é o Tool Copilot do My Trading Agent. Responda em português do Brasil.
+Explique de forma clara o que está acontecendo dentro da ferramenta usando apenas o contexto estruturado recebido.
+Você pode diagnosticar status, falhas, agentes parados, conexão Coinbase, Ollama, engines quant, eventos recentes e sugerir melhorias concretas.
+Não invente dados. Se algo não estiver no contexto, diga que não pode confirmar.
+Você é somente leitura: não coloca ordens, não altera configurações e não executa trades.
+Não revele segredos, chaves, tokens ou conteúdo de .env.`
+    : `You are the My Trading Agent Tool Copilot.
+Explain clearly what is happening inside the tool using only the structured context provided.
+You can diagnose status, failures, idle agents, Coinbase connectivity, Ollama, quant engines, recent events, and suggest concrete improvements.
+Do not invent data. If something is not present in context, say you cannot confirm it.
+You are read-only: you do not place orders, change settings, or execute trades.
+Never reveal secrets, keys, tokens, or .env contents.`
+
+  const response=await fetch(`${config.ollamaBaseUrl}/api/chat`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model,
+      stream:false,
+      messages:[
+        {role:'system',content:system},
+        {role:'user',content:`Tool context:\n${JSON.stringify(context)}\n\nUser question:\n${message}`}
+      ]
+    }),
+    signal:AbortSignal.timeout(120000)
+  })
+  if(!response.ok) throw new Error(`Ollama error ${response.status}`)
+  const data=await response.json() as {message?:{content?:string}}
+  return {model,answer:data.message?.content?.trim()||'No response.'}
+}
