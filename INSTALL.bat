@@ -62,6 +62,11 @@ if errorlevel 1 (
 )
 
 echo.
+echo [QUANT] Checking VectorBT, NautilusTrader, and RD-Agent...
+set "MTA_NO_PAUSE=1"
+call "INSTALL-QUANT-ENGINES.bat"
+set "MTA_NO_PAUSE="
+echo.
 echo [BUILD] Building server and client...
 call npm run build
 if errorlevel 1 goto :failed
