@@ -4,7 +4,7 @@ import { extname,join,normalize,resolve,sep } from 'node:path'
 import { config,coinbaseConfigured } from './config.js'
 import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting } from './db.js'
 import { attachEventStream,publish } from './events.js'
-import { getOllamaStatus,runAgent } from './ollama.js'
+import { getOllamaStatus,runAgent,runToolCopilot } from './ollama.js'
 import { getProduct,listAccounts } from './coinbase.js'
 import { emergencyStopActive,evaluatePaperOrder,type PaperOrderRequest } from './risk.js'
 import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from './quant.js'
@@ -53,6 +53,17 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/emergency-stop'&&req.method==='POST'){const body=await readJson(req) as {active?:boolean};const active=Boolean(body.active);setSetting('emergency_stop',String(active));const event=publish(active?'emergency_stop_activated':'emergency_stop_cleared',{active},'manager');return json(res,200,{ok:true,active,event})}
   if(path==='/api/paper/orders'&&req.method==='POST'){const body=await readJson(req) as PaperOrderRequest;const order:PaperOrderRequest={productId:String(body.productId||'').toUpperCase(),side:String(body.side||'').toUpperCase() as 'BUY'|'SELL',size:Number(body.size),price:Number(body.price)};const risk=evaluatePaperOrder(order);if(!risk.approved){publish('paper_order_rejected',{order,risk},'risk');return json(res,422,{ok:false,risk})}const trade=openPaperTrade(order.productId,order.side,order.size,order.price);publish('paper_order_opened',{trade,risk},'paper');return json(res,201,{ok:true,trade,risk})}
   if(path==='/api/agents/run'&&req.method==='POST'){const body=await readJson(req) as {agentId?:string;asset?:string;summary?:string};const agentId=String(body.agentId||''),asset=String(body.asset||'UNKNOWN'),summary=String(body.summary||'');if(!agentId||!summary)return json(res,400,{error:'agentId and summary are required.'});publish('agent_started',{asset},agentId);const result=await runAgent(agentId,asset,summary);saveAnalysis(agentId,asset,summary,result.output,result.model);publish('agent_completed',{asset,output:result.output},agentId);return json(res,200,result)}
+  if(path==='/api/copilot/chat'&&req.method==='POST'){
+    const body=await readJson(req) as {message?:string;language?:'en'|'pt'}
+    const message=String(body.message||'').trim().slice(0,4000)
+    const language=body.language==='pt'?'pt':'en'
+    if(!message)return json(res,400,{error:'message is required.'})
+    const [system,events]=await Promise.all([statusPayload(),Promise.resolve(recentEvents(20))])
+    const context={system,events}
+    const result=await runToolCopilot(message,context,language)
+    publish('copilot_answered',{language,question:message.slice(0,180)},'manager')
+    return json(res,200,{ok:true,...result})
+  }
   if(path==='/api/quant/status'&&req.method==='GET')return json(res,200,await quantStatus())
   if(path==='/api/quant/vectorbt/sma'&&req.method==='POST'){const body=await readJson(req);const result=await runVectorbtSma(body);publish('vectorbt_backtest_completed',{result},'strategy');return json(res,200,{ok:true,result})}
   if(path==='/api/quant/nautilus/smoke'&&req.method==='POST'){const result=await runNautilusSmoke();publish('nautilus_engine_ready',{result},'backtest');return json(res,200,{ok:true,result})}
