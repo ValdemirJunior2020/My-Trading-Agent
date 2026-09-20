@@ -36,6 +36,18 @@ The Node server serves the built React client and exposes local `/api/*` routes.
 
 Current backend capabilities include server/Ollama/Coinbase status, persistent emergency stop, Server-Sent Events for the live activity feed, local Ollama agent runs, paper-order risk checks, paper-trade storage, Coinbase account reads, and Coinbase product reads.
 
+## Quant research engines
+
+The Windows installer now sets up a separate local Python environment at `.venv-quant` and installs:
+
+- **VectorBT** for fast strategy backtests and parameter research.
+- **NautilusTrader** for deterministic event-driven trading-engine validation.
+- **RD-Agent** through WSL/Ubuntu because the upstream RD-Agent project targets Linux.
+
+The Node server exposes local APIs for engine status, VectorBT SMA backtests, NautilusTrader engine validation, RD-Agent health checks, and RD-Agent quant/factor runs. The top bar shows `QUANT 0/3` through `QUANT 3/3` depending on which engines are available.
+
+You can rerun `INSTALL-QUANT-ENGINES.bat` at any time. It reuses the existing environments rather than deleting them.
+
 ## Coinbase Advanced Trade
 
 Copy `.env.example` to `.env` and add the dedicated Coinbase CDP API key only on your local machine.
