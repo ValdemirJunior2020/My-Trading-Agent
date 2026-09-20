@@ -10,10 +10,10 @@ type RuntimeState={status:AgentStatus;task?:string}
 const stateFromEvent=(event:any):RuntimeState|undefined=>{
   if(!event?.agentId)return
   const type=String(event.type||'')
-  if(type==='agent_started'||type==='pipeline_started')return {status:'working',task:type.replaceAll('_',' ')}
-  if(type==='agent_completed'||type==='pipeline_completed'||type==='nautilus_validation_completed')return {status:'approved',task:type.replaceAll('_',' ')}
-  if(type==='agent_failed'||type.includes('rejected')||type.includes('emergency'))return {status:'waiting',task:type.replaceAll('_',' ')}
-  return {status:'reviewing',task:type.replaceAll('_',' ')}
+  if(type==='agent_started'||type==='pipeline_started')return {status:'working',task:type.replace(/_/g,' ')}
+  if(type==='agent_completed'||type==='pipeline_completed'||type==='nautilus_validation_completed')return {status:'approved',task:type.replace(/_/g,' ')}
+  if(type==='agent_failed'||type.includes('rejected')||type.includes('emergency'))return {status:'waiting',task:type.replace(/_/g,' ')}
+  return {status:'reviewing',task:type.replace(/_/g,' ')}
 }
 
 export function PixelOffice({ t, selected, onSelect }: Props) {
