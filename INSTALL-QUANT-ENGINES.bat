@@ -97,5 +97,5 @@ echo.
 echo ============================================================
 echo QUANT ENGINE SETUP COMPLETE
 echo ============================================================
-pause
+if not defined MTA_NO_PAUSE pause
 exit /b 0
