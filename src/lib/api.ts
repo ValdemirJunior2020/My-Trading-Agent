@@ -2,6 +2,7 @@ export interface SystemStatus {
   server:{online:boolean;version:string;startedAt:string}
   ollama:{online:boolean;models:string[]}
   coinbase:{configured:boolean}
+  engines:{available?:boolean;vectorbt?:{installed?:boolean;version?:string};nautilusTrader?:{installed?:boolean;version?:string};rdAgent?:{installed?:boolean;transport?:string};python?:string|null}
   safety:{emergencyStop:boolean;mode:string;liveTradingEnabled:boolean;automaticTradingEnabled:boolean;manualApprovalRequired:boolean}
 }
 const base=(import.meta.env.VITE_API_BASE_URL||'').replace(/\/$/,'')
@@ -17,5 +18,10 @@ export const api={
   getRecentEvents:()=>request<{events:any[]}>('/api/events/recent'),
   paperOrder:(body:{productId:string;side:'BUY'|'SELL';size:number;price:number})=>request('/api/paper/orders',{method:'POST',body:JSON.stringify(body)}),
   runAgent:(body:{agentId:string;asset:string;summary:string})=>request('/api/agents/run',{method:'POST',body:JSON.stringify(body)}),
+  quantStatus:()=>request('/api/quant/status'),
+  vectorbtSma:(body:{prices:number[];fast?:number;slow?:number;initialCash?:number})=>request('/api/quant/vectorbt/sma',{method:'POST',body:JSON.stringify(body)}),
+  nautilusSmoke:()=>request('/api/quant/nautilus/smoke',{method:'POST',body:'{}'}),
+  rdAgentHealth:()=>request('/api/quant/rdagent/health'),
+  rdAgentRun:(body:{command:'fin_quant'|'fin_factor'|'health'|'info';stepN?:number;loopN?:number})=>request('/api/quant/rdagent/run',{method:'POST',body:JSON.stringify(body)}),
   eventUrl:`${base}/api/events`
 }
