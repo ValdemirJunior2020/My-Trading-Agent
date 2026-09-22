@@ -36,3 +36,10 @@ export const coinbaseConfigured = () =>
     !config.cdpApiKeyId.includes('YOUR_') &&
     !config.cdpApiKeySecret.includes('YOUR_PRIVATE_KEY_HERE')
   )
+
+
+export const coinbaseCredentialShape=()=>({
+  configured:coinbaseConfigured(),
+  keyNameLooksFull:/^organizations\/[^/]+\/apiKeys\/[^/]+$/.test(config.cdpApiKeyId),
+  secretLooksPem:/BEGIN (EC |)PRIVATE KEY/.test(config.cdpApiKeySecret.replace(/\\n/g,'\n'))||config.cdpApiKeySecret.startsWith('-----BEGIN PRIVATE KEY-----')
+})
