@@ -4,8 +4,10 @@ const apiUrl=new URL(config.coinbaseApiBaseUrl)
 const host=apiUrl.host
 const request=async(method:string,path:string,body?:unknown)=>{
   if(!coinbaseConfigured()) throw new Error('Coinbase credentials are not configured.')
-  const token=await generateJwt({apiKeyId:config.cdpApiKeyId,apiKeySecret:config.cdpApiKeySecret.replace(/\\n/g,'\n'),requestMethod:method,requestHost:host,requestPath:path,expiresIn:120})
-  const response=await fetch(`${config.coinbaseApiBaseUrl}${path}`,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body==null?undefined:JSON.stringify(body),signal:AbortSignal.timeout(10000)})
+  const requestUrl=new URL(`${config.coinbaseApiBaseUrl}${path}`)
+  const signingPath=requestUrl.pathname
+  const token=await generateJwt({apiKeyId:config.cdpApiKeyId,apiKeySecret:config.cdpApiKeySecret.replace(/\\n/g,'\n'),requestMethod:method,requestHost:host,requestPath:signingPath,expiresIn:120})
+  const response=await fetch(requestUrl,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body==null?undefined:JSON.stringify(body),signal:AbortSignal.timeout(10000)})
   const text=await response.text()
   let data:unknown
   try{data=JSON.parse(text)}catch{data={message:text}}
