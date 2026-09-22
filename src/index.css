@@ -15,3 +15,33 @@
 .copilot-quick{padding:0 10px 8px;display:flex;gap:5px;flex-wrap:wrap}.copilot-quick button{border:1px solid #23485f;background:#0a1a25;color:#9cc3d7;border-radius:999px;padding:5px 8px;font-size:7px;cursor:pointer}.copilot-quick button:hover{border-color:var(--teal);color:#fff}.copilot-quick button:disabled{opacity:.45;cursor:default}
 .copilot-panel form{border-top:1px solid #173044;padding:9px;display:grid;grid-template-columns:1fr auto;gap:7px;background:#08141d}.copilot-panel textarea{resize:none;border:1px solid #244459;background:#06111a;color:#e6f4fc;border-radius:8px;padding:8px;font:inherit;font-size:10px;outline:none}.copilot-panel textarea:focus{border-color:#2d8b9a}.copilot-panel form button{border:1px solid #187965;background:#0c473e;color:#8ef5dc;border-radius:8px;padding:0 12px;font-weight:800;font-size:9px;cursor:pointer}.copilot-panel form button:disabled{opacity:.4;cursor:default}
 @media (max-width:700px){.copilot-fab{right:12px;bottom:42px}.copilot-panel{right:8px;bottom:96px;width:calc(100vw - 16px);height:min(70vh,600px)}}
+
+
+/* Readability pass: larger, clearer UI text */
+html{font-size:16px}
+body{font-size:14px;line-height:1.45}
+.brand strong{font-size:16px}.brand small{font-size:10px}
+.sidebar nav button{font-size:13px;min-height:42px}.sidebar nav button>span{font-size:16px}.sidebar nav i{font-size:9px}
+.sidebar-foot small{font-size:10px}
+.status-chip{min-height:48px}.status-chip strong{font-size:12px}.status-chip small{font-size:10px}.simulation-chip{font-size:10px;padding:6px 10px}
+.language-btn,.emergency-btn{font-size:12px;padding:10px 13px}
+.panel-heading h2,.terminal-top h2{font-size:18px}.panel-heading p{font-size:11px}.eyebrow{font-size:10px}.office-live{font-size:11px}
+.room-title{font-size:10px;padding:4px 3px}.agent-bubble{padding:6px 7px;gap:4px}.agent-bubble strong{font-size:10px}.agent-bubble span{font-size:9px}
+.office-motto strong{font-size:11px}.office-motto span{font-size:9px;line-height:1.35}
+.price-line h2{font-size:26px}.price-line span{font-size:12px}.terminal-stats span{font-size:11px}.terminal-stats small{font-size:9px}
+.timeframes button{font-size:10px;padding:5px 9px}.chart-float{font-size:9px}
+.terminal-card h3{font-size:11px}.book-cols,.book-row,.trade-row,.watch-row,.risk-row{font-size:10px;padding:4px 0}.mid-price{font-size:12px}.decision-chip{font-size:10px;padding:8px}
+.mini-heading{padding:11px 0 9px}.mini-heading h3{font-size:13px}.mini-heading>span{font-size:10px}.status-badge{font-size:9px;padding:5px 8px}
+.agent-details-grid dt{font-size:10px}.agent-details-grid dd{font-size:11px;line-height:1.45}
+.activity-list{gap:4px}.activity-row{grid-template-columns:9px 72px 120px minmax(0,1fr);gap:8px;font-size:11px;padding:7px 0;line-height:1.35}.activity-row i{width:7px;height:7px}.activity-row strong{font-size:11px}.activity-row time{font-size:10px}.activity-row span{font-size:11px;color:#b6c8d5}
+.flow-step b{width:22px;height:22px;font-size:10px}.flow-step span{font-size:9px}.paper-summary small{font-size:9px}.paper-summary strong{font-size:11px}
+.backtest-table>div{font-size:10px;padding:7px 0}.footer{font-size:9px;min-height:34px}
+.copilot-panel header strong{font-size:14px}.copilot-panel header small{font-size:10px}.copilot-message{font-size:12px;line-height:1.5}.copilot-quick button{font-size:9px}.copilot-panel textarea{font-size:12px}.copilot-panel form button{font-size:11px}
+
+@media(max-width:1250px){
+  .activity-row{grid-template-columns:9px 68px 110px minmax(0,1fr)}
+}
+@media(max-width:650px){
+  .activity-row{grid-template-columns:9px 64px 105px minmax(180px,1fr);min-width:520px}
+  .room-title{font-size:9px}.agent-bubble strong{font-size:9px}.agent-bubble span{font-size:8px}
+}
