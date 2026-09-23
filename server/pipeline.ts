@@ -249,6 +249,21 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
 
   publish('agent_completed', { asset: productId, output: executionResult }, 'execution')
 
+  const executionAttempted = ['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(candidateDecision)
+  const executionSide = candidateDecision === 'BUY_CANDIDATE' ? 'BUY' : candidateDecision === 'SELL_CANDIDATE' ? 'SELL' : null
+  publish('live_execution_cycle', {
+    productId,
+    side: executionSide,
+    decision: candidateDecision,
+    confidence: Number.isFinite(confidence) ? confidence : null,
+    attempted: executionAttempted,
+    executed: Boolean(executionResult?.executed),
+    action: executionResult?.action || (executionAttempted ? 'ATTEMPTED' : 'NO_TRADE'),
+    reason: executionResult?.reason || (executionAttempted ? 'Execution gate completed.' : 'Final agent decision was ' + candidateDecision + '.'),
+    orderId: executionResult?.orderId || null,
+    notionalUsd: executionResult?.notionalUsd || null
+  }, 'execution')
+
   const result = {
     productId,
     generatedAt: new Date().toISOString(),
