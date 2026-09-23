@@ -1,9 +1,11 @@
+/// <reference types="node" />
 import 'dotenv/config'
 
 const bool = (value: string | undefined, fallback = false) => {
   if (value == null) return fallback
-  return ['1','true','yes','on'].includes(value.toLowerCase())
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase())
 }
+
 const num = (value: string | undefined, fallback: number) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
@@ -26,20 +28,23 @@ export const config = {
   paperStartingBalanceUsd: num(process.env.PAPER_STARTING_BALANCE_USD, 10000),
   maxPositionPercent: num(process.env.MAX_POSITION_PERCENT, 5),
   maxDailyLossPercent: num(process.env.MAX_DAILY_LOSS_PERCENT, 2),
-  maxTotalExposurePercent: num(process.env.MAX_TOTAL_EXPOSURE_PERCENT, 25)
+  maxTotalExposurePercent: num(process.env.MAX_TOTAL_EXPOSURE_PERCENT, 25),
+  maxLiveOrderUsd: num(process.env.MAX_LIVE_ORDER_USD, 25),
+  minLiveOrderUsd: num(process.env.MIN_LIVE_ORDER_USD, 10)
 }
 
 export const coinbaseConfigured = () =>
   Boolean(
     config.cdpApiKeyId &&
-    config.cdpApiKeySecret &&
-    !config.cdpApiKeyId.includes('YOUR_') &&
-    !config.cdpApiKeySecret.includes('YOUR_PRIVATE_KEY_HERE')
+      config.cdpApiKeySecret &&
+      !config.cdpApiKeyId.includes('YOUR_') &&
+      !config.cdpApiKeySecret.includes('YOUR_PRIVATE_KEY_HERE')
   )
 
-
-export const coinbaseCredentialShape=()=>({
-  configured:coinbaseConfigured(),
-  keyNameLooksFull:/^organizations\/[^/]+\/apiKeys\/[^/]+$/.test(config.cdpApiKeyId),
-  secretLooksPem:/BEGIN (EC |)PRIVATE KEY/.test(config.cdpApiKeySecret.replace(/\\n/g,'\n'))||config.cdpApiKeySecret.startsWith('-----BEGIN PRIVATE KEY-----')
+export const coinbaseCredentialShape = () => ({
+  configured: coinbaseConfigured(),
+  keyNameLooksFull: /^organizations\/[^/]+\/apiKeys\/[^/]+$/.test(config.cdpApiKeyId),
+  secretLooksPem:
+    /BEGIN (EC |)PRIVATE KEY/.test(config.cdpApiKeySecret.replace(/\\n/g, '\n')) ||
+    config.cdpApiKeySecret.startsWith('-----BEGIN PRIVATE KEY-----')
 })

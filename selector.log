@@ -1,0 +1,5 @@
+2026-09-22 20:40:16.153 | INFO     | rdagent.app.utils.info:sys_info:22 - Name of current operating system: Linux
+2026-09-22 20:40:16.154 | INFO     | rdagent.app.utils.info:sys_info:22 - Processor architecture: x86_64
+2026-09-22 20:40:16.154 | INFO     | rdagent.app.utils.info:sys_info:22 - System, version, and hardware information: Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43
+2026-09-22 20:40:16.155 | INFO     | rdagent.app.utils.info:sys_info:22 - Version number of the system: #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026
+2026-09-22 20:40:16.156 | INFO     | rdagent.app.utils.info:python_info:29 - Python version: 3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]

@@ -1,5 +1,6 @@
 import { generateJwt } from '@coinbase/cdp-sdk/auth'
 import { config, coinbaseConfigured } from './config.js'
+import { randomUUID } from 'node:crypto'
 const apiUrl=new URL(config.coinbaseApiBaseUrl)
 const host=apiUrl.host
 const request=async(method:string,path:string,body?:unknown)=>{
@@ -72,7 +73,6 @@ export const getProductBook=async(productId:string,limit=10)=>{
     asks:(book.asks||[]).slice(0,bounded).map(x=>({price:Number(x.price),size:Number(x.size)})).filter(x=>Number.isFinite(x.price)&&Number.isFinite(x.size))
   }
 }
-
 export const getMarketTrades=async(productId:string,limit=12)=>{
   const bounded=Math.max(1,Math.min(100,Math.floor(limit)))
   const data=await request('GET',`/api/v3/brokerage/products/${encodeURIComponent(productId)}/ticker?limit=${bounded}`) as {
@@ -86,4 +86,34 @@ export const getMarketTrades=async(productId:string,limit=12)=>{
     time:x.time||null,
     side:String(x.side||'').toUpperCase()
   })).filter(x=>Number.isFinite(x.price)&&Number.isFinite(x.size))
+}
+
+export const createMarketOrder = async (params: {
+  productId: string
+  side: 'BUY' | 'SELL'
+  quoteSizeUsd?: number
+  baseSize?: number
+}) => {
+  const { productId, side, quoteSizeUsd, baseSize } = params
+
+  if (side === 'BUY' && !(quoteSizeUsd && quoteSizeUsd > 0)) {
+    throw new Error('BUY requires positive quoteSizeUsd')
+  }
+  if (side === 'SELL' && !(baseSize && baseSize > 0)) {
+    throw new Error('SELL requires positive baseSize')
+  }
+
+  const order_configuration =
+    side === 'BUY'
+      ? { market_market_ioc: { quote_size: String(Number(quoteSizeUsd).toFixed(2)) } }
+      : { market_market_ioc: { base_size: String(baseSize) } }
+
+  const body = {
+    client_order_id: randomUUID(),
+    product_id: productId.toUpperCase(),
+    side,
+    order_configuration
+  }
+
+  return request('POST', '/api/v3/brokerage/orders', body)
 }
