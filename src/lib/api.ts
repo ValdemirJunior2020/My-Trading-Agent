@@ -35,6 +35,7 @@ export const api={
   getLiveHistory:(limit=200)=>request<{events:any[]}>(`/api/live/history?limit=${limit}&_=${Date.now()}`),
   clearLiveHistory:()=>request<{ok:boolean;deleted:number}>('/api/live/history',{method:'DELETE'}),
   getPortfolioAllocation:()=>request<any>('/api/coinbase/portfolio-allocation'),
+  getPaperOrders:()=>request<{orders:any[]}>('/api/paper/orders'),
   paperOrder:(body:{productId:string;side:'BUY'|'SELL';size:number;price:number})=>request('/api/paper/orders',{method:'POST',body:JSON.stringify(body)}),
   runAgent:(body:{agentId:string;asset:string;summary:string})=>request('/api/agents/run',{method:'POST',body:JSON.stringify(body)}),
   runPipeline:(body:{productId?:string;deepResearch?:boolean})=>request<{ok:boolean;result:any}>('/api/agents/pipeline',{method:'POST',body:JSON.stringify(body)}),
