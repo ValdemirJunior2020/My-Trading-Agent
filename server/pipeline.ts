@@ -259,7 +259,9 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     attempted: executionAttempted,
     executed: Boolean(executionResult?.executed),
     action: executionResult?.action || (executionAttempted ? 'ATTEMPTED' : 'NO_TRADE'),
-    reason: executionResult?.reason || (executionAttempted ? 'Execution gate completed.' : 'Final agent decision was ' + candidateDecision + '.'),
+    reason: executionAttempted
+      ? (executionResult?.reason || 'Execution gate completed.')
+      : ('Final decision: ' + candidateDecision + (Number.isFinite(confidence) ? ' • Confidence: ' + confidence : '') + ' • No execution attempted'),
     orderId: executionResult?.orderId || null,
     notionalUsd: executionResult?.notionalUsd || null
   }, 'execution')
