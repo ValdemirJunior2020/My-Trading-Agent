@@ -36,6 +36,7 @@ export const api={
   runAgent:(body:{agentId:string;asset:string;summary:string})=>request('/api/agents/run',{method:'POST',body:JSON.stringify(body)}),
   runPipeline:(body:{productId?:string;deepResearch?:boolean})=>request<{ok:boolean;result:any}>('/api/agents/pipeline',{method:'POST',body:JSON.stringify(body)}),
   getPipelineStatus:()=>request<PipelineStatus>('/api/agents/pipeline/status'),
+  getScanner:()=>request<any>('/api/scanner'),
   getAutoRun:()=>request<{enabled:boolean;intervalSeconds:number;deepResearch:boolean}>('/api/agents/auto-run'),
   setAutoRun:(body:{enabled?:boolean;intervalSeconds?:number;deepResearch?:boolean})=>request('/api/agents/auto-run',{method:'POST',body:JSON.stringify(body)}),
   quantStatus:()=>request('/api/quant/status'),
