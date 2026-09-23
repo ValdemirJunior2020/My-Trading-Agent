@@ -1,3 +1,15 @@
+export interface PipelineStatus {
+  status:'idle'|'running'|'completed'|'failed'
+  productId:string
+  deepResearch:boolean
+  currentAgent:string|null
+  completedAgents:string[]
+  decision:string|null
+  error:string|null
+  startedAt:string|null
+  finishedAt:string|null
+}
+
 export interface SystemStatus {
   server:{online:boolean;version:string;startedAt:string}
   ollama:{online:boolean;models:string[];chatModel?:string}
@@ -19,6 +31,7 @@ export const api={
   paperOrder:(body:{productId:string;side:'BUY'|'SELL';size:number;price:number})=>request('/api/paper/orders',{method:'POST',body:JSON.stringify(body)}),
   runAgent:(body:{agentId:string;asset:string;summary:string})=>request('/api/agents/run',{method:'POST',body:JSON.stringify(body)}),
   runPipeline:(body:{productId?:string;deepResearch?:boolean})=>request<{ok:boolean;result:any}>('/api/agents/pipeline',{method:'POST',body:JSON.stringify(body)}),
+  getPipelineStatus:()=>request<PipelineStatus>('/api/agents/pipeline/status'),
   quantStatus:()=>request('/api/quant/status'),
   vectorbtSma:(body:{prices:number[];fast?:number;slow?:number;initialCash?:number})=>request('/api/quant/vectorbt/sma',{method:'POST',body:JSON.stringify(body)}),
   nautilusSmoke:()=>request('/api/quant/nautilus/smoke',{method:'POST',body:'{}'}),
