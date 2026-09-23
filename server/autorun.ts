@@ -1,5 +1,6 @@
 import { coinbaseConfigured } from './config.js'
 import { getProduct,listAccounts } from './coinbase.js'
+import { scanCryptoMarket } from './scanner.js'
 import { getSetting,setSetting } from './db.js'
 import { publish } from './events.js'
 import { getOllamaStatus } from './ollama.js'
@@ -85,7 +86,14 @@ const tick=async()=>{
   }catch{return}
 
   const settings=getAutoRunSettings()
-  const productId=await pickAutoProduct()
+  let productId=await pickAutoProduct()
+  try{
+    const scan=await scanCryptoMarket()
+    if(scan.best?.productId) productId=scan.best.productId
+    publish('crypto_scanner_completed',{scanned:scan.scanned,best:scan.best,top:scan.results.slice(0,5)},'strategy')
+  }catch(error){
+    publish('crypto_scanner_failed',{error:error instanceof Error?error.message:String(error)},'strategy')
+  }
   lastAttemptAt=Date.now()
   publish('auto_agents_cycle_started',{intervalSeconds:settings.intervalSeconds,deepResearch:settings.deepResearch,productId},'manager')
   void runFullAgentPipeline({productId,deepResearch:settings.deepResearch}).catch(error=>{
