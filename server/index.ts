@@ -6,7 +6,7 @@ import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting } f
 import { attachEventStream,publish } from './events.js'
 import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner,type CopilotActionPlan } from './ollama.js'
 import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts } from './coinbase.js'
-import { emergencyStopActive,evaluatePaperOrder,getRuntimeRiskLimits,saveRuntimeRiskLimits,type PaperOrderRequest } from './risk.js'
+import { emergencyStopActive,evaluateLiveOrder,evaluatePaperOrder,getDailyEquityGuard,getRuntimeRiskLimits,saveRuntimeRiskLimits,type PaperOrderRequest } from './risk.js'
 import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from './quant.js'
 import { getPipelineStatus,runFullAgentPipeline } from './pipeline.js'
 import { getChallengeSnapshot,getTradingChallenge,saveTradingChallenge } from './challenge.js'
@@ -138,6 +138,45 @@ const server=createServer(async(req,res)=>{
     const limits=saveRuntimeRiskLimits(body)
     publish('risk_limits_updated',{limits},'risk')
     return json(res,200,{ok:true,limits})
+  }
+  if(path==='/api/live/readiness'&&req.method==='GET'){
+    if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'})
+    const [accounts,portfolio]=await Promise.all([listAccounts(),getChallengeSnapshot()])
+    const totalPortfolioUsd=Number(portfolio.currentPortfolioUsd||0)
+    const daily=totalPortfolioUsd>0?getDailyEquityGuard(totalPortfolioUsd):null
+    return json(res,200,{
+      ok:true,
+      configured:true,
+      liveTradingEnabled:config.liveTradingEnabled,
+      automaticTradingEnabled:config.autoTradingEnabled,
+      manualApprovalRequired:config.manualApprovalRequired,
+      emergencyStop:emergencyStopActive(),
+      currentPortfolioUsd:totalPortfolioUsd,
+      accountCount:accounts.length,
+      dailyLossGuard:daily,
+      riskLimits:getRuntimeRiskLimits(),
+      readyForManualLive:Boolean(config.liveTradingEnabled&&!config.autoTradingEnabled&&config.manualApprovalRequired&&!emergencyStopActive()&&totalPortfolioUsd>0&&!(daily?.blocked))
+    })
+  }
+  if(path==='/api/live/preflight'&&req.method==='POST'){
+    if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'})
+    const body=await readJson(req) as {productId?:string;side?:string;notionalUsd?:number}
+    const productId=String(body.productId||'BTC-USD').toUpperCase()
+    const side=String(body.side||'BUY').toUpperCase() as 'BUY'|'SELL'
+    const notionalUsd=Number(body.notionalUsd)
+    const [accounts,portfolio,product]=await Promise.all([listAccounts(),getChallengeSnapshot(),getProduct(productId)])
+    const totalPortfolioUsd=Number(portfolio.currentPortfolioUsd||0)
+    const price=Number((product as any)?.price||0)
+    const baseCurrency=productId.split('-')[0]
+    const balanceValue=(balance:any)=>Number(balance?.value??balance??0)||0
+    const usdAccount=accounts.find((a:any)=>String(a.currency).toUpperCase()==='USD')
+    const baseAccount=accounts.find((a:any)=>String(a.currency).toUpperCase()===baseCurrency)
+    const availableUsd=balanceValue(usdAccount?.availableBalance)
+    const baseAmount=balanceValue(baseAccount?.availableBalance)+balanceValue(baseAccount?.hold)
+    const currentAssetUsd=Number.isFinite(price)?baseAmount*price:0
+    const preflight=evaluateLiveOrder({productId,side,notionalUsd,totalPortfolioUsd,availableUsd,currentAssetUsd})
+    publish(preflight.approved?'live_preflight_approved':'live_preflight_rejected',{preflight},'risk')
+    return json(res,preflight.approved?200:422,{ok:preflight.approved,preflight})
   }
   if(path==='/api/quant/status'&&req.method==='GET')return json(res,200,await quantStatus())
   if(path==='/api/quant/vectorbt/sma'&&req.method==='POST'){const body=await readJson(req);const result=await runVectorbtSma(body);publish('vectorbt_backtest_completed',{result},'strategy');return json(res,200,{ok:true,result})}
