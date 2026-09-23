@@ -50,7 +50,8 @@ export function TradingTerminal({t,system}:Props){
   return()=>{active=false;clearInterval(id)}
  },[system?.coinbase.configured])
 
- const currentPrice=live?.price!=null?Number(live.price):(candles.at(-1)?.close??null)
+ const latestCandle=candles.length?candles[candles.length-1]:null
+ const currentPrice=live?.price!=null?Number(live.price):(latestCandle?.close??null)
  const price=currentPrice==null?'—':money(currentPrice,2)
  const change=live?.price_percentage_change_24h!=null?Number(live.price_percentage_change_24h):null
  const last24=candles.slice(-24)
@@ -59,7 +60,9 @@ export function TradingTerminal({t,system}:Props){
  const closes=candles.map(c=>c.close)
  const ma20=closes.length>=20?avg(closes.slice(-20)):null
  const ma50=closes.length>=50?avg(closes.slice(-50)):null
- const spread=book?.asks?.[0]&&book?.bids?.[0]?book.asks[0].price-book.bids[0].price:null
+ const bestAsk=book?.asks?.[0]
+ const bestBid=book?.bids?.[0]
+ const spread=bestAsk&&bestBid?bestAsk.price-bestBid.price:null
  const spreadPct=spread!=null&&currentPrice?spread/currentPrice*100:null
 
  const trend=ma20!=null&&ma50!=null?(ma20>=ma50?t('bullish'):'Bearish'):'—'
