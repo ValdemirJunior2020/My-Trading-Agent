@@ -41,6 +41,7 @@ export function LiveTrading({ language }: Props) {
   }, [])
 
   const candidate = String(pipeline?.decision || 'WAIT')
+  const pipelineRunning = pipeline?.status === 'running'
   const pipelineProduct = String(
     pipeline?.productId ||
       scanner?.bestBuy?.productId ||
@@ -54,11 +55,13 @@ export function LiveTrading({ language }: Props) {
   const blocked = !readiness?.readyForLive
   const plainSignal = blocked
     ? 'BLOCKED'
-    : candidate === 'BUY_CANDIDATE'
-      ? 'BUY NOW'
-      : candidate === 'SELL_CANDIDATE'
-        ? 'SELL NOW'
-        : 'DO NOT BUY / WAIT'
+    : pipelineRunning
+      ? `ANALYZING ${pipelineProduct} — WAIT FOR FINAL DECISION`
+      : candidate === 'BUY_CANDIDATE'
+        ? 'BUY NOW'
+        : candidate === 'SELL_CANDIDATE'
+          ? 'SELL NOW'
+          : 'DO NOT BUY / WAIT'
   const maxPositionUsd =
     readiness?.currentPortfolioUsd != null && readiness?.riskLimits?.maxPositionPercent != null
       ? Number(readiness.currentPortfolioUsd) * (Number(readiness.riskLimits.maxPositionPercent) / 100)
@@ -172,21 +175,25 @@ export function LiveTrading({ language }: Props) {
           <small>{pt ? 'O que fazer agora' : 'What to do now'}</small>
           <strong>{plainSignal}</strong>
           <p>
-            {plainSignal === 'BUY NOW'
-              ? pt
-                ? 'Os agentes encontraram um candidato de compra e os controles atuais permitem preparar a ordem.'
-                : 'The agents found a buy candidate and the current controls allow the trade to be prepared.'
-              : plainSignal === 'SELL NOW'
+            {pipelineRunning && !blocked
+              ? (pt
+                  ? `Os agentes ainda estão analisando ${pipelineProduct}. Aguarde a decisão final antes de interpretar BUY, SELL ou WAIT.`
+                  : `The agents are still analyzing ${pipelineProduct}. Wait for the final decision before treating BUY, SELL, or WAIT as final.`)
+              : plainSignal === 'BUY NOW'
                 ? pt
-                  ? 'Os agentes encontraram um candidato de venda e os controles atuais permitem preparar a ordem.'
-                  : 'The agents found a sell candidate and the current controls allow the trade to be prepared.'
-                : plainSignal === 'BLOCKED'
+                  ? 'Os agentes encontraram um candidato de compra e os controles atuais permitem preparar a ordem.'
+                  : 'The agents found a buy candidate and the current controls allow the trade to be prepared.'
+                : plainSignal === 'SELL NOW'
                   ? pt
-                    ? 'Um controle de segurança está bloqueando qualquer ordem real agora.'
-                    : 'A safety control is blocking any real trade right now.'
-                  : pt
-                    ? 'Os agentes não encontraram uma entrada válida agora.'
-                    : 'The agents do not have a valid entry right now.'}
+                    ? 'Os agentes encontraram um candidato de venda e os controles atuais permitem preparar a ordem.'
+                    : 'The agents found a sell candidate and the current controls allow the trade to be prepared.'
+                  : plainSignal === 'BLOCKED'
+                    ? pt
+                      ? 'Um controle de segurança está bloqueando qualquer ordem real agora.'
+                      : 'A safety control is blocking any real trade right now.'
+                    : pt
+                      ? 'Os agentes não encontraram uma entrada válida agora.'
+                      : 'The agents do not have a valid entry right now.'}
           </p>
         </div>
 
@@ -245,7 +252,12 @@ export function LiveTrading({ language }: Props) {
         </div>
 
         <div className="guided-trade-card">
-          {side ? (
+          {pipelineRunning ? (
+            <div className="guided-wait">
+              <strong>{pt ? `Analisando ${pipelineProduct}` : `Analyzing ${pipelineProduct}`}</strong>
+              <p>{pt ? 'O pipeline ainda não terminou. Nenhuma ordem deve ser preparada até a decisão final.' : 'The pipeline has not finished yet. No order should be prepared until the final decision.'}</p>
+            </div>
+          ) : side ? (
             <>
               <div>
                 <small>{pt ? 'A ferramenta calculou' : 'Tool calculated'}</small>
