@@ -11,6 +11,7 @@ import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from './quant.
 import { getPipelineStatus,runFullAgentPipeline } from './pipeline.js'
 import { getChallengeSnapshot,getTradingChallenge,saveTradingChallenge } from './challenge.js'
 import { getAutoRunSettings,saveAutoRunSettings,startAutoRun,stopAutoRun } from './autorun.js'
+import { scanCryptoMarket } from './scanner.js'
 
 const distDir=resolve(process.cwd(),'dist'), pidFile=join(config.dataDir,'server.pid'), startedAt=new Date().toISOString()
 const json=(res:ServerResponse,status:number,body:unknown)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(JSON.stringify(body))}
@@ -57,6 +58,7 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/paper/orders'&&req.method==='POST'){const body=await readJson(req) as PaperOrderRequest;const order:PaperOrderRequest={productId:String(body.productId||'').toUpperCase(),side:String(body.side||'').toUpperCase() as 'BUY'|'SELL',size:Number(body.size),price:Number(body.price)};const risk=evaluatePaperOrder(order);if(!risk.approved){publish('paper_order_rejected',{order,risk},'risk');return json(res,422,{ok:false,risk})}const trade=openPaperTrade(order.productId,order.side,order.size,order.price);publish('paper_order_opened',{trade,risk},'paper');return json(res,201,{ok:true,trade,risk})}
   if(path==='/api/agents/run'&&req.method==='POST'){const body=await readJson(req) as {agentId?:string;asset?:string;summary?:string};const agentId=String(body.agentId||''),asset=String(body.asset||'UNKNOWN'),summary=String(body.summary||'');if(!agentId||!summary)return json(res,400,{error:'agentId and summary are required.'});publish('agent_started',{asset},agentId);const result=await runAgent(agentId,asset,summary);saveAnalysis(agentId,asset,summary,result.output,result.model);publish('agent_completed',{asset,output:result.output},agentId);return json(res,200,result)}
   if(path==='/api/agents/pipeline/status'&&req.method==='GET')return json(res,200,getPipelineStatus())
+  if(path==='/api/scanner'&&req.method==='GET')return json(res,200,await scanCryptoMarket())
   if(path==='/api/agents/auto-run'&&req.method==='GET')return json(res,200,getAutoRunSettings())
   if(path==='/api/agents/auto-run'&&req.method==='POST'){
     const body=await readJson(req) as {enabled?:boolean;intervalSeconds?:number;deepResearch?:boolean}
