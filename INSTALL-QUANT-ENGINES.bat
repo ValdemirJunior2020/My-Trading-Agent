@@ -78,6 +78,25 @@ if errorlevel 1 (
   goto :done
 )
 
+echo [INSTALL] Installing/checking RD-Agent in WSL...
+wsl -e bash -lc "set -e; ROOT="$HOME/.my-trading-agent-rdagent"; VENV="$ROOT/.venv"; mkdir -p "$ROOT"; if ! command -v python3 >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip git; fi; if ! python3 -m venv --help >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y python3-venv; fi; if [ ! -d "$VENV" ]; then python3 -m venv "$VENV"; fi; "$VENV/bin/python" -m pip install --upgrade pip wheel setuptools; "$VENV/bin/python" -m pip install -U rdagent; "$VENV/bin/rdagent" --help >/dev/null; echo RDAGENT_INSTALL_OK"
+if errorlevel 1 (
+  echo [WARNING] RD-Agent WSL setup did not complete.
+) else (
+  echo [OK] RD-Agent installed in WSL.
+)
+
+:done
+)
+
+wsl -e bash -lc "echo WSL_OK" >nul 2>&1
+if errorlevel 1 (
+  echo [WARNING] WSL is installed but no Linux distro is ready.
+  echo Run: wsl --install -d Ubuntu
+  echo Windows may require a restart.
+  goto :done
+)
+
 for /f "delims=" %%P in ('wsl wslpath -a "%CD%\quant\install-rdagent-wsl.sh"') do set "WSL_SCRIPT=%%P"
 if "!WSL_SCRIPT!"=="" (
   echo [WARNING] Could not resolve the RD-Agent WSL script path.
