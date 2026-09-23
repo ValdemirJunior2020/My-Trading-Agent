@@ -26,6 +26,8 @@ const journalStatus=(event:any)=>{
   if(type==='live_order_preview_rejected')return 'COINBASE PREVIEW FAILED'
   if(type==='live_order_rejected')return reason.includes('risk')?'BLOCKED BY RISK':'ORDER BLOCKED'
   if(type==='live_order_preview_approved')return 'PREVIEW OK'
+  if(type==='capital_rotation_plan')return p.rotationReady?'ROTATION READY':'FUNDING NEEDED'
+  if(type==='capital_rotation_plan_failed')return 'ROTATION CHECK FAILED'
 
   if(type==='live_execution_cycle'){
     if(decision==='REJECT')return 'REJECTED BY AGENTS'
@@ -45,7 +47,7 @@ const statusGroup=(status:string):JournalFilter=>{
   if(status==='ORDER PLACED')return 'ORDER PLACED'
   if(status==='REJECTED BY AGENTS')return 'REJECTED'
   if(status==='WAIT'||status==='NO TRADE')return 'WAIT'
-  if(status.includes('BLOCKED')||status.includes('PREVIEW'))return 'BLOCKED'
+  if(status.includes('BLOCKED')||status.includes('PREVIEW')||status==='FUNDING NEEDED'||status==='ROTATION READY'||status==='ROTATION CHECK FAILED')return 'BLOCKED'
   if(status.includes('FAILED'))return 'FAILED'
   return 'ALL'
 }
@@ -56,6 +58,9 @@ const statusClass=(status:string)=>{
   if(status==='WAIT'||status==='NO TRADE')return 'wait'
   if(status.includes('BLOCKED'))return 'blocked'
   if(status.includes('PREVIEW'))return 'preview-failed'
+  if(status==='ROTATION READY')return 'placed'
+  if(status==='FUNDING NEEDED')return 'wait'
+  if(status==='ROTATION CHECK FAILED')return 'failed'
   if(status.includes('FAILED'))return 'failed'
   return 'neutral'
 }
@@ -149,6 +154,49 @@ export function TradeJournal({language}:Props){
           const status=journalStatus(event)
           const confidence=normalizeConfidence(p.confidence)
           const decision=String(p.decision||'').toUpperCase()
+          const rotationDetail=event.type==='capital_rotation_plan' ? ('Need 
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const detail=String(rotationDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          return <div className="journal-table journal-row" key={event.id}>
+            <span>{new Date(event.createdAt).toLocaleString()}</span>
+            <span><b className={'journal-status '+statusClass(status)}>{status}</b></span>
+            <span>{String(p.productId||p.buyProductId||'—')}</span>
+            <span className={String(p.side)==='SELL'?'sell-text':String(p.side)==='BUY'?'buy-text':''}>{String(p.side||'—')}</span>
+            <span>{money(p.notionalUsd)}</span>
+            <span className="journal-order-id" title={orderId}>{orderId}</span>
+            <span className="journal-detail" title={detail}>{detail}</span>
+          </div>
+        })}
+      </div>
+    </section>
+  </main>
+}
++Number(p.fundingRequiredUsd||0).toFixed(2)+' • XRP sell candidate: '+(p.xrpSellCandidate?'YES':'NO')+' • Suggested XRP sale: 
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const detail=String(p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          return <div className="journal-table journal-row" key={event.id}>
+            <span>{new Date(event.createdAt).toLocaleString()}</span>
+            <span><b className={'journal-status '+statusClass(status)}>{status}</b></span>
+            <span>{String(p.productId||'—')}</span>
+            <span className={String(p.side)==='SELL'?'sell-text':String(p.side)==='BUY'?'buy-text':''}>{String(p.side||'—')}</span>
+            <span>{money(p.notionalUsd)}</span>
+            <span className="journal-order-id" title={orderId}>{orderId}</span>
+            <span className="journal-detail" title={detail}>{detail}</span>
+          </div>
+        })}
+      </div>
+    </section>
+  </main>
+}
++Number(p.suggestedSellUsd||0).toFixed(2)+' • Approval required') : ''
           const generatedDetail=[
             decision?('Decision: '+decision):'',
             confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
