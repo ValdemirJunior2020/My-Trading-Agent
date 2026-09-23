@@ -1,5 +1,5 @@
 import { config } from './config.js'
-import { getSetting, openPaperNotional, setSetting } from './db.js'
+import { getSetting, openPaperNotional, setSetting, livePlacedOrders } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { publish } from './events.js'
@@ -75,19 +75,88 @@ export const getDailyEquityGuard = (currentPortfolioUsd: number) => {
   const today = new Date().toLocaleDateString('en-CA')
   const storedDate = getSetting('live_daily_equity_date', '')
   let startEquity = Number(getSetting('live_daily_equity_start_usd', '0'))
+
   if (storedDate !== today || !(startEquity > 0)) {
     startEquity = currentPortfolioUsd
     setSetting('live_daily_equity_date', today)
     setSetting('live_daily_equity_start_usd', String(currentPortfolioUsd))
   }
-  const lossPercent = startEquity > 0 ? Math.max(0, ((startEquity - currentPortfolioUsd) / startEquity) * 100) : 0
+
+  const marketDrawdownPercent =
+    startEquity > 0 ? Math.max(0, ((startEquity - currentPortfolioUsd) / startEquity) * 100) : 0
+
+  // Bot-trade loss guard:
+  // Rebuild an approximate weighted-average cost basis only from orders this bot placed.
+  // Market movement on pre-existing holdings does not trigger the hard daily lock.
+  const inventory = new Map<string,{qty:number,costUsd:number}>()
+  let realizedPnlTodayUsd = 0
+  let realizedLossTodayUsd = 0
+  let closedBotTradesToday = 0
+
+  for (const event of livePlacedOrders(2000)) {
+    const p:any = event.payload || {}
+    const productId = String(p.productId || '').toUpperCase()
+    if (!productId) continue
+
+    const side = String(p.side || '').toUpperCase()
+    const preview:any = p.preview || {}
+    const price = Number(preview.est_average_filled_price || 0)
+    const notional = Number(p.notionalUsd || preview.order_total || 0)
+    const commission = Number(preview.commission_total || 0)
+    const baseQty = Number(
+      preview.base_size ||
+      (price > 0 && notional > 0 ? notional / price : 0)
+    )
+
+    if (!(baseQty > 0) || !(price > 0)) continue
+
+    const row = inventory.get(productId) || {qty:0,costUsd:0}
+
+    if (side === 'BUY') {
+      row.qty += baseQty
+      row.costUsd += notional + commission
+      inventory.set(productId,row)
+      continue
+    }
+
+    if (side === 'SELL' && row.qty > 0) {
+      const qtySold = Math.min(baseQty,row.qty)
+      const avgCost = row.qty > 0 ? row.costUsd / row.qty : 0
+      const allocatedCost = avgCost * qtySold
+      const proceeds = (price * qtySold) - commission
+      const pnl = proceeds - allocatedCost
+
+      const eventDate = new Date(event.createdAt).toLocaleDateString('en-CA')
+      if (eventDate === today) {
+        realizedPnlTodayUsd += pnl
+        if (pnl < 0) realizedLossTodayUsd += Math.abs(pnl)
+        closedBotTradesToday += 1
+      }
+
+      row.qty -= qtySold
+      row.costUsd = Math.max(0,row.costUsd - allocatedCost)
+      inventory.set(productId,row)
+    }
+  }
+
+  const botLossPercent =
+    startEquity > 0 ? (realizedLossTodayUsd / startEquity) * 100 : 0
+
   return {
     date: today,
     startEquityUsd: Number(startEquity.toFixed(2)),
     currentEquityUsd: Number(currentPortfolioUsd.toFixed(2)),
-    lossPercent: Number(lossPercent.toFixed(4)),
+    marketDrawdownPercent: Number(marketDrawdownPercent.toFixed(4)),
+    realizedBotPnlUsd: Number(realizedPnlTodayUsd.toFixed(4)),
+    realizedBotLossUsd: Number(realizedLossTodayUsd.toFixed(4)),
+    botLossPercent: Number(botLossPercent.toFixed(4)),
+    lossPercent: Number(botLossPercent.toFixed(4)),
+    closedBotTradesToday,
     limitPercent: limits.maxDailyLossPercent,
-    blocked: lossPercent >= limits.maxDailyLossPercent
+    blocked: botLossPercent >= limits.maxDailyLossPercent,
+    mode: 'BOT_REALIZED_LOSS',
+    marketDrawdownBlocksTrading: false,
+    basisNote: 'Bot PnL uses Coinbase preview fill estimates until fill reconciliation is added.'
   }
 }
 
@@ -114,7 +183,7 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   if (side === 'SELL' && notionalUsd > availableAssetUsd + 1e-8) reasons.push('Insufficient available asset balance for this sell.')
   const projectedExposure = side === 'BUY' ? currentAssetUsd + notionalUsd : Math.max(0, currentAssetUsd - notionalUsd)
   if (projectedExposure > maxExposureUsd + 1e-8) reasons.push('Projected asset exposure exceeds ' + limits.maxTotalExposurePercent + '% of the live portfolio.')
-  if (daily.blocked) reasons.push('Daily loss guard is active at ' + daily.lossPercent.toFixed(2) + '% loss.')
+  if (daily.blocked) reasons.push('Bot realized-loss guard is active at ' + daily.botLossPercent.toFixed(2) + '% loss.')
 
   return {
     approved: reasons.length === 0,
