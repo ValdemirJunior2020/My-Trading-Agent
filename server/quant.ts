@@ -78,8 +78,9 @@ export const runNautilusSmoke=async()=>{
 
 export const runRdAgent=async(command:'health'|'info'|'fin_quant'|'fin_factor',stepN=1,loopN=1)=>{
   const script=await wslPath(rdScriptWindows)
-  const args=['-e','bash',script,command]
-  if(command==='fin_quant'||command==='fin_factor') args.push(String(stepN),String(loopN))
-  const {stdout,stderr}=await execFileAsync('wsl.exe',args,{timeout:command==='health'||command==='info'?120000:3600000,windowsHide:true,maxBuffer:10*1024*1024})
+  const safeCommand=command.replace(/[^a-z_]/g,'')
+  const extra=(command==='fin_quant'||command==='fin_factor')?' '+Math.max(1,Math.floor(stepN))+' '+Math.max(1,Math.floor(loopN)):''
+  const shell="tr -d '\\r' < '"+script+"' > /tmp/mta-run-rdagent.sh && chmod +x /tmp/mta-run-rdagent.sh && bash /tmp/mta-run-rdagent.sh "+safeCommand+extra
+  const {stdout,stderr}=await execFileAsync('wsl.exe',['-e','bash','-lc',shell],{timeout:command==='health'||command==='info'?120000:3600000,windowsHide:true,maxBuffer:10*1024*1024})
   return {command,stdout:stdout.trim(),stderr:stderr.trim()}
 }
