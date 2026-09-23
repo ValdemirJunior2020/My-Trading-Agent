@@ -194,6 +194,38 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/coinbase/status'&&req.method==='GET')return json(res,200,{configured:coinbaseConfigured(),portfolioUuid:config.coinbasePortfolioUuid||null})
   if(path==='/api/coinbase/diagnostics'&&req.method==='GET')return json(res,200,coinbaseCredentialShape())
   if(path==='/api/coinbase/accounts'&&req.method==='GET'){if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'});return json(res,200,{accounts:await listAccounts()})}
+  if(path==='/api/coinbase/portfolio-allocation'&&req.method==='GET'){
+    if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'})
+    const accounts=await listAccounts()
+    const balanceValue=(balance:any)=>Number(balance?.value??balance??0)||0
+    const cashCurrencies=new Set(['USD','USDC'])
+    const rows:any[]=[]
+    for(const account of accounts){
+      const currency=String(account.currency||'').toUpperCase()
+      const available=balanceValue(account.availableBalance)
+      const hold=balanceValue(account.hold)
+      const units=available+hold
+      if(!currency||!(units>0))continue
+      if(cashCurrencies.has(currency)){
+        rows.push({currency,productId:null,units,available,hold,priceUsd:1,valueUsd:units,type:'cash'})
+        continue
+      }
+      try{
+        const product:any=await getProduct(currency+'-USD')
+        const priceUsd=Number(product?.price||0)
+        if(priceUsd>0) rows.push({currency,productId:currency+'-USD',units,available,hold,priceUsd,valueUsd:units*priceUsd,type:'crypto'})
+      }catch{}
+    }
+    const totalUsd=rows.reduce((sum,row)=>sum+Number(row.valueUsd||0),0)
+    rows.sort((a,b)=>b.valueUsd-a.valueUsd)
+    return json(res,200,{
+      totalUsd:Number(totalUsd.toFixed(2)),
+      cashUsd:Number(rows.filter(r=>r.type==='cash').reduce((sum,r)=>sum+r.valueUsd,0).toFixed(2)),
+      cryptoUsd:Number(rows.filter(r=>r.type==='crypto').reduce((sum,r)=>sum+r.valueUsd,0).toFixed(2)),
+      holdings:rows.map(row=>({...row,valueUsd:Number(row.valueUsd.toFixed(2)),allocationPercent:totalUsd>0?Number(((row.valueUsd/totalUsd)*100).toFixed(2)):0})),
+      updatedAt:new Date().toISOString()
+    })
+  }
   if(path.startsWith('/api/coinbase/product/')&&req.method==='GET'){if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'});const productId=decodeURIComponent(path.split('/').pop()||'BTC-USD').toUpperCase();return json(res,200,{product:await getProduct(productId)})}
   if(path.startsWith('/api/coinbase/candles/')&&req.method==='GET'){if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'});const productId=decodeURIComponent(path.split('/').pop()||'BTC-USD').toUpperCase();const limit=Math.max(20,Math.min(300,Number(url.searchParams.get('limit'))||60));return json(res,200,{candles:await getCandles(productId,'ONE_HOUR',limit)})}
   if(path.startsWith('/api/coinbase/order-book/')&&req.method==='GET'){if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'});const productId=decodeURIComponent(path.split('/').pop()||'BTC-USD').toUpperCase();return json(res,200,{book:await getProductBook(productId,8)})}
