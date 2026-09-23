@@ -85,7 +85,7 @@ if "!WSL_SCRIPT!"=="" (
 )
 
 echo [INSTALL] Installing/checking RD-Agent in WSL...
-wsl -e bash "!WSL_SCRIPT!"
+wsl -e bash -lc "tr -d '\r' < '!WSL_SCRIPT!' > /tmp/mta-install-rdagent.sh && chmod +x /tmp/mta-install-rdagent.sh && bash /tmp/mta-install-rdagent.sh"
 if errorlevel 1 (
   echo [WARNING] RD-Agent WSL setup did not complete.
 ) else (
