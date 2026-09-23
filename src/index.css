@@ -45,3 +45,15 @@ body{font-size:14px;line-height:1.45}
   .activity-row{grid-template-columns:9px 64px 105px minmax(180px,1fr);min-width:520px}
   .room-title{font-size:9px}.agent-bubble strong{font-size:9px}.agent-bubble span{font-size:8px}
 }
+
+.challenge-panel{padding:0 12px 12px}
+.challenge-panel .mini-heading{padding:11px 0 9px}
+.challenge-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.challenge-grid>div{background:#091822;border:1px solid #173448;border-radius:6px;padding:9px}
+.challenge-grid small{display:block;color:#7e98aa;font-size:10px;margin-bottom:3px}
+.challenge-grid strong{font-size:14px;color:#e9f6ff}
+.challenge-progress{height:9px;border-radius:99px;background:#08121a;border:1px solid #1f394c;overflow:hidden;margin-top:10px}
+.challenge-progress span{display:block;height:100%;background:linear-gradient(90deg,#19b6a4,#18e39b)}
+.challenge-panel p{margin:8px 0 0;color:#94a9b8;font-size:10px}
+@media(max-width:900px){.challenge-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:500px){.challenge-grid{grid-template-columns:1fr}}
