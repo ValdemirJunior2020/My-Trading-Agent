@@ -47,6 +47,8 @@ export const api={
   getChallenge:()=>request<any>('/api/challenge'),
   setChallenge:(body:{enabled?:boolean;startingBalanceUsd?:number;targetBalanceUsd?:number;durationDays?:number;restart?:boolean})=>request<any>('/api/challenge',{method:'POST',body:JSON.stringify(body)}),
   getRiskSettings:()=>request<any>('/api/risk/settings'),
+  getLiveReadiness:()=>request<any>('/api/live/readiness'),
+  livePreflight:(body:{productId:string;side:'BUY'|'SELL';notionalUsd:number})=>request<any>('/api/live/preflight',{method:'POST',body:JSON.stringify(body)}),
   setRiskSettings:(body:{maxPositionPercent?:number;maxTotalExposurePercent?:number;maxDailyLossPercent?:number})=>request<any>('/api/risk/settings',{method:'POST',body:JSON.stringify(body)}),
   eventUrl:`${base}/api/events`
 }
