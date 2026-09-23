@@ -1,4 +1,5 @@
 import { getCandles,getProduct } from './coinbase.js'
+import { config } from './config.js'
 
 export const SCAN_PRODUCTS=[
   'BTC-USD','ETH-USD','XRP-USD','SOL-USD','ADA-USD','DOGE-USD',
@@ -23,7 +24,13 @@ export interface ScanResult{
   reasons:string[]
 }
 
+let cachedScan:any=null
+let cachedAt=0
+let cachedKey=''
+
 export const scanCryptoMarket=async(products:string[]=SCAN_PRODUCTS)=>{
+  const key=products.join('|')
+  if(cachedScan&&cachedKey===key&&Date.now()-cachedAt<config.scannerCacheMs) return cachedScan
   const rows:ScanResult[]=[]
   for(const productId of products){
     try{
@@ -78,7 +85,7 @@ export const scanCryptoMarket=async(products:string[]=SCAN_PRODUCTS)=>{
   rows.sort((a,b)=>b.score-a.score)
   const bestBuy=rows.find(x=>x.buyCandidate)||null
   const bestSell=[...rows].reverse().find(x=>x.sellCandidate)||null
-  return {
+  const result={
     generatedAt:new Date().toISOString(),
     scanned:rows.length,
     universe:products,
@@ -87,4 +94,8 @@ export const scanCryptoMarket=async(products:string[]=SCAN_PRODUCTS)=>{
     bestSell,
     results:rows
   }
+  cachedScan=result
+  cachedAt=Date.now()
+  cachedKey=key
+  return result
 }
