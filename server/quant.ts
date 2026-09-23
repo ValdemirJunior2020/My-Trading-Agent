@@ -32,15 +32,10 @@ export const nativeQuantStatus=async()=>{
   }
 }
 
-const wslPath=async(windowsPath:string)=>{
-  const {stdout}=await execFileAsync('wsl.exe',['wslpath','-a',windowsPath],{timeout:5000,windowsHide:true})
-  return stdout.trim()
-}
-
 export const rdAgentStatus=async()=>{
   try{
-    const script=await wslPath(rdScriptWindows)
-    await execFileAsync('wsl.exe',['-e','bash','-lc',`test -x "$HOME/.my-trading-agent-rdagent/.venv/bin/rdagent" && test -f "${script}"`],{timeout:5000,windowsHide:true})
+    const {stdout}=await execFileAsync('wsl.exe',['-e','bash','-lc','test -x "$HOME/.my-trading-agent-rdagent/.venv/bin/rdagent" && "$HOME/.my-trading-agent-rdagent/.venv/bin/rdagent" --help >/dev/null && echo RDAGENT_OK'],{timeout:15000,windowsHide:true})
+    if(!stdout.includes('RDAGENT_OK')) throw new Error('RD-Agent executable was not confirmed inside WSL.')
     return {installed:true,transport:'wsl'}
   }catch(error){
     return {installed:false,transport:'wsl',error:error instanceof Error?error.message:String(error)}
@@ -77,10 +72,16 @@ export const runNautilusSmoke=async()=>{
 }
 
 export const runRdAgent=async(command:'health'|'info'|'fin_quant'|'fin_factor',stepN=1,loopN=1)=>{
-  const script=await wslPath(rdScriptWindows)
   const safeCommand=command.replace(/[^a-z_]/g,'')
   const extra=(command==='fin_quant'||command==='fin_factor')?' '+Math.max(1,Math.floor(stepN))+' '+Math.max(1,Math.floor(loopN)):''
-  const shell="tr -d '\\r' < '"+script+"' > /tmp/mta-run-rdagent.sh && chmod +x /tmp/mta-run-rdagent.sh && bash /tmp/mta-run-rdagent.sh "+safeCommand+extra
+  const bin='$HOME/.my-trading-agent-rdagent/.venv/bin/rdagent'
+  const commandMap:Record<string,string>={
+    health:'health_check --no-check-docker --no-check-ports',
+    info:'collect_info',
+    fin_quant:'fin_quant --step-n '+Math.max(1,Math.floor(stepN))+' --loop-n '+Math.max(1,Math.floor(loopN))+' --no-checkout',
+    fin_factor:'fin_factor --step-n '+Math.max(1,Math.floor(stepN))+' --loop-n '+Math.max(1,Math.floor(loopN))+' --no-checkout'
+  }
+  const shell='test -x "'+bin+'" || { echo "RD-Agent is not installed in WSL." >&2; exit 1; }; "'+bin+'" '+commandMap[safeCommand]
   const {stdout,stderr}=await execFileAsync('wsl.exe',['-e','bash','-lc',shell],{timeout:command==='health'||command==='info'?120000:3600000,windowsHide:true,maxBuffer:10*1024*1024})
   return {command,stdout:stdout.trim(),stderr:stderr.trim()}
 }
