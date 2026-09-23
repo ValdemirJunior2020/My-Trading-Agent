@@ -27,10 +27,18 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
  const rdReady=Boolean(system?.engines?.rdAgent?.installed)
  const [pipeline,setPipeline]=useState<PipelineStatus|null>(null)
  const [launching,setLaunching]=useState(false)
+ const [lastLiveEvent,setLastLiveEvent]=useState<any|null>(null)
 
  useEffect(()=>{
   let active=true
-  const load=()=>api.getPipelineStatus().then(value=>{if(active)setPipeline(value)}).catch(()=>{})
+  const load=()=>{
+   api.getPipelineStatus().then(value=>{if(active)setPipeline(value)}).catch(()=>{})
+   api.getRecentEvents().then(({events})=>{
+    if(!active)return
+    const live=events.find((event:any)=>['live_order_placed','live_order_failed','live_order_rejected','live_order_preview_rejected'].includes(String(event.type)))
+    setLastLiveEvent(live||null)
+   }).catch(()=>{})
+  }
   load()
   const id=setInterval(load,1200)
   return()=>{active=false;clearInterval(id)}
@@ -59,6 +67,27 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
   return '▶ RUN AGENTS'
  },[running,pipeline])
 
+
+ const liveModeLabel=system?.safety.liveTradingEnabled
+  ?(system?.safety.automaticTradingEnabled?'Auto Live Trading':'Live Trading')
+  :'Paper Trading'
+ const liveModeDetail=system?.safety.liveTradingEnabled
+  ?(system?.safety.automaticTradingEnabled?'auto live':system?.safety.manualApprovalRequired?'manual live':'live')
+  :(system?.safety.mode||t('simulatedExecution'))
+ const lastLiveLabel=(()=>{
+  if(!lastLiveEvent)return 'NO LIVE ORDER YET'
+  const payload=lastLiveEvent.payload||{}
+  if(lastLiveEvent.type==='live_order_placed')return 'LIVE '+String(payload.side||'ORDER')+' '+String(payload.productId||'')
+  if(lastLiveEvent.type==='live_order_failed')return 'LIVE ORDER FAILED'
+  if(lastLiveEvent.type==='live_order_rejected'||lastLiveEvent.type==='live_order_preview_rejected')return 'LIVE ORDER BLOCKED'
+  return 'LIVE ORDER STATUS'
+ })()
+ const lastLiveDetail=lastLiveEvent
+  ?String(lastLiveEvent.type==='live_order_placed'
+    ?(lastLiveEvent.payload?.orderId||lastLiveEvent.createdAt||'confirmed')
+    :(lastLiveEvent.payload?.reason||lastLiveEvent.payload?.error||lastLiveEvent.createdAt||''))
+  :'waiting for first confirmed Coinbase order'
+
  const title=pipeline?.status==='failed'
   ?(pipeline.error||'Pipeline failed')
   :pipeline?.status==='completed'
@@ -69,10 +98,11 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
   <div className="top-chips">
    <div className="status-chip"><b>{system?'●':'○'}</b><span><strong>{system?t('serverConnected'):t('serverOffline')}</strong><small>{system?('v'+system.server.version):t('startBatHint')}</small></span></div>
    <div className="status-chip"><b>{ollama?'◎':'○'}</b><span><strong>{ollama?t('ollamaConnected'):t('ollamaOffline')}</strong><small>{system?.ollama.chatModel||system?.ollama.models?.[0]||'local'}</small></span></div>
-   <div className="status-chip paper"><b>◫</b><span><strong>{t('paperTrading')}</strong><small>{system?.safety.mode||t('simulatedExecution')}</small></span></div>
+   <div className="status-chip paper"><b>◫</b><span><strong>{liveModeLabel}</strong><small>{liveModeDetail}</small></span></div>
    <div className="simulation-chip">QUANT {quantCount}/3</div>
    <div className="simulation-chip">AUTO {system?.autoAgents?.enabled?'ON':'OFF'}{system?.autoAgents?.enabled?' • '+system.autoAgents.intervalSeconds+'s':''}</div>
    <div className="simulation-chip">{system?.coinbase.configured?t('coinbaseReady'):t('simulation')}</div>
+   <div className="status-chip live-order-chip" title={lastLiveDetail}><b>{lastLiveEvent?.type==='live_order_placed'?'✓':lastLiveEvent?'!':'○'}</b><span><strong>{lastLiveLabel}</strong><small>{lastLiveDetail}</small></span></div>
   </div>
   <div className="top-actions">
    <button className="language-btn" onClick={()=>void runAgents(false)} disabled={running||!system?.coinbase.configured||!ollama} title={title}>{runLabel}</button>
