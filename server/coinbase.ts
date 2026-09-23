@@ -88,13 +88,46 @@ export const getMarketTrades=async(productId:string,limit=12)=>{
   })).filter(x=>Number.isFinite(x.price)&&Number.isFinite(x.size))
 }
 
-export const createMarketOrder = async (params: {
+export const previewMarketOrder = async (params: {
   productId: string
   side: 'BUY' | 'SELL'
   quoteSizeUsd?: number
   baseSize?: number
 }) => {
   const { productId, side, quoteSizeUsd, baseSize } = params
+  if (side === 'BUY' && !(quoteSizeUsd && quoteSizeUsd > 0)) throw new Error('BUY preview requires positive quoteSizeUsd')
+  if (side === 'SELL' && !(baseSize && baseSize > 0)) throw new Error('SELL preview requires positive baseSize')
+
+  const order_configuration =
+    side === 'BUY'
+      ? { market_market_ioc: { quote_size: String(quoteSizeUsd) } }
+      : { market_market_ioc: { base_size: String(baseSize) } }
+
+  return request('POST', '/api/v3/brokerage/orders/preview', {
+    product_id: productId.toUpperCase(),
+    side,
+    order_configuration
+  }) as Promise<{
+    order_total?: string
+    commission_total?: string
+    errs?: string[]
+    warning?: string[]
+    quote_size?: string
+    base_size?: string
+    slippage?: string
+    preview_id?: string
+    est_average_filled_price?: string
+  }>
+}
+
+export const createMarketOrder = async (params: {
+  productId: string
+  side: 'BUY' | 'SELL'
+  quoteSizeUsd?: number
+  baseSize?: number
+  previewId?: string
+}) => {
+  const { productId, side, quoteSizeUsd, baseSize, previewId } = params
 
   if (side === 'BUY' && !(quoteSizeUsd && quoteSizeUsd > 0)) {
     throw new Error('BUY requires positive quoteSizeUsd')
@@ -105,15 +138,28 @@ export const createMarketOrder = async (params: {
 
   const order_configuration =
     side === 'BUY'
-      ? { market_market_ioc: { quote_size: String(Number(quoteSizeUsd).toFixed(2)) } }
+      ? { market_market_ioc: { quote_size: String(quoteSizeUsd) } }
       : { market_market_ioc: { base_size: String(baseSize) } }
 
   const body = {
     client_order_id: randomUUID(),
     product_id: productId.toUpperCase(),
     side,
-    order_configuration
+    order_configuration,
+    ...(previewId ? { preview_id: previewId } : {})
   }
 
-  return request('POST', '/api/v3/brokerage/orders', body)
+  const result = await request('POST', '/api/v3/brokerage/orders', body) as {
+    success?: boolean
+    success_response?: { order_id?: string; product_id?: string; side?: string; client_order_id?: string }
+    error_response?: { error?: string; message?: string; error_details?: string; new_order_failure_reason?: string }
+    order_configuration?: unknown
+  }
+
+  if (result.success !== true || !result.success_response?.order_id) {
+    const detail = result.error_response?.error_details || result.error_response?.message || result.error_response?.error || 'Coinbase did not confirm order creation.'
+    throw new Error(detail)
+  }
+
+  return result
 }
