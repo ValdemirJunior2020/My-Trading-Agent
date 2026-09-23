@@ -1,2 +1,3 @@
-vectorbt
-nautilus_trader
+vectorbt==1.1.0
+plotly>=5.24.1,<6
+nautilus_trader==1.231.0
