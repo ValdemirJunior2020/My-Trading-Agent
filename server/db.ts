@@ -79,3 +79,27 @@ export const openPaperNotional=():number=>{
   const row=db.prepare("SELECT COALESCE(SUM(notional),0) total FROM paper_trades WHERE status='OPEN'").get() as {total:number}
   return Number(row.total||0)
 }
+
+
+export const liveTradeHistory=(limit=200)=>{
+  const bounded=Math.max(1,Math.min(1000,Math.floor(limit)))
+  const rows=db.prepare(`
+    SELECT * FROM agent_events
+    WHERE type IN (
+      'live_order_placed',
+      'live_order_failed',
+      'live_order_rejected',
+      'live_order_preview_rejected',
+      'live_order_preview_approved'
+    )
+    ORDER BY id DESC
+    LIMIT ?
+  `).all(bounded) as Array<any>
+  return rows.map(row=>({
+    id:row.id,
+    type:row.type,
+    agentId:row.agent_id,
+    payload:JSON.parse(row.payload),
+    createdAt:row.created_at
+  }))
+}
