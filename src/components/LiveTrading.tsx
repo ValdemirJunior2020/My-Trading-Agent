@@ -32,7 +32,9 @@ export function LiveTrading({language}:Props){
  },[])
 
  const candidate=String(pipeline?.decision||'WAIT')
- const pipelineProduct=String(pipeline?.productId||scanner?.best?.productId||'BTC-USD')
+ const pipelineProduct=String(pipeline?.productId||scanner?.bestBuy?.productId||scanner?.bestSell?.productId||'BTC-USD')
+ const scannerBuy=scanner?.bestBuy||null
+ const scannerSell=scanner?.bestSell||null
  const side:CandidateSide=candidate==='BUY_CANDIDATE'?'BUY':candidate==='SELL_CANDIDATE'?'SELL':null
  const blocked=!readiness?.readyForManualLive
  const plainSignal=blocked
@@ -105,14 +107,21 @@ export function LiveTrading({language}:Props){
      <div><span className="eyebrow">MULTI-CRYPTO SCANNER</span><h2>{pt?'A ferramenta está comparando várias criptos':'The tool is comparing multiple cryptos'}</h2></div>
      <strong>{scanner?.scanned!=null?scanner.scanned+' scanned':'—'}</strong>
     </div>
-    {scanner?.best?<div className="scanner-best">
-      <small>{pt?'Melhor candidato agora':'Best candidate right now'}</small>
-      <strong>{scanner.best.productId}</strong>
-      <span>{'Score '+Number(scanner.best.score||0).toFixed(0)+'/100 • 24h '+Number(scanner.best.change24hPercent||0).toFixed(2)+'%'}</span>
-     </div>:<div className="scanner-best wait"><small>{pt?'Resultado':'Result'}</small><strong>{pt?'NENHUMA BOA ENTRADA AGORA':'NO GOOD SETUP RIGHT NOW'}</strong><span>{pt?'O scanner não encontrou candidato forte o suficiente.':'The scanner did not find a candidate strong enough.'}</span></div>}
+    <div className="scanner-sides">
+     {scannerBuy?<div className="scanner-best">
+      <small>{pt?'Melhor compra agora':'Best buy candidate'}</small>
+      <strong>{scannerBuy.productId+' — BUY NOW'}</strong>
+      <span>{'Score '+Number(scannerBuy.score||0).toFixed(0)+'/100 • 24h '+Number(scannerBuy.change24hPercent||0).toFixed(2)+'%'}</span>
+     </div>:<div className="scanner-best wait"><small>{pt?'Compra':'Buy'}</small><strong>{pt?'NENHUMA BOA COMPRA AGORA':'NO GOOD BUY RIGHT NOW'}</strong></div>}
+     {scannerSell?<div className="scanner-best sell">
+      <small>{pt?'Melhor venda agora':'Best sell candidate'}</small>
+      <strong>{scannerSell.productId+' — SELL NOW'}</strong>
+      <span>{'Score '+Number(scannerSell.score||0).toFixed(0)+'/100 • 24h '+Number(scannerSell.change24hPercent||0).toFixed(2)+'%'}</span>
+     </div>:<div className="scanner-best wait"><small>{pt?'Venda':'Sell'}</small><strong>{pt?'NENHUMA VENDA FORTE AGORA':'NO STRONG SELL RIGHT NOW'}</strong></div>}
+    </div>
     <div className="scanner-table">
      {(scanner?.results||[]).slice(0,6).map((row:any)=><div key={row.productId}>
-      <strong>{row.productId}</strong><span>{'Score '+Number(row.score||0).toFixed(0)}</span><span>{Number(row.change24hPercent||0).toFixed(2)+'% 24h'}</span><em>{row.candidate?'CANDIDATE':'WAIT'}</em>
+      <strong>{row.productId}</strong><span>{'Score '+Number(row.score||0).toFixed(0)}</span><span>{Number(row.change24hPercent||0).toFixed(2)+'% 24h'}</span><em>{row.buyCandidate?'BUY':row.sellCandidate?'SELL':'WAIT'}</em>
      </div>)}
     </div>
    </div>
