@@ -18,7 +18,8 @@ export interface ScanResult{
   volatility24hPercent:number
   volumeRatio:number
   score:number
-  candidate:boolean
+  buyCandidate:boolean
+  sellCandidate:boolean
   reasons:string[]
 }
 
@@ -56,6 +57,8 @@ export const scanCryptoMarket=async(products:string[]=SCAN_PRODUCTS)=>{
       if(volatility24hPercent>3) score-=8
       if(volatility24hPercent>5) score-=10
       score=Math.max(0,Math.min(100,score))
+      const buyCandidate=score>=78&&latest.close>sma20&&sma20>sma50&&change24hPercent>0
+      const sellCandidate=score<=28&&latest.close<sma20&&sma20<sma50&&change24hPercent<0
       rows.push({
         productId,
         price:Number((product as any)?.price||latest.close),
@@ -66,18 +69,22 @@ export const scanCryptoMarket=async(products:string[]=SCAN_PRODUCTS)=>{
         volatility24hPercent,
         volumeRatio,
         score,
-        candidate:score>=78&&latest.close>sma20&&sma20>sma50&&change24hPercent>0,
+        buyCandidate,
+        sellCandidate,
         reasons
       })
     }catch{}
   }
   rows.sort((a,b)=>b.score-a.score)
-  const best=rows.find(x=>x.candidate)||null
+  const bestBuy=rows.find(x=>x.buyCandidate)||null
+  const bestSell=[...rows].reverse().find(x=>x.sellCandidate)||null
   return {
     generatedAt:new Date().toISOString(),
     scanned:rows.length,
     universe:products,
-    best,
+    best:bestBuy,
+    bestBuy,
+    bestSell,
     results:rows
   }
 }
