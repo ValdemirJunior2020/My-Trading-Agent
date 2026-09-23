@@ -30,7 +30,10 @@ export const config = {
   maxDailyLossPercent: num(process.env.MAX_DAILY_LOSS_PERCENT, 2),
   maxTotalExposurePercent: num(process.env.MAX_TOTAL_EXPOSURE_PERCENT, 25),
   maxLiveOrderUsd: num(process.env.MAX_LIVE_ORDER_USD, 25),
-  minLiveOrderUsd: num(process.env.MIN_LIVE_ORDER_USD, 10),
+  minLiveOrderUsd: num(process.env.MIN_LIVE_ORDER_USD, 1),
+  autoTradeCooldownSeconds: Math.max(60, num(process.env.AUTO_TRADE_COOLDOWN_SECONDS, 900)),
+  autoTradeMinConfidencePercent: Math.max(0, Math.min(100, num(process.env.AUTO_TRADE_MIN_CONFIDENCE_PERCENT, 70))),
+  scannerCacheMs: Math.max(5000, num(process.env.SCANNER_CACHE_MS, 15000)),
   watchlist: (process.env.WATCHLIST || 'XRP,BTC,ETH,SOL,LINK')
     .split(',')
     .map((s) => s.trim().toUpperCase())
