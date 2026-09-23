@@ -57,49 +57,58 @@ const shouldRunNow = () => {
 
 const balanceValue = (balance: any) => Number(balance?.value ?? balance ?? 0) || 0
 
-const pickAutoProduct = async () => {
+const heldProducts = async () => {
   const accounts = await listAccounts()
-  const watchlist = config.watchlist || ['XRP-USD', 'BTC-USD', 'ETH-USD', 'SOL-USD', 'LINK-USD']
-
-  // 1. Prefer the largest holding that is in the watchlist (XRP first for you)
-  let bestHolding: { productId: string; usdValue: number } | null = null
+  const held = new Map<string, number>()
   for (const account of accounts) {
     const currency = String(account.currency || '').toUpperCase()
     if (!currency || ['USD', 'USDC', 'USDT'].includes(currency)) continue
-    const productId = currency + '-USD'
-    if (!watchlist.includes(productId)) continue
-
     const amount = balanceValue(account.availableBalance) + balanceValue(account.hold)
     if (!(amount > 0)) continue
-
+    const productId = currency + '-USD'
     try {
       const product: any = await getProduct(productId)
       const price = Number(product?.price || 0)
       const usdValue = amount * price
-      if (Number.isFinite(usdValue) && usdValue > 0 && (!bestHolding || usdValue > bestHolding.usdValue)) {
-        bestHolding = { productId, usdValue }
-      }
+      if (Number.isFinite(usdValue) && usdValue > 0) held.set(productId, usdValue)
     } catch {}
   }
+  return held
+}
 
-  if (bestHolding) return bestHolding.productId
+const chooseAutoProduct = async () => {
+  const scan = await scanCryptoMarket()
+  const held = await heldProducts()
 
-  // 2. Try scanner best (prefer if in watchlist, but allow strong outside candidates)
-  try {
-    const scan = await scanCryptoMarket()
-    if (scan.best?.productId && watchlist.includes(scan.best.productId)) {
-      return scan.best.productId
-    }
-    if (scan.best?.productId) return scan.best.productId
-  } catch {}
+  // Protect existing holdings first: if something we actually own has a strong sell signal,
+  // analyze that position before looking for a new buy.
+  const heldSell = [...scan.results]
+    .filter((row: any) => row.sellCandidate && held.has(row.productId))
+    .sort((a: any, b: any) => a.score - b.score)[0]
+  if (heldSell) return { productId: heldSell.productId, scan, reason: 'HELD_SELL_CANDIDATE' }
 
-  // 3. Fallback to first watchlist item (XRP-USD)
-  return watchlist[0] || 'XRP-USD'
+  // Otherwise analyze the strongest scanner buy candidate.
+  if (scan.bestBuy?.productId) {
+    return { productId: scan.bestBuy.productId, scan, reason: 'BEST_BUY_CANDIDATE' }
+  }
+
+  // No market candidate: keep monitoring the largest held watchlist asset.
+  const watchlist = config.watchlist || []
+  const heldWatchlist = [...held.entries()]
+    .filter(([productId]) => watchlist.includes(productId))
+    .sort((a, b) => b[1] - a[1])[0]
+  if (heldWatchlist) return { productId: heldWatchlist[0], scan, reason: 'MONITOR_LARGEST_HOLDING' }
+
+  const largestHolding = [...held.entries()].sort((a, b) => b[1] - a[1])[0]
+  if (largestHolding) return { productId: largestHolding[0], scan, reason: 'MONITOR_LARGEST_HOLDING' }
+
+  return { productId: watchlist[0] || 'XRP-USD', scan, reason: 'WATCHLIST_FALLBACK' }
 }
 
 const tick = async () => {
   if (!shouldRunNow()) return
   if (!coinbaseConfigured()) return
+
   try {
     const ollama = await getOllamaStatus()
     if (!ollama.online || !ollama.chatModel) return
@@ -108,37 +117,36 @@ const tick = async () => {
   }
 
   const settings = getAutoRunSettings()
-  let productId = await pickAutoProduct()
+  let selection: Awaited<ReturnType<typeof chooseAutoProduct>>
 
   try {
-    const scan = await scanCryptoMarket()
-    // Prefer scanner best if available, but pickAutoProduct already considered it
-    if (scan.best?.productId) {
-      const watchlist = config.watchlist || []
-      // If we don't hold anything and scanner found something, use it
-      if (!productId || productId === (watchlist[0] || 'XRP-USD')) {
-        productId = scan.best.productId
-      }
-    }
+    selection = await chooseAutoProduct()
     publish('crypto_scanner_completed', {
-      scanned: scan.scanned,
-      best: scan.best,
-      top: scan.results.slice(0, 5)
+      scanned: selection.scan.scanned,
+      bestBuy: selection.scan.bestBuy,
+      bestSell: selection.scan.bestSell,
+      selectedProductId: selection.productId,
+      selectionReason: selection.reason,
+      top: selection.scan.results.slice(0, 5)
     }, 'strategy')
   } catch (error) {
-    publish('crypto_scanner_failed', {
-      error: error instanceof Error ? error.message : String(error)
-    }, 'strategy')
+    const message = error instanceof Error ? error.message : String(error)
+    publish('crypto_scanner_failed', { error: message }, 'strategy')
+    selection = { productId: config.watchlist[0] || 'XRP-USD', scan: null as any, reason: 'SCAN_FAILED_FALLBACK' }
   }
 
   lastAttemptAt = Date.now()
   publish('auto_agents_cycle_started', {
     intervalSeconds: settings.intervalSeconds,
     deepResearch: settings.deepResearch,
-    productId
+    productId: selection.productId,
+    selectionReason: selection.reason
   }, 'manager')
 
-  void runFullAgentPipeline({ productId, deepResearch: settings.deepResearch }).catch((error) => {
+  void runFullAgentPipeline({
+    productId: selection.productId,
+    deepResearch: settings.deepResearch
+  }).catch((error) => {
     const message = error instanceof Error ? error.message : String(error)
     publish('auto_agents_cycle_failed', { error: message }, 'manager')
   })
