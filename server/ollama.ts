@@ -72,15 +72,30 @@ const roles:Record<string,string>={
   sentiment:'Assess sentiment evidence and clearly flag stale, weak, duplicated or unverified information.',
   critic:'Try to disprove the trade thesis. Search for failure modes, bad assumptions and asymmetric downside.',
   portfolio:'Check concentration, correlation, open exposure, available capital and portfolio-level risk.',
-  decision:'Combine structured reports. WAIT is a successful decision when evidence is incomplete.'
+  decision:'Combine the structured reports into one evidence-based candidate classification. Do not favor action or inaction by default.'
 }
 
 export const runAgent=async(agentId:string,asset:string,summary:string)=>{
   const model=await getRequiredChatModel()
+  const decisionRubric=agentId==='decision' ? `
+Decision rubric:
+- BUY_CANDIDATE: use only when the combined evidence supports a long setup NOW: market/trend evidence is favorable, strategy evidence is supportive rather than contradictory, risk does not identify a hard blocker, and the critic has not found a decisive invalidation.
+- SELL_CANDIDATE: use only when the combined evidence supports reducing/exiting an actually held asset NOW: downside evidence is strong, the portfolio can actually hold the asset, risk does not identify a hard blocker to selling, and the critic has not found a decisive reason to avoid acting.
+- WAIT: use when evidence is mixed, timing is unclear, confirmation is still missing, or the setup is neither clearly favorable nor clearly invalid.
+- REJECT: use when there is a concrete invalidation or contradiction that makes the setup unsuitable, not merely because evidence is imperfect.
+- HOLD: use only when the evidence specifically supports maintaining an existing held position without buying or selling.
+Do not use confidence as probability of profit. Confidence means confidence in the classification you selected.
+Do not return REJECT just because news sentiment is unavailable. Missing news data alone should be recorded as a limitation and may justify WAIT when it materially affects the decision.
+Do not return WAIT merely because trading involves uncertainty; all trading is uncertain.
+A candidate classification does not place an order. Deterministic server risk checks remain authoritative after this step.
+` : ''
+
   const system=`You are the My Trading Agent ${agentId} agent. ${roles[agentId]||'Analyze the supplied evidence carefully.'}
 Protect capital first and grow it second. Every trade must earn the right to exist.
 Never chase losses, never revenge trade, never increase risk to recover a loss, and never claim certainty.
+${decisionRubric}
 You do not execute trades. Return concise JSON only with keys: status, confidence, summary, risks, decision.
+confidence must be a number from 0 to 1.
 decision must be one of BUY_CANDIDATE, SELL_CANDIDATE, HOLD, WAIT, REJECT.`
 
   const response=await fetch(`${config.ollamaBaseUrl}/api/chat`,{
