@@ -38,7 +38,7 @@ const journalStatus=(event:any)=>{
     return 'NO TRADE'
   }
 
-  return type.replaceAll('_',' ').toUpperCase()
+  return type.replace(/_/g,' ').toUpperCase()
 }
 
 const statusGroup=(status:string):JournalFilter=>{
