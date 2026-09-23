@@ -206,7 +206,7 @@ const tick = async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     publish('crypto_scanner_failed', { error: message }, 'strategy')
-    selection = { productId: config.watchlist[0] || 'XRP-USD', scan: null as any, reason: 'SCAN_FAILED_FALLBACK' }
+    selection = { productId: config.watchlist[0] || 'XRP-USD', scan: null as any, reason: 'SCAN_FAILED_FALLBACK', heldUsd: 0, previousProductId: lastSelectedProduct() || null }
   }
 
   lastAttemptAt = Date.now()
