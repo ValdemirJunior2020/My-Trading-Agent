@@ -7,6 +7,7 @@ type CandidateSide='BUY'|'SELL'|null
 export function LiveTrading({language}:Props){
  const [readiness,setReadiness]=useState<any|null>(null)
  const [pipeline,setPipeline]=useState<any|null>(null)
+ const [scanner,setScanner]=useState<any|null>(null)
  const [preflight,setPreflight]=useState<any|null>(null)
  const [loading,setLoading]=useState(true)
  const [busy,setBusy]=useState(false)
@@ -15,9 +16,10 @@ export function LiveTrading({language}:Props){
  const load=async()=>{
   setLoading(true)
   try{
-   const [ready,pipe]=await Promise.all([api.getLiveReadiness(),api.getPipelineStatus()])
+   const [ready,pipe,scan]=await Promise.all([api.getLiveReadiness(),api.getPipelineStatus(),api.getScanner()])
    setReadiness(ready)
    setPipeline(pipe)
+   setScanner(scan)
   }catch(error){
    setReadiness({error:error instanceof Error?error.message:String(error)})
   }finally{setLoading(false)}
@@ -30,6 +32,7 @@ export function LiveTrading({language}:Props){
  },[])
 
  const candidate=String(pipeline?.decision||'WAIT')
+ const pipelineProduct=String(pipeline?.productId||scanner?.best?.productId||'BTC-USD')
  const side:CandidateSide=candidate==='BUY_CANDIDATE'?'BUY':candidate==='SELL_CANDIDATE'?'SELL':null
  const blocked=!readiness?.readyForManualLive
  const plainSignal=blocked
@@ -57,7 +60,7 @@ export function LiveTrading({language}:Props){
   if(!side||!(guidedAmount>0))return
   setBusy(true);setPreflight(null)
   try{
-   setPreflight(await api.livePreflight({productId:'BTC-USD',side,notionalUsd:Number(guidedAmount.toFixed(2))}))
+   setPreflight(await api.livePreflight({productId:pipelineProduct,side,notionalUsd:Number(guidedAmount.toFixed(2))}))
   }catch(error:any){
    setPreflight({ok:false,error:error?.message||String(error)})
   }finally{
@@ -97,9 +100,68 @@ export function LiveTrading({language}:Props){
     </p>
    </div>
 
+   <div className="scanner-panel">
+    <div className="scanner-head">
+     <div><span className="eyebrow">MULTI-CRYPTO SCANNER</span><h2>{pt?'A ferramenta está comparando várias criptos':'The tool is comparing multiple cryptos'}</h2></div>
+     <strong>{scanner?.scanned!=null?scanner.scanned+' scanned':'—'}</strong>
+    </div>
+    {scanner?.best?<div className="scanner-best">
+      <small>{pt?'Melhor candidato agora':'Best candidate right now'}</small>
+      <strong>{scanner.best.productId}</strong>
+      <span>{'Score '+Number(scanner.best.score||0).toFixed(0)+'/100 • 24h '+Number(scanner.best.change24hPercent||0).toFixed(2)+'%'}</span>
+     </div>:<div className="scanner-best wait"><small>{pt?'Resultado':'Result'}</small><strong>{pt?'NENHUMA BOA ENTRADA AGORA':'NO GOOD SETUP RIGHT NOW'}</strong><span>{pt?'O scanner não encontrou candidato forte o suficiente.':'The scanner did not find a candidate strong enough.'}</span></div>}
+    <div className="scanner-table">
+     {(scanner?.results||[]).slice(0,6).map((row:any)=><div key={row.productId}>
+      <strong>{row.productId}</strong><span>{'Score '+Number(row.score||0).toFixed(0)}</span><span>{Number(row.change24hPercent||0).toFixed(2)+'% 24h'}</span><em>{row.candidate?'CANDIDATE':'WAIT'}</em>
+     </div>)}
+    </div>
+   </div>
+
    <div className="guided-trade-card">
     {side?
-      <><div><small>{pt?'A ferramenta calculou':'Tool calculated'}</small><strong>{side+' BTC-USD • $'+guidedAmount.toFixed(2)}</strong><p>{pt?'Esse valor fica dentro do seu limite atual por posição.':'This amount stays within your current per-position limit.'}</p></div>
+      <><div><small>{pt?'A ferramenta calculou':'Tool calculated'}</small><strong>{side+' '+pipelineProduct+' • <p>{pt?'Esse valor fica dentro do seu limite atual por posição.':'This amount stays within your current per-position limit.'}</p></div>
+      <button className="preflight-btn" onClick={()=>void runGuidedPreflight()} disabled={busy||loading||!readiness?.readyForManualLive}>{busy?(pt?'VALIDANDO...':'CHECKING...'):(pt?'VALIDAR ORDEM':'CHECK TRADE')}</button></>
+      :
+      <div className="guided-wait"><strong>{pt?'Nenhuma ordem será preparada agora':'No trade will be prepared now'}</strong><p>{pt?'Os agentes ainda estão em WAIT/REJECT. A ferramenta não vai forçar uma compra ou venda.':'The agents are still at WAIT/REJECT. The tool will not force a buy or sell.'}</p></div>
+    }
+   </div>
+
+   {preflight?<div className={preflight?.preflight?.approved?'preflight-result ok':'preflight-result'}>
+    <strong>{preflight?.preflight?.approved?(pt?'PREFLIGHT APROVADO':'PREFLIGHT APPROVED'):(pt?'PREFLIGHT BLOQUEADO':'PREFLIGHT BLOCKED')}</strong>
+    {preflight?.preflight?<><p>{(pt?'Ordem preparada: ':'Prepared trade: ')+preflight.preflight.side+' '+preflight.preflight.productId+' • </p>
+    {preflight.preflight.reasons?.length?<ul>{preflight.preflight.reasons.map((x:string)=><li key={x}>{x}</li>)}</ul>:<p>{pt?'Todos os checks passaram. Nenhum dinheiro foi movido ainda.':'All checks passed. No money has moved yet.'}</p>}</>:<p>{preflight.error||'Preflight failed.'}</p>}
+   </div>:null}
+
+   <div className="live-warning"><strong>{pt?'Importante':'Important'}</strong><span>{pt?'A ferramenta pode preparar tudo automaticamente, mas uma ordem real ainda exige a etapa final de aprovação.':'The tool can prepare everything automatically, but a real order still requires the final approval step.'}</span></div>
+  </section>
+ </main>
+}
++guidedAmount.toFixed(2)}</strong><p>{pt?'Esse valor fica dentro do seu limite atual por posição.':'This amount stays within your current per-position limit.'}</p></div>
+      <button className="preflight-btn" onClick={()=>void runGuidedPreflight()} disabled={busy||loading||!readiness?.readyForManualLive}>{busy?(pt?'VALIDANDO...':'CHECKING...'):(pt?'VALIDAR ORDEM':'CHECK TRADE')}</button></>
+      :
+      <div className="guided-wait"><strong>{pt?'Nenhuma ordem será preparada agora':'No trade will be prepared now'}</strong><p>{pt?'Os agentes ainda estão em WAIT/REJECT. A ferramenta não vai forçar uma compra ou venda.':'The agents are still at WAIT/REJECT. The tool will not force a buy or sell.'}</p></div>
+    }
+   </div>
+
+   {preflight?<div className={preflight?.preflight?.approved?'preflight-result ok':'preflight-result'}>
+    <strong>{preflight?.preflight?.approved?(pt?'PREFLIGHT APROVADO':'PREFLIGHT APPROVED'):(pt?'PREFLIGHT BLOQUEADO':'PREFLIGHT BLOCKED')}</strong>
+    {preflight?.preflight?<><p>{(pt?'Ordem preparada: ':'Prepared trade: ')+preflight.preflight.side+' BTC-USD • $'+Number(preflight.preflight.notionalUsd||0).toFixed(2)}</p>
+    {preflight.preflight.reasons?.length?<ul>{preflight.preflight.reasons.map((x:string)=><li key={x}>{x}</li>)}</ul>:<p>{pt?'Todos os checks passaram. Nenhum dinheiro foi movido ainda.':'All checks passed. No money has moved yet.'}</p>}</>:<p>{preflight.error||'Preflight failed.'}</p>}
+   </div>:null}
+
+   <div className="live-warning"><strong>{pt?'Importante':'Important'}</strong><span>{pt?'A ferramenta pode preparar tudo automaticamente, mas uma ordem real ainda exige a etapa final de aprovação.':'The tool can prepare everything automatically, but a real order still requires the final approval step.'}</span></div>
+  </section>
+ </main>
+}
++Number(preflight.preflight.notionalUsd||0).toFixed(2)}</p>
+    {preflight.preflight.reasons?.length?<ul>{preflight.preflight.reasons.map((x:string)=><li key={x}>{x}</li>)}</ul>:<p>{pt?'Todos os checks passaram. Nenhum dinheiro foi movido ainda.':'All checks passed. No money has moved yet.'}</p>}</>:<p>{preflight.error||'Preflight failed.'}</p>}
+   </div>:null}
+
+   <div className="live-warning"><strong>{pt?'Importante':'Important'}</strong><span>{pt?'A ferramenta pode preparar tudo automaticamente, mas uma ordem real ainda exige a etapa final de aprovação.':'The tool can prepare everything automatically, but a real order still requires the final approval step.'}</span></div>
+  </section>
+ </main>
+}
++guidedAmount.toFixed(2)}</strong><p>{pt?'Esse valor fica dentro do seu limite atual por posição.':'This amount stays within your current per-position limit.'}</p></div>
       <button className="preflight-btn" onClick={()=>void runGuidedPreflight()} disabled={busy||loading||!readiness?.readyForManualLive}>{busy?(pt?'VALIDANDO...':'CHECKING...'):(pt?'VALIDAR ORDEM':'CHECK TRADE')}</button></>
       :
       <div className="guided-wait"><strong>{pt?'Nenhuma ordem será preparada agora':'No trade will be prepared now'}</strong><p>{pt?'Os agentes ainda estão em WAIT/REJECT. A ferramenta não vai forçar uma compra ou venda.':'The agents are still at WAIT/REJECT. The tool will not force a buy or sell.'}</p></div>
