@@ -188,3 +188,8 @@ body{font-size:14px;line-height:1.45}
 .daily-guard-detail.blocked strong{color:#ffadb4}
 @media(max-width:700px){.daily-guard-detail{grid-template-columns:1fr 1fr}}
 @media(max-width:430px){.daily-guard-detail{grid-template-columns:1fr}}
+
+.market-drawdown-warning{margin-top:8px;border:1px solid #6b5520;background:#2b240d;border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center}
+.market-drawdown-warning strong{color:#f2c75d;font-size:10px}
+.market-drawdown-warning span{color:#e5d7a6;font-size:10px}
+.market-drawdown-warning small{grid-column:1/-1;color:#a99763;font-size:9px}
