@@ -44,6 +44,12 @@ export const saveAutoRunSettings = (input: Partial<AutoRunSettings>) => {
 
 let timer: NodeJS.Timeout | null = null
 let lastAttemptAt = 0
+const ANALYSIS_COOLDOWN_MS=10*60*1000
+
+const analysisKey=(productId:string)=>'auto_last_analyzed_'+productId.toUpperCase().replace(/[^A-Z0-9]/g,'_')
+const lastAnalyzedAt=(productId:string)=>Number(getSetting(analysisKey(productId),'0'))||0
+const recentlyAnalyzed=(productId:string)=>Date.now()-lastAnalyzedAt(productId)<ANALYSIS_COOLDOWN_MS
+const markAnalyzed=(productId:string)=>setSetting(analysisKey(productId),String(Date.now()))
 
 const shouldRunNow = () => {
   const state = getPipelineStatus()
@@ -80,29 +86,40 @@ const chooseAutoProduct = async () => {
   const scan = await scanCryptoMarket()
   const held = await heldProducts()
 
-  // Protect existing holdings first: if something we actually own has a strong sell signal,
-  // analyze that position before looking for a new buy.
+  // Safety takes priority over rotation: a held asset with a strong sell signal
+  // can be re-analyzed immediately even if it was recently checked.
   const heldSell = [...scan.results]
     .filter((row: any) => row.sellCandidate && held.has(row.productId))
-    .sort((a: any, b: any) => a.score - b.score)[0]
+    .sort((a: any, b: any) => b.sellScore - a.sellScore)[0]
   if (heldSell) return { productId: heldSell.productId, scan, reason: 'HELD_SELL_CANDIDATE' }
 
-  // Otherwise analyze the strongest scanner buy candidate.
-  if (scan.bestBuy?.productId) {
-    return { productId: scan.bestBuy.productId, scan, reason: 'BEST_BUY_CANDIDATE' }
+  // Prefer fresh buy candidates, but do not burn every cycle on the same coin.
+  const freshBuy = [...scan.results]
+    .filter((row: any) => row.buyCandidate && !recentlyAnalyzed(row.productId))
+    .sort((a: any, b: any) => b.buyScore - a.buyScore)[0]
+  if (freshBuy) return { productId: freshBuy.productId, scan, reason: 'FRESH_BUY_CANDIDATE' }
+
+  // XRP remains a focus asset, but it also respects the normal analysis cooldown.
+  const xrp = scan.results.find((row: any) => row.productId === 'XRP-USD')
+  if (xrp && !recentlyAnalyzed('XRP-USD')) {
+    return { productId: 'XRP-USD', scan, reason: 'XRP_FOCUS_ROTATION' }
   }
 
-  // No market candidate: keep monitoring the largest held watchlist asset.
-  const watchlist = config.watchlist || []
-  const heldWatchlist = [...held.entries()]
-    .filter(([productId]) => watchlist.includes(productId))
-    .sort((a, b) => b[1] - a[1])[0]
-  if (heldWatchlist) return { productId: heldWatchlist[0], scan, reason: 'MONITOR_LARGEST_HOLDING' }
+  // No actionable buy: rotate through the strongest liquid opportunities rather
+  // than repeatedly analyzing ETH or the largest current holding.
+  const freshMarket = [...scan.results]
+    .filter((row: any) => !recentlyAnalyzed(row.productId))
+    .sort((a: any, b: any) =>
+      Math.max(b.buyScore || 0, b.sellScore || 0) - Math.max(a.buyScore || 0, a.sellScore || 0)
+    )[0]
+  if (freshMarket) return { productId: freshMarket.productId, scan, reason: 'MARKET_ROTATION' }
 
-  const largestHolding = [...held.entries()].sort((a, b) => b[1] - a[1])[0]
-  if (largestHolding) return { productId: largestHolding[0], scan, reason: 'MONITOR_LARGEST_HOLDING' }
+  // If every scanned asset is cooling down, use the least-recently analyzed one.
+  const oldest = [...scan.results]
+    .sort((a: any, b: any) => lastAnalyzedAt(a.productId) - lastAnalyzedAt(b.productId))[0]
+  if (oldest) return { productId: oldest.productId, scan, reason: 'COOLDOWN_EXHAUSTED_OLDEST' }
 
-  return { productId: watchlist[0] || 'XRP-USD', scan, reason: 'WATCHLIST_FALLBACK' }
+  return { productId: config.watchlist[0] || 'XRP-USD', scan, reason: 'WATCHLIST_FALLBACK' }
 }
 
 const tick = async () => {
@@ -136,6 +153,7 @@ const tick = async () => {
   }
 
   lastAttemptAt = Date.now()
+  markAnalyzed(selection.productId)
   publish('auto_agents_cycle_started', {
     intervalSeconds: settings.intervalSeconds,
     deepResearch: settings.deepResearch,
