@@ -168,3 +168,10 @@ body{font-size:14px;line-height:1.45}
 .journal-status.wait{background:#392f0f;color:#f3cb67}
 .journal-status.preview-failed{background:#3d2212;color:#ffbd7d}
 .journal-status.neutral{background:#163047;color:#9dd7ff}
+
+.journal-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.journal-updated{font-size:9px;color:#7890a5;min-width:95px;text-align:right}
+.journal-refresh:disabled,.journal-clear:disabled{opacity:.5;cursor:default}
+.journal-clear{border:1px solid #7a3540;background:#32161b;color:#ffb0b7;border-radius:7px;padding:9px 13px;font-weight:800;cursor:pointer}
+.journal-clear:hover{border-color:#b94b58;background:#451a21}
+@media(max-width:520px){.journal-actions{justify-content:flex-start;margin-top:10px}.journal-updated{width:100%;text-align:left}}
