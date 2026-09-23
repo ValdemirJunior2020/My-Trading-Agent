@@ -71,6 +71,7 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
    <div className="status-chip"><b>{ollama?'◎':'○'}</b><span><strong>{ollama?t('ollamaConnected'):t('ollamaOffline')}</strong><small>{system?.ollama.chatModel||system?.ollama.models?.[0]||'local'}</small></span></div>
    <div className="status-chip paper"><b>◫</b><span><strong>{t('paperTrading')}</strong><small>{system?.safety.mode||t('simulatedExecution')}</small></span></div>
    <div className="simulation-chip">QUANT {quantCount}/3</div>
+   <div className="simulation-chip">AUTO {system?.autoAgents?.enabled?'ON':'OFF'}{system?.autoAgents?.enabled?' • '+system.autoAgents.intervalSeconds+'s':''}</div>
    <div className="simulation-chip">{system?.coinbase.configured?t('coinbaseReady'):t('simulation')}</div>
   </div>
   <div className="top-actions">
