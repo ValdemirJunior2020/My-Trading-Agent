@@ -12,6 +12,7 @@ import { AgentDetails } from './components/AgentDetails'
 import { BottomPanels } from './components/BottomPanels'
 import { ToolCopilot } from './components/ToolCopilot'
 import { TradingChallenge } from './components/TradingChallenge'
+import { LiveTrading } from './components/LiveTrading'
 
 export default function App(){
  const [language,setLanguage]=useState<Language>(()=>localStorage.getItem('mta-language')==='pt'?'pt':'en')
@@ -24,7 +25,7 @@ export default function App(){
  return <div className={`app ${emergency?'emergency-mode':''}`}>
   <Sidebar t={t} page={page} setPage={setPage}/>
   <div className="workspace"><TopBar t={t} emergency={emergency} onEmergency={toggleEmergency} onLanguage={()=>setLanguage(v=>v==='en'?'pt':'en')} system={system}/>
-   {page==='agentOffice'||page==='dashboard'?<main className="dashboard-shell"><div className="hero-grid"><PixelOffice t={t} selected={selected} onSelect={setSelected}/><TradingTerminal t={t} system={system}/></div><TradingChallenge language={language}/><div className="detail-row"><AgentDetails agent={selected} t={t}/><BottomPanels t={t} backendOnline={Boolean(system?.server.online)}/></div><div className="mobile-hint">{t('mobileHint')}</div></main>:<main className="planned-page"><div className="panel planned-card"><span>{t('planned')}</span><h1>{t(page)}</h1><p>{language==='pt'?'Esta área está preparada na arquitetura, mas ainda não está implementada. Nada aqui finge ser um recurso real.':'This area is reserved in the architecture but is not implemented yet. Nothing here pretends to be a finished feature.'}</p><button onClick={()=>setPage('agentOffice')}>{t('agentOffice')} →</button></div></main>}
+   {page==='agentOffice'||page==='dashboard'?<main className="dashboard-shell"><div className="hero-grid"><PixelOffice t={t} selected={selected} onSelect={setSelected}/><TradingTerminal t={t} system={system}/></div><TradingChallenge language={language}/><div className="detail-row"><AgentDetails agent={selected} t={t}/><BottomPanels t={t} backendOnline={Boolean(system?.server.online)}/></div><div className="mobile-hint">{t('mobileHint')}</div></main>:page==='liveTrading'?<LiveTrading language={language}/>:<main className="planned-page"><div className="panel planned-card"><span>{t('planned')}</span><h1>{t(page)}</h1><p>{language==='pt'?'Esta área está preparada na arquitetura, mas ainda não está implementada. Nada aqui finge ser um recurso real.':'This area is reserved in the architecture but is not implemented yet. Nothing here pretends to be a finished feature.'}</p><button onClick={()=>setPage('agentOffice')}>{t('agentOffice')} →</button></div></main>}
    <ToolCopilot language={language}/>
    <footer className="footer"><span><i className={system?'live-dot':'status-dot idle'}/>{system?t('systemsOperational'):t('serverOffline')}</span><span>Local AI • Local Data • Risk First</span></footer>
   </div>
