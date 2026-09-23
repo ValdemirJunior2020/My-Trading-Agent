@@ -47,9 +47,9 @@ export const quantStatus=async()=>{
   return {...native,rdAgent}
 }
 
-export const runVectorbtSma=async(payload:unknown)=>{
+const runVectorbtCommand=async(command:'vectorbt-sma'|'vectorbt-validate',payload:unknown)=>{
   if(!existsSync(pythonPath)) throw new Error('Quant environment is not installed. Run INSTALL-QUANT-ENGINES.bat.')
-  const child=spawn(pythonPath,[bridgePath,'vectorbt-sma'],{windowsHide:true,stdio:['pipe','pipe','pipe']})
+  const child=spawn(pythonPath,[bridgePath,command],{windowsHide:true,stdio:['pipe','pipe','pipe']})
   const output:string[]=[]
   const errors:string[]=[]
   child.stdout.on('data',chunk=>output.push(String(chunk)))
@@ -63,6 +63,9 @@ export const runVectorbtSma=async(payload:unknown)=>{
   if(code!==0) throw new Error(errors.join('').trim()||output.join('').trim()||'VectorBT failed.')
   return parseBridge(output.join(''))
 }
+
+export const runVectorbtSma=(payload:unknown)=>runVectorbtCommand('vectorbt-sma',payload)
+export const runVectorbtValidation=(payload:unknown)=>runVectorbtCommand('vectorbt-validate',payload)
 
 export const runNautilusSmoke=async()=>{
   if(!existsSync(pythonPath)) throw new Error('Quant environment is not installed. Run INSTALL-QUANT-ENGINES.bat.')
