@@ -4,11 +4,12 @@ import { extname,join,normalize,resolve,sep } from 'node:path'
 import { config,coinbaseConfigured,coinbaseCredentialShape } from './config.js'
 import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting } from './db.js'
 import { attachEventStream,publish } from './events.js'
-import { getOllamaStatus,runAgent,runToolCopilot } from './ollama.js'
+import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner,type CopilotActionPlan } from './ollama.js'
 import { getProduct,listAccounts } from './coinbase.js'
-import { emergencyStopActive,evaluatePaperOrder,type PaperOrderRequest } from './risk.js'
+import { emergencyStopActive,evaluatePaperOrder,getRuntimeRiskLimits,saveRuntimeRiskLimits,type PaperOrderRequest } from './risk.js'
 import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from './quant.js'
 import { getPipelineStatus,runFullAgentPipeline } from './pipeline.js'
+import { getChallengeSnapshot,getTradingChallenge,saveTradingChallenge } from './challenge.js'
 
 const distDir=resolve(process.cwd(),'dist'), pidFile=join(config.dataDir,'server.pid'), startedAt=new Date().toISOString()
 const json=(res:ServerResponse,status:number,body:unknown)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(JSON.stringify(body))}
@@ -65,11 +66,68 @@ const server=createServer(async(req,res)=>{
     const message=String(body.message||'').trim().slice(0,4000)
     const language=body.language==='pt'?'pt':'en'
     if(!message)return json(res,400,{error:'message is required.'})
-    const [system,events]=await Promise.all([statusPayload(),Promise.resolve(recentEvents(20))])
-    const context={system,events}
-    const result=await runToolCopilot(message,context,language)
-    publish('copilot_answered',{language,question:message.slice(0,180)},'manager')
-    return json(res,200,{ok:true,...result})
+    const [system,events,challenge,pipeline]=await Promise.all([statusPayload(),Promise.resolve(recentEvents(20)),getChallengeSnapshot(),Promise.resolve(getPipelineStatus())])
+    const context={system,events,challenge,pipeline,riskLimits:getRuntimeRiskLimits()}
+    const plan=await runToolCopilotPlanner(message,context,language)
+    let actionResult:any=null
+
+    if(plan.action==='SET_CHALLENGE'){
+      const next=saveTradingChallenge({
+        startingBalanceUsd:plan.startingBalanceUsd,
+        targetBalanceUsd:plan.targetBalanceUsd,
+        durationDays:plan.durationDays,
+        enabled:true,
+        startedAt:new Date().toISOString()
+      })
+      actionResult={action:'SET_CHALLENGE',challenge:next}
+      publish('challenge_updated',{challenge:next},'manager')
+    }else if(plan.action==='SET_RISK_LIMITS'){
+      const limits=saveRuntimeRiskLimits({
+        maxPositionPercent:plan.maxPositionPercent,
+        maxTotalExposurePercent:plan.maxTotalExposurePercent,
+        maxDailyLossPercent:plan.maxDailyLossPercent
+      })
+      actionResult={action:'SET_RISK_LIMITS',limits}
+      publish('risk_limits_updated',{limits},'risk')
+    }else if(plan.action==='EMERGENCY_STOP'){
+      setSetting('emergency_stop',String(Boolean(plan.active)))
+      actionResult={action:'EMERGENCY_STOP',active:Boolean(plan.active)}
+      publish(plan.active?'emergency_stop_activated':'emergency_stop_cleared',{active:Boolean(plan.active)},'manager')
+    }else if(plan.action==='RUN_AGENTS'){
+      const current=getPipelineStatus()
+      if(current.status==='running'){
+        actionResult={action:'RUN_AGENTS',started:false,reason:'Pipeline already running.'}
+      }else{
+        void runFullAgentPipeline({productId:'BTC-USD',deepResearch:Boolean(plan.deepResearch)}).catch(error=>console.error('[copilot pipeline]',error))
+        actionResult={action:'RUN_AGENTS',started:true,deepResearch:Boolean(plan.deepResearch)}
+      }
+    }
+
+    const refreshedChallenge=await getChallengeSnapshot()
+    const responseContext={...context,challenge:refreshedChallenge,actionPlan:plan,actionResult}
+    const result=await runToolCopilot(message,responseContext,language)
+    publish('copilot_answered',{language,question:message.slice(0,180),action:plan.action},'manager')
+    return json(res,200,{ok:true,...result,action:actionResult})
+  }
+  if(path==='/api/challenge'&&req.method==='GET')return json(res,200,await getChallengeSnapshot())
+  if(path==='/api/challenge'&&req.method==='POST'){
+    const body=await readJson(req) as {enabled?:boolean;startingBalanceUsd?:number;targetBalanceUsd?:number;durationDays?:number;restart?:boolean}
+    const next=saveTradingChallenge({
+      enabled:body.enabled,
+      startingBalanceUsd:body.startingBalanceUsd,
+      targetBalanceUsd:body.targetBalanceUsd,
+      durationDays:body.durationDays,
+      startedAt:body.restart?new Date().toISOString():getTradingChallenge().startedAt
+    })
+    publish('challenge_updated',{challenge:next},'manager')
+    return json(res,200,{ok:true,challenge:await getChallengeSnapshot()})
+  }
+  if(path==='/api/risk/settings'&&req.method==='GET')return json(res,200,getRuntimeRiskLimits())
+  if(path==='/api/risk/settings'&&req.method==='POST'){
+    const body=await readJson(req) as {maxPositionPercent?:number;maxTotalExposurePercent?:number;maxDailyLossPercent?:number}
+    const limits=saveRuntimeRiskLimits(body)
+    publish('risk_limits_updated',{limits},'risk')
+    return json(res,200,{ok:true,limits})
   }
   if(path==='/api/quant/status'&&req.method==='GET')return json(res,200,await quantStatus())
   if(path==='/api/quant/vectorbt/sma'&&req.method==='POST'){const body=await readJson(req);const result=await runVectorbtSma(body);publish('vectorbt_backtest_completed',{result},'strategy');return json(res,200,{ok:true,result})}
