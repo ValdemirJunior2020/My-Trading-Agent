@@ -163,3 +163,8 @@ body{font-size:14px;line-height:1.45}
 .portfolio-empty{padding:28px;text-align:center;color:#7890a5;font-size:11px}
 @media(max-width:800px){.portfolio-summary{grid-template-columns:1fr 1fr}}
 @media(max-width:500px){.portfolio-summary{grid-template-columns:1fr}.portfolio-heading{display:block}.portfolio-refresh{margin-top:10px}.allocation-top{display:block}.allocation-value{text-align:left;margin-top:7px}}
+
+.journal-status.rejected{background:#3b1a22;color:#ff9ca8}
+.journal-status.wait{background:#392f0f;color:#f3cb67}
+.journal-status.preview-failed{background:#3d2212;color:#ffbd7d}
+.journal-status.neutral{background:#163047;color:#9dd7ff}
