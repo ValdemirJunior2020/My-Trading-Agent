@@ -63,14 +63,37 @@ const statusClass=(status:string)=>{
 export function TradeJournal({language}:Props){
   const [events,setEvents]=useState<any[]>([])
   const [loading,setLoading]=useState(true)
+  const [refreshing,setRefreshing]=useState(false)
+  const [clearing,setClearing]=useState(false)
+  const [lastUpdated,setLastUpdated]=useState<Date|null>(null)
   const [filter,setFilter]=useState<JournalFilter>('ALL')
   const pt=language==='pt'
 
-  const load=async()=>{
+  const load=async(manual=false)=>{
+    if(manual)setRefreshing(true)
     try{
       const result=await api.getLiveHistory(300)
       setEvents(result.events||[])
-    }finally{setLoading(false)}
+      setLastUpdated(new Date())
+    }finally{
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }
+
+  const clearHistory=async()=>{
+    const ok=window.confirm(pt
+      ? 'Limpar somente o histórico exibido? Isso NÃO apaga ordens ou saldos da Coinbase.'
+      : 'Clear only the displayed trading history? This does NOT delete Coinbase orders or balances.')
+    if(!ok)return
+    setClearing(true)
+    try{
+      await api.clearLiveHistory()
+      setEvents([])
+      setLastUpdated(new Date())
+    }finally{
+      setClearing(false)
+    }
   }
 
   useEffect(()=>{
@@ -99,7 +122,11 @@ export function TradeJournal({language}:Props){
           <h1>{pt?'Histórico de Trading':'Trading History'}</h1>
           <p>{pt?'Cada linha mostra claramente o que os agentes decidiram e se uma ordem real chegou ao Coinbase.':'Each row clearly shows what the agents decided and whether a real order reached Coinbase.'}</p>
         </div>
-        <button className="journal-refresh" onClick={()=>void load()}>{pt?'Atualizar':'Refresh'}</button>
+        <div className="journal-actions">
+          <div className="journal-updated">{lastUpdated?(pt?'Atualizado ':'Updated ')+lastUpdated.toLocaleTimeString():''}</div>
+          <button className="journal-refresh" disabled={refreshing||clearing} onClick={()=>void load(true)}>{refreshing?(pt?'Atualizando...':'Refreshing...'):(pt?'Atualizar':'Refresh')}</button>
+          <button className="journal-clear" disabled={refreshing||clearing} onClick={()=>void clearHistory()}>{clearing?(pt?'Limpando...':'Clearing...'):(pt?'Limpar histórico':'Clear History')}</button>
+        </div>
       </div>
 
       <div className="journal-stats">
