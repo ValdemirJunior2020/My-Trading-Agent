@@ -104,3 +104,19 @@ export const liveTradeHistory=(limit=200)=>{
     createdAt:row.created_at
   }))
 }
+
+
+export const clearLiveTradeHistory=()=>{
+  const result=db.prepare(`
+    DELETE FROM agent_events
+    WHERE type IN (
+      'live_order_placed',
+      'live_order_failed',
+      'live_order_rejected',
+      'live_order_preview_rejected',
+      'live_order_preview_approved',
+      'live_execution_cycle'
+    )
+  `).run()
+  return {deleted:Number(result.changes||0)}
+}
