@@ -163,3 +163,32 @@ export const createMarketOrder = async (params: {
 
   return result
 }
+
+
+export const listSpotUsdProducts=async(limit=250)=>{
+  const bounded=Math.max(20,Math.min(500,Math.floor(limit)))
+  const data=await request('GET',`/api/v3/brokerage/products?limit=${bounded}&product_type=SPOT`) as {
+    products?:Array<any>
+  }
+  return (data.products||[])
+    .filter((p:any)=>{
+      const productId=String(p.product_id||'').toUpperCase()
+      const quote=String(p.quote_currency_id||p.quote_currency||'').toUpperCase()
+      const isUsd=productId.endsWith('-USD')||quote==='USD'
+      return isUsd&&
+        String(p.product_type||'SPOT').toUpperCase()==='SPOT'&&
+        !Boolean(p.trading_disabled)&&
+        !Boolean(p.is_disabled)&&
+        !Boolean(p.cancel_only)&&
+        !Boolean(p.limit_only)
+    })
+    .map((p:any)=>({
+      productId:String(p.product_id||'').toUpperCase(),
+      price:Number(p.price||0),
+      volume24h:Number(p.volume_24h||0),
+      priceChange24hPercent:Number(p.price_percentage_change_24h||0),
+      baseCurrency:String(p.base_currency_id||p.base_currency||'').toUpperCase(),
+      quoteCurrency:String(p.quote_currency_id||p.quote_currency||'USD').toUpperCase()
+    }))
+    .filter((p:any)=>p.productId&&Number.isFinite(p.price)&&p.price>0)
+}
