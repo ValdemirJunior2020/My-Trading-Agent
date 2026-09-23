@@ -100,6 +100,9 @@ const server=createServer(async(req,res)=>{
       setSetting('emergency_stop',String(Boolean(plan.active)))
       actionResult={action:'EMERGENCY_STOP',active:Boolean(plan.active)}
       publish(plan.active?'emergency_stop_activated':'emergency_stop_cleared',{active:Boolean(plan.active)},'manager')
+    }else if(plan.action==='SET_AUTO_RUN'){
+      const settings=saveAutoRunSettings({enabled:plan.enabled,intervalSeconds:plan.intervalSeconds,deepResearch:plan.deepResearch})
+      actionResult={action:'SET_AUTO_RUN',settings}
     }else if(plan.action==='RUN_AGENTS'){
       const current=getPipelineStatus()
       if(current.status==='running'){
