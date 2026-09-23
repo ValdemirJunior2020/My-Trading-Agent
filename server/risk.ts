@@ -240,12 +240,28 @@ export const tryLimitedLiveExecution = async (opts: {
 
   if (side === 'BUY') {
     const remainingExposure = Math.max(0, maxExposureUsd - currentAssetUsd)
-    const raw = Math.min(maxFromPercent, hardCap, availableUsd, remainingExposure)
-    quoteSizeUsd = floorToIncrement(raw, productInfo?.quote_increment || 0.01)
+    const desiredBeforeCash = Math.min(maxFromPercent, hardCap, remainingExposure)
     const quoteMin = Math.max(config.minLiveOrderUsd, Number(productInfo?.quote_min_size || 0))
+    const fundingRequiredUsd = Math.max(0, desiredBeforeCash - availableUsd)
+
+    if (fundingRequiredUsd > 0.01 && desiredBeforeCash >= quoteMin) {
+      return {
+        executed: false,
+        reason: 'Insufficient available USD for target BUY size',
+        productId,
+        side,
+        availableUsd,
+        desiredNotionalUsd: desiredBeforeCash,
+        fundingRequiredUsd,
+        quoteMin
+      }
+    }
+
+    const raw = Math.min(desiredBeforeCash, availableUsd)
+    quoteSizeUsd = floorToIncrement(raw, productInfo?.quote_increment || 0.01)
     const quoteMax = Number(productInfo?.quote_max_size || Infinity)
     if (!(quoteSizeUsd > 0) || quoteSizeUsd < quoteMin) {
-      return { executed: false, reason: 'Calculated BUY size is below the configured/Coinbase minimum', quoteSizeUsd, quoteMin }
+      return { executed: false, reason: 'Calculated BUY size is below the configured/Coinbase minimum', quoteSizeUsd, quoteMin, availableUsd, desiredNotionalUsd: desiredBeforeCash }
     }
     if (quoteSizeUsd > quoteMax) quoteSizeUsd = floorToIncrement(quoteMax, productInfo?.quote_increment || 0.01)
     notionalUsd = quoteSizeUsd
