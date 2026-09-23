@@ -90,7 +90,8 @@ export const liveTradeHistory=(limit=200)=>{
       'live_order_failed',
       'live_order_rejected',
       'live_order_preview_rejected',
-      'live_order_preview_approved'
+      'live_order_preview_approved',
+      'live_execution_cycle'
     )
     ORDER BY id DESC
     LIMIT ?
