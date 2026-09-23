@@ -90,3 +90,12 @@ body{font-size:14px;line-height:1.45}
 .guided-trade-card p{margin:5px 0 0;color:#8ea5b5;font-size:10px}
 .guided-wait{width:100%;padding:6px 0}
 @media(max-width:650px){.guided-trade-card{display:block}.guided-trade-card .preflight-btn{margin-top:10px;width:100%}}
+
+.simple-trade-signal{margin-top:14px;border:1px solid #31495a;background:#0b1721;border-radius:10px;padding:18px;text-align:center}
+.simple-trade-signal small{display:block;color:#7890a5;font-size:10px;margin-bottom:5px}
+.simple-trade-signal strong{display:block;font-size:28px;letter-spacing:.04em}
+.simple-trade-signal p{margin:7px auto 0;max-width:680px;color:#9fb2c0;font-size:11px}
+.simple-trade-signal.buy{border-color:#21856f;background:#0c3028}.simple-trade-signal.buy strong{color:#7af0ce}
+.simple-trade-signal.sell{border-color:#a7464f;background:#3a171c}.simple-trade-signal.sell strong{color:#ffadb4}
+.simple-trade-signal.wait{border-color:#6a5520;background:#2a230d}.simple-trade-signal.wait strong{color:#f2c75d}
+.simple-trade-signal.blocked{border-color:#7b3038;background:#32131a}.simple-trade-signal.blocked strong{color:#ff9ca4}
