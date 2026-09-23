@@ -5,7 +5,7 @@ import { config,coinbaseConfigured,coinbaseCredentialShape } from './config.js'
 import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting } from './db.js'
 import { attachEventStream,publish } from './events.js'
 import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner,type CopilotActionPlan } from './ollama.js'
-import { getProduct,listAccounts } from './coinbase.js'
+import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts } from './coinbase.js'
 import { emergencyStopActive,evaluatePaperOrder,getRuntimeRiskLimits,saveRuntimeRiskLimits,type PaperOrderRequest } from './risk.js'
 import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from './quant.js'
 import { getPipelineStatus,runFullAgentPipeline } from './pipeline.js'
@@ -148,6 +148,9 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/coinbase/diagnostics'&&req.method==='GET')return json(res,200,coinbaseCredentialShape())
   if(path==='/api/coinbase/accounts'&&req.method==='GET'){if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'});return json(res,200,{accounts:await listAccounts()})}
   if(path.startsWith('/api/coinbase/product/')&&req.method==='GET'){if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'});const productId=decodeURIComponent(path.split('/').pop()||'BTC-USD').toUpperCase();return json(res,200,{product:await getProduct(productId)})}
+  if(path.startsWith('/api/coinbase/candles/')&&req.method==='GET'){if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'});const productId=decodeURIComponent(path.split('/').pop()||'BTC-USD').toUpperCase();const limit=Math.max(20,Math.min(300,Number(url.searchParams.get('limit'))||60));return json(res,200,{candles:await getCandles(productId,'ONE_HOUR',limit)})}
+  if(path.startsWith('/api/coinbase/order-book/')&&req.method==='GET'){if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'});const productId=decodeURIComponent(path.split('/').pop()||'BTC-USD').toUpperCase();return json(res,200,{book:await getProductBook(productId,8)})}
+  if(path.startsWith('/api/coinbase/trades/')&&req.method==='GET'){if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'});const productId=decodeURIComponent(path.split('/').pop()||'BTC-USD').toUpperCase();return json(res,200,{trades:await getMarketTrades(productId,12)})}
   if(path.startsWith('/api/'))return json(res,404,{error:'API route not found.'})
   if(serveStatic(path,res))return
   return json(res,404,{error:'Frontend build not found. Run npm run build.'})
