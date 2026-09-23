@@ -2,25 +2,68 @@ import { useEffect,useMemo,useState } from 'react'
 import { api } from '../lib/api'
 
 interface Props {language:'en'|'pt'}
+type JournalFilter='ALL'|'ORDER PLACED'|'REJECTED'|'WAIT'|'BLOCKED'|'FAILED'
 
 const money=(value:unknown)=>{
   const n=Number(value)
-  return Number.isFinite(n)?'$'+n.toFixed(2):'—'
+  return Number.isFinite(n)&&n>0?'$'+n.toFixed(2):'—'
 }
 
-const statusFor=(type:string)=>{
-  if(type==='live_order_placed')return 'PLACED'
-  if(type==='live_order_failed')return 'FAILED'
-  if(type==='live_order_rejected'||type==='live_order_preview_rejected')return 'BLOCKED'
+const normalizeConfidence=(value:unknown)=>{
+  const n=Number(value)
+  if(!Number.isFinite(n))return null
+  return n<=1?n*100:n
+}
+
+const journalStatus=(event:any)=>{
+  const type=String(event?.type||'')
+  const p=event?.payload||{}
+  const decision=String(p.decision||'').toUpperCase()
+  const reason=String(p.reason||p.error||'').toLowerCase()
+
+  if(type==='live_order_placed'||p.executed===true)return 'ORDER PLACED'
+  if(type==='live_order_failed')return 'ORDER FAILED'
+  if(type==='live_order_preview_rejected')return 'COINBASE PREVIEW FAILED'
+  if(type==='live_order_rejected')return reason.includes('risk')?'BLOCKED BY RISK':'ORDER BLOCKED'
   if(type==='live_order_preview_approved')return 'PREVIEW OK'
-  if(type==='live_execution_cycle')return 'NO TRADE'
-  return type
+
+  if(type==='live_execution_cycle'){
+    if(decision==='REJECT')return 'REJECTED BY AGENTS'
+    if(decision==='WAIT'||decision==='HOLD'||!decision)return 'WAIT'
+    if(p.attempted===true&&!p.executed){
+      if(reason.includes('preview'))return 'COINBASE PREVIEW FAILED'
+      if(reason.includes('risk')||reason.includes('daily loss')||reason.includes('exposure')||reason.includes('position'))return 'BLOCKED BY RISK'
+      return 'ORDER BLOCKED'
+    }
+    return 'NO TRADE'
+  }
+
+  return type.replaceAll('_',' ').toUpperCase()
+}
+
+const statusGroup=(status:string):JournalFilter=>{
+  if(status==='ORDER PLACED')return 'ORDER PLACED'
+  if(status==='REJECTED BY AGENTS')return 'REJECTED'
+  if(status==='WAIT'||status==='NO TRADE')return 'WAIT'
+  if(status.includes('BLOCKED')||status.includes('PREVIEW'))return 'BLOCKED'
+  if(status.includes('FAILED'))return 'FAILED'
+  return 'ALL'
+}
+
+const statusClass=(status:string)=>{
+  if(status==='ORDER PLACED')return 'placed'
+  if(status==='REJECTED BY AGENTS')return 'rejected'
+  if(status==='WAIT'||status==='NO TRADE')return 'wait'
+  if(status.includes('BLOCKED'))return 'blocked'
+  if(status.includes('PREVIEW'))return 'preview-failed'
+  if(status.includes('FAILED'))return 'failed'
+  return 'neutral'
 }
 
 export function TradeJournal({language}:Props){
   const [events,setEvents]=useState<any[]>([])
   const [loading,setLoading]=useState(true)
-  const [filter,setFilter]=useState<'ALL'|'PLACED'|'NO TRADE'|'BLOCKED'|'FAILED'>('ALL')
+  const [filter,setFilter]=useState<JournalFilter>('ALL')
   const pt=language==='pt'
 
   const load=async()=>{
@@ -37,20 +80,25 @@ export function TradeJournal({language}:Props){
   },[])
 
   const rows=useMemo(()=>events.filter(event=>{
-    const status=statusFor(String(event.type))
-    if(filter==='NO TRADE') return event.type==='live_execution_cycle' && !event.payload?.executed
-    return filter==='ALL'||status===filter
+    if(filter==='ALL')return true
+    return statusGroup(journalStatus(event))===filter
   }),[events,filter])
 
-  const placed=events.filter(e=>e.type==='live_order_placed').length
-  const blocked=events.filter(e=>e.type==='live_order_rejected'||e.type==='live_order_preview_rejected').length
-  const failed=events.filter(e=>e.type==='live_order_failed').length
+  const placed=events.filter(e=>journalStatus(e)==='ORDER PLACED').length
+  const blocked=events.filter(e=>statusGroup(journalStatus(e))==='BLOCKED').length
+  const failed=events.filter(e=>statusGroup(journalStatus(e))==='FAILED').length
   const cycles=events.filter(e=>e.type==='live_execution_cycle').length
+
+  const filters:JournalFilter[]=['ALL','ORDER PLACED','REJECTED','WAIT','BLOCKED','FAILED']
 
   return <main className="journal-page">
     <section className="panel journal-panel">
       <div className="journal-heading">
-        <div><span className="eyebrow">REAL TRADE HISTORY</span><h1>{pt?'Histórico de Trading':'Trading History'}</h1><p>{pt?'Cada ciclo dos agentes aparece aqui, incluindo WAIT, bloqueios, tentativas e ordens reais.':'Every agent cycle appears here, including WAIT, blocks, attempts, and real orders.'}</p></div>
+        <div>
+          <span className="eyebrow">REAL TRADE HISTORY</span>
+          <h1>{pt?'Histórico de Trading':'Trading History'}</h1>
+          <p>{pt?'Cada linha mostra claramente o que os agentes decidiram e se uma ordem real chegou ao Coinbase.':'Each row clearly shows what the agents decided and whether a real order reached Coinbase.'}</p>
+        </div>
         <button className="journal-refresh" onClick={()=>void load()}>{pt?'Atualizar':'Refresh'}</button>
       </div>
 
@@ -62,30 +110,33 @@ export function TradeJournal({language}:Props){
       </div>
 
       <div className="journal-filters">
-        {(['ALL','PLACED','NO TRADE','BLOCKED','FAILED'] as const).map(x=><button key={x} className={filter===x?'active':''} onClick={()=>setFilter(x)}>{x}</button>)}
+        {filters.map(x=><button key={x} className={filter===x?'active':''} onClick={()=>setFilter(x)}>{x}</button>)}
       </div>
 
       <div className="journal-table-wrap">
         <div className="journal-table journal-header">
-          <span>{pt?'Hora':'Time'}</span><span>{pt?'Status':'Status'}</span><span>{pt?'Moeda':'Coin'}</span><span>{pt?'Lado':'Side'}</span><span>{pt?'Valor':'Amount'}</span><span>Coinbase ID</span><span>{pt?'Detalhe':'Detail'}</span>
+          <span>{pt?'Hora':'Time'}</span><span>{pt?'Resultado':'Result'}</span><span>{pt?'Moeda':'Coin'}</span><span>{pt?'Lado':'Side'}</span><span>{pt?'Valor':'Amount'}</span><span>Coinbase ID</span><span>{pt?'Detalhe':'Detail'}</span>
         </div>
-        {loading?<div className="journal-empty">{pt?'Carregando...':'Loading...'}</div>:rows.length===0?<div className="journal-empty">{pt?'Nenhum ciclo de trading registrado ainda.':'No trading cycles recorded yet.'}</div>:rows.map(event=>{
+        {loading?<div className="journal-empty">{pt?'Carregando...':'Loading...'}</div>:rows.length===0?<div className="journal-empty">{pt?'Nenhum evento nesta categoria ainda.':'No events in this category yet.'}</div>:rows.map(event=>{
           const p=event.payload||{}
-          const status=statusFor(String(event.type))
-          const decisionText=p.decision?('Final decision: '+p.decision):''
-          const confidenceText=p.confidence!=null&&Number.isFinite(Number(p.confidence))?('Confidence: '+Number(p.confidence).toFixed(0)+'%'):''
-          const fallbackDetail=[decisionText,confidenceText,p.attempted===false?'No execution attempted':''].filter(Boolean).join(' • ')
-          const detail=String(p.reason||p.error||p.preview?.warning?.join?.(', ')||fallbackDetail)
+          const status=journalStatus(event)
+          const confidence=normalizeConfidence(p.confidence)
+          const decision=String(p.decision||'').toUpperCase()
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const detail=String(p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
           const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
-          const displayStatus=event.type==='live_execution_cycle' ? (p.executed?'PLACED':p.attempted?'ATTEMPT':'NO TRADE') : status
           return <div className="journal-table journal-row" key={event.id}>
             <span>{new Date(event.createdAt).toLocaleString()}</span>
-            <span><b className={'journal-status '+displayStatus.toLowerCase().replace(' ','-')}>{displayStatus}</b></span>
+            <span><b className={'journal-status '+statusClass(status)}>{status}</b></span>
             <span>{String(p.productId||'—')}</span>
             <span className={String(p.side)==='SELL'?'sell-text':String(p.side)==='BUY'?'buy-text':''}>{String(p.side||'—')}</span>
             <span>{money(p.notionalUsd)}</span>
             <span className="journal-order-id" title={orderId}>{orderId}</span>
-            <span className="journal-detail" title={detail}>{detail||'—'}</span>
+            <span className="journal-detail" title={detail}>{detail}</span>
           </div>
         })}
       </div>
