@@ -6,6 +6,7 @@ import { quantStatus, runNautilusSmoke, runRdAgent, runVectorbtValidation } from
 import { saveAnalysis } from './db.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { tryLimitedLiveExecution } from './risk.js'
+import { scanCryptoMarket } from './scanner.js'
 
 type AgentResult = { model: string; output: any }
 type PipelineOptions = { productId?: string; deepResearch?: boolean }
@@ -254,6 +255,54 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
       decision: candidateDecision,
       confidence
     })
+  }
+
+  if (
+    candidateDecision === 'BUY_CANDIDATE' &&
+    !executionResult?.executed &&
+    Number(executionResult?.fundingRequiredUsd || 0) > 0
+  ) {
+    try {
+      const [scan, freshAccounts, xrpProduct] = await Promise.all([
+        scanCryptoMarket(),
+        listAccounts(),
+        getProduct('XRP-USD')
+      ])
+      const xrpSignal = scan.results.find((row:any)=>row.productId==='XRP-USD')
+      const balanceValue=(b:any)=>Number(b?.value??b??0)||0
+      const xrpAccount=freshAccounts.find((a:any)=>String(a.currency).toUpperCase()==='XRP')
+      const xrpPrice=Number((xrpProduct as any)?.price||0)
+      const availableXrp=balanceValue(xrpAccount?.availableBalance)
+      const xrpAvailableUsd=availableXrp*xrpPrice
+      const fundingRequiredUsd=Number(executionResult.fundingRequiredUsd||0)
+      const rotationReady=Boolean(
+        xrpSignal?.sellCandidate &&
+        xrpAvailableUsd>=fundingRequiredUsd &&
+        fundingRequiredUsd>0
+      )
+
+      publish('capital_rotation_plan', {
+        buyProductId: productId,
+        sourceProductId: 'XRP-USD',
+        fundingRequiredUsd,
+        desiredBuyNotionalUsd: Number(executionResult?.desiredNotionalUsd||0),
+        availableUsd: Number(executionResult?.availableUsd||0),
+        xrpSellCandidate: Boolean(xrpSignal?.sellCandidate),
+        xrpSellScore: Number(xrpSignal?.sellScore||0),
+        xrpAvailableUsd,
+        suggestedSellUsd: Math.min(fundingRequiredUsd,xrpAvailableUsd),
+        rotationReady,
+        requiresApproval: true,
+        reason: rotationReady
+          ? 'XRP independently qualifies as a sell candidate and can cover the BUY funding gap.'
+          : 'Funding gap detected, but XRP does not independently qualify for rotation or cannot cover the gap.'
+      }, 'portfolio')
+    } catch (error) {
+      publish('capital_rotation_plan_failed', {
+        buyProductId: productId,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'portfolio')
+    }
   }
 
   publish('agent_completed', { asset: productId, output: executionResult }, 'execution')
