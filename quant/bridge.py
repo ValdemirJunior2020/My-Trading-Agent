@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import math
 import sys
 from importlib import import_module, metadata
 
@@ -50,7 +51,8 @@ def vectorbt_sma(payload: dict) -> dict:
             value = stats.get(name, default)
             if hasattr(value, "item"):
                 value = value.item()
-            return float(value)
+            number = float(value)
+            return number if math.isfinite(number) else default
         except Exception:
             return default
 
@@ -98,11 +100,11 @@ def main() -> None:
         result = nautilus_smoke()
     else:
         raise ValueError(f"Unknown command: {command}")
-    print(json.dumps({"ok": True, "result": result}, separators=(",", ":")))
+    print(json.dumps({"ok": True, "result": result}, separators=(",", ":"), allow_nan=False))
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":")))
+        print(json.dumps({"ok": False, "error": str(exc)}, separators=(",", ":"), allow_nan=False))
         sys.exit(1)
