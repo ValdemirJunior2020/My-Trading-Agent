@@ -30,7 +30,12 @@ export const config = {
   maxDailyLossPercent: num(process.env.MAX_DAILY_LOSS_PERCENT, 2),
   maxTotalExposurePercent: num(process.env.MAX_TOTAL_EXPOSURE_PERCENT, 25),
   maxLiveOrderUsd: num(process.env.MAX_LIVE_ORDER_USD, 25),
-  minLiveOrderUsd: num(process.env.MIN_LIVE_ORDER_USD, 10)
+  minLiveOrderUsd: num(process.env.MIN_LIVE_ORDER_USD, 10),
+  watchlist: (process.env.WATCHLIST || 'XRP,BTC,ETH,SOL,LINK')
+    .split(',')
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean)
+    .map((s) => (s.includes('-') ? s : s + '-USD'))
 }
 
 export const coinbaseConfigured = () =>

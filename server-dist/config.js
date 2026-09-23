@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import 'dotenv/config';
 const bool = (value, fallback = false) => {
     if (value == null)
