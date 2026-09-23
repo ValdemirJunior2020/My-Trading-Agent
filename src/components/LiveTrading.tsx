@@ -196,8 +196,8 @@ export function LiveTrading({ language }: Props) {
               <span className="eyebrow">MULTI-CRYPTO SCANNER</span>
               <h2>
                 {pt
-                  ? 'A ferramenta está comparando várias criptos'
-                  : 'The tool is comparing multiple cryptos'}
+                  ? 'Comparando oportunidades percentuais de curto prazo com liquidez'
+                  : 'Comparing short-term percentage opportunities with liquidity checks'}
               </h2>
             </div>
             <strong>{scanner?.scanned != null ? scanner.scanned + ' scanned' : '—'}</strong>
@@ -205,14 +205,10 @@ export function LiveTrading({ language }: Props) {
           <div className="scanner-sides">
             {scannerBuy ? (
               <div className="scanner-best">
-                <small>{pt ? 'Melhor compra agora' : 'Best buy candidate'}</small>
+                <small>{pt ? 'Melhor oportunidade de compra' : 'Best short-term buy opportunity'}</small>
                 <strong>{scannerBuy.productId + ' — BUY NOW'}</strong>
                 <span>
-                  {'Score ' +
-                    Number(scannerBuy.score || 0).toFixed(0) +
-                    '/100 • 24h ' +
-                    Number(scannerBuy.change24hPercent || 0).toFixed(2) +
-                    '%'}
+                  {'Opportunity ' + Number(scannerBuy.buyScore ?? scannerBuy.score ?? 0).toFixed(0) + '/100 • 6h ' + Number(scannerBuy.change6hPercent || 0).toFixed(2) + '% • 24h ' + Number(scannerBuy.change24hPercent || 0).toFixed(2) + '%' + (scannerBuy.spreadBps!=null ? ' • spread ' + Number(scannerBuy.spreadBps).toFixed(1) + ' bps' : '')}
                 </span>
               </div>
             ) : (
@@ -223,14 +219,10 @@ export function LiveTrading({ language }: Props) {
             )}
             {scannerSell ? (
               <div className="scanner-best sell">
-                <small>{pt ? 'Melhor venda agora' : 'Best sell candidate'}</small>
+                <small>{pt ? 'Melhor oportunidade de venda' : 'Best short-term sell opportunity'}</small>
                 <strong>{scannerSell.productId + ' — SELL NOW'}</strong>
                 <span>
-                  {'Score ' +
-                    Number(scannerSell.score || 0).toFixed(0) +
-                    '/100 • 24h ' +
-                    Number(scannerSell.change24hPercent || 0).toFixed(2) +
-                    '%'}
+                  {'Opportunity ' + Number(scannerSell.sellScore ?? scannerSell.score ?? 0).toFixed(0) + '/100 • 6h ' + Number(scannerSell.change6hPercent || 0).toFixed(2) + '% • 24h ' + Number(scannerSell.change24hPercent || 0).toFixed(2) + '%' + (scannerSell.spreadBps!=null ? ' • spread ' + Number(scannerSell.spreadBps).toFixed(1) + ' bps' : '')}
                 </span>
               </div>
             ) : (
@@ -244,8 +236,8 @@ export function LiveTrading({ language }: Props) {
             {(scanner?.results || []).slice(0, 6).map((row: any) => (
               <div key={row.productId}>
                 <strong>{row.productId}</strong>
-                <span>{'Score ' + Number(row.score || 0).toFixed(0)}</span>
-                <span>{Number(row.change24hPercent || 0).toFixed(2) + '% 24h'}</span>
+                <span>{'Opp ' + Number((row.buyCandidate?row.buyScore:row.sellCandidate?row.sellScore:Math.max(row.buyScore||0,row.sellScore||0,row.score||0))).toFixed(0)}</span>
+                <span>{Number(row.change6hPercent || 0).toFixed(2) + '% 6h • ' + Number(row.change24hPercent || 0).toFixed(2) + '% 24h'}</span>
                 <em>{row.buyCandidate ? 'BUY' : row.sellCandidate ? 'SELL' : 'WAIT'}</em>
               </div>
             ))}
