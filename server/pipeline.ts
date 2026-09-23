@@ -4,6 +4,7 @@ import { publish } from './events.js'
 import { runAgent } from './ollama.js'
 import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from './quant.js'
 import { saveAnalysis } from './db.js'
+import { getChallengeSnapshot } from './challenge.js'
 
 type AgentResult={model:string;output:any}
 type PipelineOptions={productId?:string;deepResearch?:boolean}
@@ -60,11 +61,12 @@ const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
 
   publish('pipeline_started',{productId,deepResearch},'manager')
 
-  const [product,candles,accounts,engineStatus]=await Promise.all([
+  const [product,candles,accounts,engineStatus,challenge]=await Promise.all([
     getProduct(productId),
     getCandles(productId,'ONE_HOUR',120),
     listAccounts(),
-    quantStatus()
+    quantStatus(),
+    getChallengeSnapshot()
   ])
   const engines:any=engineStatus
 
@@ -90,7 +92,8 @@ const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
     latestVolume:latest.volume,
     average24hVolume:avgVolume,
     candleCount:candles.length,
-    product
+    product,
+    challenge
   }
 
   const market=await agentStep('market',productId,marketEvidence)
@@ -145,14 +148,16 @@ const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
     market:market.output,
     strategy:strategy.output,
     balances:{usd:usdAccount?.availableBalance||null,asset:assetAccount?.availableBalance||null},
-    accountCount:accounts.length
+    accountCount:accounts.length,
+    challenge
   })
 
   const risk=await agentStep('risk',productId,{
     market:market.output,
     strategy:strategy.output,
     portfolio:portfolio.output,
-    hardLimits:'The deterministic server risk engine remains authoritative and cannot be overridden by AI.'
+    challenge,
+    hardLimits:'The deterministic server risk engine remains authoritative and cannot be overridden by the challenge or AI.'
   })
 
   const critic=await agentStep('critic',productId,{
@@ -172,7 +177,8 @@ const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
     risk:risk.output,
     critic:critic.output,
     quantitativeValidation:{vectorbt,nautilus,rdAgent},
-    instruction:'Return a candidate decision only. Do not claim an order was placed.'
+    challenge,
+    instruction:'Return a candidate decision only. Treat the challenge as a goal, never as permission to increase risk. Do not claim an order was placed.'
   })
 
   publish('agent_started',{asset:productId,stage:'candidate-preflight'},'paper')
