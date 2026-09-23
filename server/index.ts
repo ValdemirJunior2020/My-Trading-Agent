@@ -2,7 +2,7 @@ import { createServer,type IncomingMessage,type ServerResponse } from 'node:http
 import { existsSync,readFileSync,rmSync,statSync,writeFileSync } from 'node:fs'
 import { extname,join,normalize,resolve,sep } from 'node:path'
 import { config,coinbaseConfigured,coinbaseCredentialShape } from './config.js'
-import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liveTradeHistory } from './db.js'
+import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liveTradeHistory,clearLiveTradeHistory } from './db.js'
 import { attachEventStream,publish } from './events.js'
 import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner,type CopilotActionPlan } from './ollama.js'
 import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts } from './coinbase.js'
@@ -54,6 +54,7 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/events'&&req.method==='GET')return attachEventStream(res)
   if(path==='/api/events/recent'&&req.method==='GET')return json(res,200,{events:recentEvents(30)})
   if(path==='/api/live/history'&&req.method==='GET'){const limit=Math.max(1,Math.min(1000,Number(url.searchParams.get('limit'))||200));return json(res,200,{events:liveTradeHistory(limit)})}
+  if(path==='/api/live/history'&&req.method==='DELETE'){const result=clearLiveTradeHistory();return json(res,200,{ok:true,...result})}
   if(path==='/api/paper/orders'&&req.method==='GET')return json(res,200,{orders:listPaperTrades()})
   if(path==='/api/emergency-stop'&&req.method==='POST'){const body=await readJson(req) as {active?:boolean};const active=Boolean(body.active);setSetting('emergency_stop',String(active));const event=publish(active?'emergency_stop_activated':'emergency_stop_cleared',{active},'manager');return json(res,200,{ok:true,active,event})}
   if(path==='/api/paper/orders'&&req.method==='POST'){const body=await readJson(req) as PaperOrderRequest;const order:PaperOrderRequest={productId:String(body.productId||'').toUpperCase(),side:String(body.side||'').toUpperCase() as 'BUY'|'SELL',size:Number(body.size),price:Number(body.price)};const risk=evaluatePaperOrder(order);if(!risk.approved){publish('paper_order_rejected',{order,risk},'risk');return json(res,422,{ok:false,risk})}const trade=openPaperTrade(order.productId,order.side,order.size,order.price);publish('paper_order_opened',{trade,risk},'paper');return json(res,201,{ok:true,trade,risk})}
