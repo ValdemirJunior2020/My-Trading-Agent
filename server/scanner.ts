@@ -1,11 +1,30 @@
-import { getCandles,getProduct,getProductBook } from './coinbase.js'
+import { getCandles,getProduct,getProductBook,listSpotUsdProducts } from './coinbase.js'
 import { config } from './config.js'
 
 export const SCAN_PRODUCTS=[
-  'BTC-USD','ETH-USD','XRP-USD','SOL-USD','ADA-USD','DOGE-USD',
-  'AVAX-USD','LINK-USD','LTC-USD','BCH-USD','DOT-USD','UNI-USD',
-  'XLM-USD','AAVE-USD','NEAR-USD','HBAR-USD','SUI-USD','SHIB-USD','PEPE-USD'
+  'XRP-USD','BTC-USD','ETH-USD','SOL-USD','LINK-USD','ADA-USD','DOGE-USD',
+  'AVAX-USD','LTC-USD','BCH-USD','DOT-USD','UNI-USD','XLM-USD','AAVE-USD',
+  'NEAR-USD','HBAR-USD','SUI-USD','SHIB-USD','PEPE-USD','ATOM-USD','ICP-USD'
 ]
+
+const PRIORITY_PRODUCTS=['XRP-USD','BTC-USD','ETH-USD','SOL-USD','LINK-USD']
+const EXCLUDED_BASES=new Set(['USD','USDC','USDT','DAI','PYUSD'])
+
+const discoverScanUniverse=async()=>{
+  try{
+    const products=await listSpotUsdProducts(300)
+    const ranked=products
+      .filter((p:any)=>!EXCLUDED_BASES.has(String(p.baseCurrency||p.productId.split('-')[0]).toUpperCase()))
+      .map((p:any)=>({...p,notional24h:Number(p.price||0)*Number(p.volume24h||0)}))
+      .filter((p:any)=>Number.isFinite(p.notional24h)&&p.notional24h>0)
+      .sort((a:any,b:any)=>b.notional24h-a.notional24h)
+
+    const dynamic=ranked.slice(0,24).map((p:any)=>p.productId)
+    return [...new Set([...PRIORITY_PRODUCTS,...config.watchlist,...dynamic])].slice(0,28)
+  }catch{
+    return [...new Set([...PRIORITY_PRODUCTS,...config.watchlist,...SCAN_PRODUCTS])]
+  }
+}
 
 const avg=(values:number[])=>values.length?values.reduce((a,b)=>a+b,0)/values.length:0
 const pct=(a:number,b:number)=>b===0?0:((a-b)/b)*100
@@ -44,13 +63,14 @@ const spreadBpsFromBook=(book:any)=>{
   return mid>0?((ask-bid)/mid)*10000:null
 }
 
-export const scanCryptoMarket=async(products:string[]=SCAN_PRODUCTS)=>{
-  const key=products.join('|')
+export const scanCryptoMarket=async(products?:string[])=>{
+  const universe=products&&products.length?products:await discoverScanUniverse()
+  const key=universe.join('|')
   if(cachedScan&&cachedKey===key&&Date.now()-cachedAt<config.scannerCacheMs) return cachedScan
 
   const preliminary:ScanResult[]=[]
 
-  for(const productId of products){
+  for(const productId of universe){
     try{
       const [candles,product]=await Promise.all([
         getCandles(productId,'ONE_HOUR',60),
@@ -191,7 +211,7 @@ export const scanCryptoMarket=async(products:string[]=SCAN_PRODUCTS)=>{
   const result={
     generatedAt:new Date().toISOString(),
     scanned:preliminary.length,
-    universe:products,
+    universe,
     strategy:'SHORT_TERM_PERCENTAGE_OPPORTUNITY',
     best:bestBuy,
     bestBuy,
