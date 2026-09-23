@@ -10,6 +10,7 @@ import { emergencyStopActive,evaluatePaperOrder,getRuntimeRiskLimits,saveRuntime
 import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from './quant.js'
 import { getPipelineStatus,runFullAgentPipeline } from './pipeline.js'
 import { getChallengeSnapshot,getTradingChallenge,saveTradingChallenge } from './challenge.js'
+import { getAutoRunSettings,saveAutoRunSettings,startAutoRun,stopAutoRun } from './autorun.js'
 
 const distDir=resolve(process.cwd(),'dist'), pidFile=join(config.dataDir,'server.pid'), startedAt=new Date().toISOString()
 const json=(res:ServerResponse,status:number,body:unknown)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(JSON.stringify(body))}
@@ -42,7 +43,7 @@ const serveStatic=(pathname:string,res:ServerResponse)=>{
   return true
 }
 
-const statusPayload=async()=>{const [ollama,engines]=await Promise.all([getOllamaStatus(),quantStatus()]);return {server:{online:true,version:'0.4.0',startedAt},ollama,coinbase:{configured:coinbaseConfigured()},engines,safety:{emergencyStop:emergencyStopActive(),mode:config.tradingMode,liveTradingEnabled:config.liveTradingEnabled,automaticTradingEnabled:config.autoTradingEnabled,manualApprovalRequired:config.manualApprovalRequired}}}
+const statusPayload=async()=>{const [ollama,engines]=await Promise.all([getOllamaStatus(),quantStatus()]);return {server:{online:true,version:'0.5.0',startedAt},ollama,coinbase:{configured:coinbaseConfigured()},engines,autoAgents:getAutoRunSettings(),safety:{emergencyStop:emergencyStopActive(),mode:config.tradingMode,liveTradingEnabled:config.liveTradingEnabled,automaticTradingEnabled:config.autoTradingEnabled,manualApprovalRequired:config.manualApprovalRequired}}}
 
 const server=createServer(async(req,res)=>{
  try{
@@ -56,6 +57,12 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/paper/orders'&&req.method==='POST'){const body=await readJson(req) as PaperOrderRequest;const order:PaperOrderRequest={productId:String(body.productId||'').toUpperCase(),side:String(body.side||'').toUpperCase() as 'BUY'|'SELL',size:Number(body.size),price:Number(body.price)};const risk=evaluatePaperOrder(order);if(!risk.approved){publish('paper_order_rejected',{order,risk},'risk');return json(res,422,{ok:false,risk})}const trade=openPaperTrade(order.productId,order.side,order.size,order.price);publish('paper_order_opened',{trade,risk},'paper');return json(res,201,{ok:true,trade,risk})}
   if(path==='/api/agents/run'&&req.method==='POST'){const body=await readJson(req) as {agentId?:string;asset?:string;summary?:string};const agentId=String(body.agentId||''),asset=String(body.asset||'UNKNOWN'),summary=String(body.summary||'');if(!agentId||!summary)return json(res,400,{error:'agentId and summary are required.'});publish('agent_started',{asset},agentId);const result=await runAgent(agentId,asset,summary);saveAnalysis(agentId,asset,summary,result.output,result.model);publish('agent_completed',{asset,output:result.output},agentId);return json(res,200,result)}
   if(path==='/api/agents/pipeline/status'&&req.method==='GET')return json(res,200,getPipelineStatus())
+  if(path==='/api/agents/auto-run'&&req.method==='GET')return json(res,200,getAutoRunSettings())
+  if(path==='/api/agents/auto-run'&&req.method==='POST'){
+    const body=await readJson(req) as {enabled?:boolean;intervalSeconds?:number;deepResearch?:boolean}
+    const settings=saveAutoRunSettings(body)
+    return json(res,200,{ok:true,settings})
+  }
   if(path==='/api/agents/pipeline'&&req.method==='POST'){
     const body=await readJson(req) as {productId?:string;deepResearch?:boolean}
     const result=await runFullAgentPipeline({productId:String(body.productId||'BTC-USD'),deepResearch:Boolean(body.deepResearch)})
@@ -144,8 +151,8 @@ const server=createServer(async(req,res)=>{
  }catch(error){const message=error instanceof Error?error.message:'Unknown server error';console.error('[server]',message);if(!res.headersSent)json(res,500,{error:message});else res.end()}
 })
 
-server.listen(config.port,config.host,()=>{writeFileSync(pidFile,String(process.pid),'utf8');console.log(`My Trading Agent running at http://${config.host}:${config.port}`);console.log(`Mode: ${config.tradingMode} | Coinbase configured: ${coinbaseConfigured()} | Live execution: ${config.liveTradingEnabled}`)})
+server.listen(config.port,config.host,()=>{writeFileSync(pidFile,String(process.pid),'utf8');console.log(`My Trading Agent running at http://${config.host}:${config.port}`);console.log(`Mode: ${config.tradingMode} | Coinbase configured: ${coinbaseConfigured()} | Live execution: ${config.liveTradingEnabled}`);console.log(`Auto agents: ${getAutoRunSettings().enabled?'ON':'OFF'} every ${getAutoRunSettings().intervalSeconds}s`);startAutoRun()})
 
-const shutdown=()=>{try{if(existsSync(pidFile))rmSync(pidFile)}catch{}server.close(()=>process.exit(0))}
+const shutdown=()=>{stopAutoRun();try{if(existsSync(pidFile))rmSync(pidFile)}catch{}server.close(()=>process.exit(0))}
 process.on('SIGINT',shutdown)
 process.on('SIGTERM',shutdown)
