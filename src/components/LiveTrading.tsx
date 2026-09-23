@@ -31,6 +31,14 @@ export function LiveTrading({language}:Props){
 
  const candidate=String(pipeline?.decision||'WAIT')
  const side:CandidateSide=candidate==='BUY_CANDIDATE'?'BUY':candidate==='SELL_CANDIDATE'?'SELL':null
+ const blocked=!readiness?.readyForManualLive
+ const plainSignal=blocked
+  ?'BLOCKED'
+  :candidate==='BUY_CANDIDATE'
+    ?'BUY NOW'
+    :candidate==='SELL_CANDIDATE'
+      ?'SELL NOW'
+      :'DO NOT BUY / WAIT'
  const maxPositionUsd=readiness?.currentPortfolioUsd!=null&&readiness?.riskLimits?.maxPositionPercent!=null
   ?Number(readiness.currentPortfolioUsd)*(Number(readiness.riskLimits.maxPositionPercent)/100)
   :0
@@ -73,7 +81,20 @@ export function LiveTrading({language}:Props){
     <div><small>{pt?'Portfólio atual':'Current portfolio'}</small><strong>{readiness?.currentPortfolioUsd!=null?'$'+Number(readiness.currentPortfolioUsd).toFixed(2):'—'}</strong></div>
     <div><small>{pt?'Limite por posição':'Max position'}</small><strong>{readiness?.riskLimits?.maxPositionPercent!=null?readiness.riskLimits.maxPositionPercent+'%':'—'}</strong></div>
     <div><small>{pt?'Decisão dos agentes':'Agent decision'}</small><strong>{candidate}</strong></div>
-    <div><small>{pt?'Ação preparada':'Prepared action'}</small><strong>{side||'NONE'}</strong></div>
+    <div><small>{pt?'Sinal simples':'Simple signal'}</small><strong>{plainSignal}</strong></div>
+   </div>
+
+   <div className={`simple-trade-signal ${plainSignal==='BUY NOW'?'buy':plainSignal==='SELL NOW'?'sell':plainSignal==='BLOCKED'?'blocked':'wait'}`}>
+    <small>{pt?'O que fazer agora':'What to do now'}</small>
+    <strong>{plainSignal}</strong>
+    <p>{plainSignal==='BUY NOW'
+      ?(pt?'Os agentes encontraram um candidato de compra e os controles atuais permitem preparar a ordem.':'The agents found a buy candidate and the current controls allow the trade to be prepared.')
+      :plainSignal==='SELL NOW'
+        ?(pt?'Os agentes encontraram um candidato de venda e os controles atuais permitem preparar a ordem.':'The agents found a sell candidate and the current controls allow the trade to be prepared.')
+        :plainSignal==='BLOCKED'
+          ?(pt?'Um controle de segurança está bloqueando qualquer ordem real agora.':'A safety control is blocking any real trade right now.')
+          :(pt?'Os agentes não encontraram uma entrada válida agora.':'The agents do not have a valid entry right now.')}
+    </p>
    </div>
 
    <div className="guided-trade-card">
