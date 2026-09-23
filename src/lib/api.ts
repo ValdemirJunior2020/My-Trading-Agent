@@ -15,6 +15,7 @@ export interface SystemStatus {
   ollama:{online:boolean;models:string[];chatModel?:string}
   coinbase:{configured:boolean}
   engines:{available?:boolean;vectorbt?:{installed?:boolean;version?:string};nautilusTrader?:{installed?:boolean;version?:string};rdAgent?:{installed?:boolean;transport?:string};python?:string|null}
+  autoAgents:{enabled:boolean;intervalSeconds:number;deepResearch:boolean}
   safety:{emergencyStop:boolean;mode:string;liveTradingEnabled:boolean;automaticTradingEnabled:boolean;manualApprovalRequired:boolean}
 }
 const base=(import.meta.env.VITE_API_BASE_URL||'').replace(/\/$/,'')
@@ -32,6 +33,8 @@ export const api={
   runAgent:(body:{agentId:string;asset:string;summary:string})=>request('/api/agents/run',{method:'POST',body:JSON.stringify(body)}),
   runPipeline:(body:{productId?:string;deepResearch?:boolean})=>request<{ok:boolean;result:any}>('/api/agents/pipeline',{method:'POST',body:JSON.stringify(body)}),
   getPipelineStatus:()=>request<PipelineStatus>('/api/agents/pipeline/status'),
+  getAutoRun:()=>request<{enabled:boolean;intervalSeconds:number;deepResearch:boolean}>('/api/agents/auto-run'),
+  setAutoRun:(body:{enabled?:boolean;intervalSeconds?:number;deepResearch?:boolean})=>request('/api/agents/auto-run',{method:'POST',body:JSON.stringify(body)}),
   quantStatus:()=>request('/api/quant/status'),
   vectorbtSma:(body:{prices:number[];fast?:number;slow?:number;initialCash?:number})=>request('/api/quant/vectorbt/sma',{method:'POST',body:JSON.stringify(body)}),
   nautilusSmoke:()=>request('/api/quant/nautilus/smoke',{method:'POST',body:'{}'}),
