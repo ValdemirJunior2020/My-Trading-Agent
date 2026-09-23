@@ -7,16 +7,44 @@ import { saveAnalysis } from './db.js'
 
 type AgentResult={model:string;output:any}
 type PipelineOptions={productId?:string;deepResearch?:boolean}
+type PipelineState={
+  status:'idle'|'running'|'completed'|'failed'
+  productId:string
+  deepResearch:boolean
+  currentAgent:string|null
+  completedAgents:string[]
+  decision:string|null
+  error:string|null
+  startedAt:string|null
+  finishedAt:string|null
+}
+
+const MAIN_AGENTS=['market','strategy','sentiment','portfolio','risk','critic','decision']
+let pipelineState:PipelineState={
+  status:'idle',
+  productId:'BTC-USD',
+  deepResearch:false,
+  currentAgent:null,
+  completedAgents:[],
+  decision:null,
+  error:null,
+  startedAt:null,
+  finishedAt:null
+}
+
+export const getPipelineStatus=()=>({...pipelineState,completedAgents:[...pipelineState.completedAgents]})
 
 const pct=(a:number,b:number)=>b===0?0:((a-b)/b)*100
 const safe=(value:unknown)=>JSON.stringify(value).slice(0,12000)
 
 const agentStep=async(agentId:string,asset:string,evidence:unknown)=>{
+  pipelineState={...pipelineState,currentAgent:agentId}
   publish('agent_started',{asset},agentId)
   try{
     const result=await runAgent(agentId,asset,safe(evidence)) as AgentResult
     saveAnalysis(agentId,asset,safe(evidence),result.output,result.model)
     publish('agent_completed',{asset,output:result.output},agentId)
+    if(MAIN_AGENTS.includes(agentId)&&!pipelineState.completedAgents.includes(agentId)) pipelineState={...pipelineState,completedAgents:[...pipelineState.completedAgents,agentId]}
     return result
   }catch(error){
     const message=error instanceof Error?error.message:String(error)
@@ -25,7 +53,7 @@ const agentStep=async(agentId:string,asset:string,evidence:unknown)=>{
   }
 }
 
-export const runFullAgentPipeline=async(options:PipelineOptions={})=>{
+const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
   const productId=(options.productId||'BTC-USD').toUpperCase()
   const deepResearch=Boolean(options.deepResearch)
   if(!coinbaseConfigured()) throw new Error('Coinbase is not configured. Add your CDP key to .env before running the real agent pipeline.')
@@ -185,4 +213,45 @@ export const runFullAgentPipeline=async(options:PipelineOptions={})=>{
 
   publish('pipeline_completed',{productId,decision:candidateDecision},'manager')
   return result
+}
+
+
+export const runFullAgentPipeline=async(options:PipelineOptions={})=>{
+  if(pipelineState.status==='running') throw new Error('Agent pipeline is already running.')
+  const productId=(options.productId||'BTC-USD').toUpperCase()
+  pipelineState={
+    status:'running',
+    productId,
+    deepResearch:Boolean(options.deepResearch),
+    currentAgent:'manager',
+    completedAgents:[],
+    decision:null,
+    error:null,
+    startedAt:new Date().toISOString(),
+    finishedAt:null
+  }
+  try{
+    const result=await runFullAgentPipelineInternal(options)
+    const decision=String(result?.decision?.decision||'WAIT')
+    pipelineState={
+      ...pipelineState,
+      status:'completed',
+      currentAgent:null,
+      decision,
+      error:null,
+      finishedAt:new Date().toISOString()
+    }
+    return result
+  }catch(error){
+    const message=error instanceof Error?error.message:String(error)
+    pipelineState={
+      ...pipelineState,
+      status:'failed',
+      currentAgent:null,
+      error:message,
+      finishedAt:new Date().toISOString()
+    }
+    publish('pipeline_failed',{productId,error:message},'manager')
+    throw error
+  }
 }
