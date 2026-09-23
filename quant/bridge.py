@@ -38,14 +38,22 @@ def vectorbt_sma(payload: dict) -> dict:
     if fast <= 0 or slow <= 0 or fast >= slow:
         raise ValueError("Use positive windows with fast < slow.")
 
-    series = pd.Series(np.asarray(prices, dtype=float))
+    index = pd.date_range(end=pd.Timestamp.now(tz="UTC"), periods=len(prices), freq="h")
+    series = pd.Series(np.asarray(prices, dtype=float), index=index)
     fast_ma = vbt.MA.run(series, fast)
     slow_ma = vbt.MA.run(series, slow)
     entries = fast_ma.ma_crossed_above(slow_ma)
     exits = fast_ma.ma_crossed_below(slow_ma)
-    portfolio = vbt.Portfolio.from_signals(series, entries, exits, init_cash=cash, fees=0.001)
+    portfolio = vbt.Portfolio.from_signals(series, entries, exits, init_cash=cash, fees=0.001, freq="1h")
 
     stats = portfolio.stats()
+    trade_records = portfolio.trades.records_readable
+    open_trades = 0
+    closed_trades = 0
+    if "Status" in trade_records.columns:
+        statuses = trade_records["Status"].astype(str).str.lower()
+        open_trades = int((statuses == "open").sum())
+        closed_trades = int((statuses == "closed").sum())
     def scalar(name: str, default=0.0):
         try:
             value = stats.get(name, default)
@@ -66,7 +74,10 @@ def vectorbt_sma(payload: dict) -> dict:
         "maxDrawdownPercent": scalar("Max Drawdown [%]"),
         "winRatePercent": scalar("Win Rate [%]"),
         "totalTrades": int(round(scalar("Total Trades"))),
+        "openTrades": open_trades,
+        "closedTrades": closed_trades,
         "sharpeRatio": scalar("Sharpe Ratio"),
+        "sharpeComputable": math.isfinite(float(stats.get("Sharpe Ratio", float("nan")))) if stats.get("Sharpe Ratio", None) is not None else False,
     }
 
 def nautilus_smoke() -> dict:
