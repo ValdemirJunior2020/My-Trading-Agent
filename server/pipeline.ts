@@ -61,9 +61,10 @@ const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
 
   publish('pipeline_started',{productId,deepResearch},'manager')
 
-  const [product,candles,accounts,engineStatus,challenge]=await Promise.all([
+  const [product,candles,backtestCandles,accounts,engineStatus,challenge]=await Promise.all([
     getProduct(productId),
     getCandles(productId,'ONE_HOUR',120),
+    getCandles(productId,'ONE_HOUR',1200),
     listAccounts(),
     quantStatus(),
     getChallengeSnapshot()
@@ -73,6 +74,7 @@ const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
   if(candles.length<40) throw new Error('Only '+candles.length+' Coinbase candles were returned; at least 40 are required.')
 
   const closes=candles.map(c=>c.close)
+  const backtestCloses=backtestCandles.map(c=>c.close)
   const latest=candles.at(-1)!
   const previous=candles.at(-2)!
   const dayAgo=candles[Math.max(0,candles.length-25)]
@@ -102,7 +104,25 @@ const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
   let vectorbt:any={available:false}
   if(engines.vectorbt?.installed){
     try{
-      vectorbt={available:true,...await runVectorbtSma({prices:closes,fast:10,slow:30,initialCash:10000})}
+      const initialCash=Number(challenge.startingBalanceUsd)||100
+      const parameterSets=[
+        {fast:5,slow:20},
+        {fast:10,slow:30},
+        {fast:20,slow:50},
+        {fast:30,slow:100}
+      ]
+      const runs=[]
+      for(const params of parameterSets){
+        runs.push(await runVectorbtSma({prices:backtestCloses,fast:params.fast,slow:params.slow,initialCash}))
+      }
+      vectorbt={
+        available:true,
+        candleCount:backtestCandles.length,
+        granularity:'ONE_HOUR',
+        initialCash,
+        parameterSets,
+        runs
+      }
       publish('agent_completed',{asset:productId,engine:'vectorbt',result:vectorbt},'backtest')
     }catch(error){
       vectorbt={available:false,error:error instanceof Error?error.message:String(error)}
