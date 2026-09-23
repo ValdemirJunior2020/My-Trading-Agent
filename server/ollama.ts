@@ -149,6 +149,7 @@ export type CopilotActionPlan=
   | {action:'RUN_AGENTS';deepResearch?:boolean}
   | {action:'EMERGENCY_STOP';active:boolean}
   | {action:'SET_RISK_LIMITS';maxPositionPercent?:number;maxTotalExposurePercent?:number;maxDailyLossPercent?:number}
+  | {action:'SET_AUTO_RUN';enabled?:boolean;intervalSeconds?:number;deepResearch?:boolean}
 
 export const runToolCopilotPlanner=async(message:string,context:unknown,language:'en'|'pt'='en'):Promise<CopilotActionPlan>=>{
   const model=await getRequiredChatModel()
@@ -160,6 +161,7 @@ Allowed actions:
 - RUN_AGENTS with optional deepResearch boolean
 - EMERGENCY_STOP with active boolean
 - SET_RISK_LIMITS with optional maxPositionPercent, maxTotalExposurePercent, maxDailyLossPercent
+- SET_AUTO_RUN with optional enabled boolean, intervalSeconds, deepResearch boolean
 
 Rules:
 - Never create orders, buy, sell, transfer money, withdraw, deposit, edit API keys, reveal secrets, or alter .env.
@@ -167,6 +169,7 @@ Rules:
 - Only choose an action when the user clearly asks the tool to change/do something.
 - Questions, explanations, status requests, and vague suggestions must use NONE.
 - For challenge requests, parse the explicit numbers from the user's message.
+- For auto-run requests, parse time units carefully. Examples: every minute = 60 seconds, every 2 minutes = 120 seconds, pause/stop auto agents = enabled false, resume/enable = enabled true.
 - Return JSON only, no markdown.`
 
   const response=await fetch(`${config.ollamaBaseUrl}/api/chat`,{
@@ -189,7 +192,7 @@ Rules:
   try{
     const parsed=JSON.parse(raw) as CopilotActionPlan
     if(!parsed||typeof parsed!=='object'||!('action' in parsed)) return {action:'NONE'}
-    if(!['NONE','SET_CHALLENGE','RUN_AGENTS','EMERGENCY_STOP','SET_RISK_LIMITS'].includes(String(parsed.action))) return {action:'NONE'}
+    if(!['NONE','SET_CHALLENGE','RUN_AGENTS','EMERGENCY_STOP','SET_RISK_LIMITS','SET_AUTO_RUN'].includes(String(parsed.action))) return {action:'NONE'}
     return parsed
   }catch{return {action:'NONE'}}
 }
