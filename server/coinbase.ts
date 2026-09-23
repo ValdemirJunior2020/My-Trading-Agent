@@ -57,3 +57,33 @@ export const getCandles=async(productId:string,granularity='ONE_HOUR',limit=120)
   for(const row of rows) deduped.set(row.start,row)
   return [...deduped.values()].sort((a,b)=>a.start-b.start).slice(-requested)
 }
+
+
+export const getProductBook=async(productId:string,limit=10)=>{
+  const bounded=Math.max(1,Math.min(50,Math.floor(limit)))
+  const data=await request('GET',`/api/v3/brokerage/product_book?product_id=${encodeURIComponent(productId)}&limit=${bounded}`) as {
+    pricebook?:{product_id?:string;bids?:Array<{price:string;size:string}>;asks?:Array<{price:string;size:string}>;time?:string}
+  }
+  const book=data.pricebook||{}
+  return {
+    productId:book.product_id||productId,
+    time:book.time||null,
+    bids:(book.bids||[]).slice(0,bounded).map(x=>({price:Number(x.price),size:Number(x.size)})).filter(x=>Number.isFinite(x.price)&&Number.isFinite(x.size)),
+    asks:(book.asks||[]).slice(0,bounded).map(x=>({price:Number(x.price),size:Number(x.size)})).filter(x=>Number.isFinite(x.price)&&Number.isFinite(x.size))
+  }
+}
+
+export const getMarketTrades=async(productId:string,limit=12)=>{
+  const bounded=Math.max(1,Math.min(100,Math.floor(limit)))
+  const data=await request('GET',`/api/v3/brokerage/products/${encodeURIComponent(productId)}/ticker?limit=${bounded}`) as {
+    trades?:Array<{trade_id?:string;product_id?:string;price?:string;size?:string;time?:string;side?:string}>
+  }
+  return (data.trades||[]).slice(0,bounded).map((x,i)=>({
+    id:x.trade_id||String(i),
+    productId:x.product_id||productId,
+    price:Number(x.price),
+    size:Number(x.size),
+    time:x.time||null,
+    side:String(x.side||'').toUpperCase()
+  })).filter(x=>Number.isFinite(x.price)&&Number.isFinite(x.size))
+}
