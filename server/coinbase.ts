@@ -22,7 +22,7 @@ export const getProduct=async(productId:string)=>request('GET',`/api/v3/brokerag
 
 
 export const getCandles=async(productId:string,granularity='ONE_HOUR',limit=120)=>{
-  const end=Math.floor(Date.now()/1000)
+  const endNow=Math.floor(Date.now()/1000)
   const secondsByGranularity:Record<string,number>={
     ONE_MINUTE:60,
     FIVE_MINUTE:300,
@@ -34,12 +34,26 @@ export const getCandles=async(productId:string,granularity='ONE_HOUR',limit=120)
     ONE_DAY:86400
   }
   const seconds=secondsByGranularity[granularity]||3600
-  const bounded=Math.max(20,Math.min(300,Math.floor(limit)))
-  const start=end-(seconds*bounded)
-  const path=`/api/v3/brokerage/products/${encodeURIComponent(productId)}/candles?start=${start}&end=${end}&granularity=${encodeURIComponent(granularity)}&limit=${bounded}`
-  const data=await request('GET',path) as {candles?:Array<{start:string;low:string;high:string;open:string;close:string;volume:string}>}
-  return (data.candles||[])
-    .map(c=>({start:Number(c.start),low:Number(c.low),high:Number(c.high),open:Number(c.open),close:Number(c.close),volume:Number(c.volume)}))
-    .filter(c=>Number.isFinite(c.close)&&c.close>0)
-    .sort((a,b)=>a.start-b.start)
+  const requested=Math.max(20,Math.min(3000,Math.floor(limit)))
+  const rows:Array<{start:number;low:number;high:number;open:number;close:number;volume:number}>=[]
+  let remaining=requested
+  let windowEnd=endNow
+
+  while(remaining>0){
+    const batch=Math.min(300,remaining)
+    const windowStart=windowEnd-(seconds*batch)
+    const path=`/api/v3/brokerage/products/${encodeURIComponent(productId)}/candles?start=${windowStart}&end=${windowEnd}&granularity=${encodeURIComponent(granularity)}&limit=${batch}`
+    const data=await request('GET',path) as {candles?:Array<{start:string;low:string;high:string;open:string;close:string;volume:string}>}
+    const parsed=(data.candles||[])
+      .map(c=>({start:Number(c.start),low:Number(c.low),high:Number(c.high),open:Number(c.open),close:Number(c.close),volume:Number(c.volume)}))
+      .filter(c=>Number.isFinite(c.start)&&Number.isFinite(c.close)&&c.close>0)
+    rows.push(...parsed)
+    if(parsed.length===0) break
+    remaining-=batch
+    windowEnd=windowStart
+  }
+
+  const deduped=new Map<number,{start:number;low:number;high:number;open:number;close:number;volume:number}>()
+  for(const row of rows) deduped.set(row.start,row)
+  return [...deduped.values()].sort((a,b)=>a.start-b.start).slice(-requested)
 }
