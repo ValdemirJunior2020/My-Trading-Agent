@@ -51,7 +51,7 @@ export function LiveTrading({ language }: Props) {
   const scannerSell = scanner?.bestSell || null
   const side: CandidateSide =
     candidate === 'BUY_CANDIDATE' ? 'BUY' : candidate === 'SELL_CANDIDATE' ? 'SELL' : null
-  const blocked = !readiness?.readyForManualLive
+  const blocked = !readiness?.readyForLive
   const plainSignal = blocked
     ? 'BLOCKED'
     : candidate === 'BUY_CANDIDATE'
@@ -69,8 +69,8 @@ export function LiveTrading({ language }: Props) {
     () => [
       [pt ? 'Coinbase conectado' : 'Coinbase connected', Boolean(readiness?.configured)],
       [pt ? 'Modo live habilitado' : 'Live mode enabled', Boolean(readiness?.liveTradingEnabled)],
-      [pt ? 'Trading automático desligado' : 'Automatic trading off', readiness?.automaticTradingEnabled === false],
-      [pt ? 'Aprovação manual obrigatória' : 'Manual approval required', Boolean(readiness?.manualApprovalRequired)],
+      [pt ? 'Trading automático habilitado' : 'Automatic trading enabled', Boolean(readiness?.automaticTradingEnabled)],
+      [pt ? 'Modo de execução' : 'Execution mode', Boolean(readiness?.automaticTradingEnabled || readiness?.manualApprovalRequired)],
       [pt ? 'Emergency stop desligado' : 'Emergency stop off', readiness?.emergencyStop === false],
       [pt ? 'Limite diário disponível' : 'Daily loss guard clear', readiness?.dailyLossGuard?.blocked === false]
     ],
@@ -114,8 +114,8 @@ export function LiveTrading({ language }: Props) {
                 : 'It only prepares a trade when the agents produce a valid candidate.'}
             </p>
           </div>
-          <span className={readiness?.readyForManualLive ? 'live-ready-badge ok' : 'live-ready-badge'}>
-            {readiness?.readyForManualLive ? (pt ? 'PRONTO' : 'READY') : pt ? 'BLOQUEADO' : 'LOCKED'}
+          <span className={readiness?.readyForLive ? 'live-ready-badge ok' : 'live-ready-badge'}>
+            {readiness?.readyForLive ? (readiness?.readyForAutoLive ? (pt ? 'AUTO LIVE PRONTO' : 'AUTO LIVE READY') : (pt ? 'LIVE PRONTO' : 'LIVE READY')) : pt ? 'BLOQUEADO' : 'LOCKED'}
           </span>
         </div>
 
@@ -269,7 +269,7 @@ export function LiveTrading({ language }: Props) {
               <button
                 className="preflight-btn"
                 onClick={() => void runGuidedPreflight()}
-                disabled={busy || loading || !readiness?.readyForManualLive}
+                disabled={busy || loading || !readiness?.readyForLive}
               >
                 {busy
                   ? pt
@@ -342,9 +342,9 @@ export function LiveTrading({ language }: Props) {
         <div className="live-warning">
           <strong>{pt ? 'Importante' : 'Important'}</strong>
           <span>
-            {pt
-              ? 'A ferramenta pode preparar tudo automaticamente, mas uma ordem real ainda exige a etapa final de aprovação.'
-              : 'The tool can prepare everything automatically, but a real order still requires the final approval step.'}
+            {readiness?.readyForAutoLive
+              ? (pt ? 'AUTO LIVE está habilitado. Ordens candidatas ainda passam pelos limites de risco, preview da Coinbase, limite de confiança e cooldown antes de serem enviadas.' : 'AUTO LIVE is enabled. Candidate orders still pass risk limits, Coinbase preview, the confidence threshold, and cooldown before submission.')
+              : (pt ? 'O modo live está disponível, mas a execução automática não está ativa.' : 'Live mode is available, but automatic execution is not active.')}
           </span>
         </div>
       </section>
