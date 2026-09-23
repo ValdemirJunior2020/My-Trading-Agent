@@ -1,4 +1,5 @@
 import { coinbaseConfigured } from './config.js'
+import { getProduct,listAccounts } from './coinbase.js'
 import { getSetting,setSetting } from './db.js'
 import { publish } from './events.js'
 import { getOllamaStatus } from './ollama.js'
@@ -53,6 +54,28 @@ const shouldRunNow=()=>{
   return Date.now()-reference>=settings.intervalSeconds*1000
 }
 
+const balanceValue=(balance:any)=>Number(balance?.value??balance??0)||0
+
+const pickAutoProduct=async()=>{
+  const accounts=await listAccounts()
+  let best:{productId:string;usdValue:number}|null=null
+  for(const account of accounts){
+    const currency=String(account.currency||'').toUpperCase()
+    if(!currency||['USD','USDC','USDT'].includes(currency)) continue
+    const amount=balanceValue(account.availableBalance)+balanceValue(account.hold)
+    if(!(amount>0)) continue
+    try{
+      const product:any=await getProduct(currency+'-USD')
+      const price=Number(product?.price||0)
+      const usdValue=amount*price
+      if(Number.isFinite(usdValue)&&usdValue>0&&(!best||usdValue>best.usdValue)){
+        best={productId:currency+'-USD',usdValue}
+      }
+    }catch{}
+  }
+  return best?.productId||'BTC-USD'
+}
+
 const tick=async()=>{
   if(!shouldRunNow()) return
   if(!coinbaseConfigured()) return
@@ -62,9 +85,10 @@ const tick=async()=>{
   }catch{return}
 
   const settings=getAutoRunSettings()
+  const productId=await pickAutoProduct()
   lastAttemptAt=Date.now()
-  publish('auto_agents_cycle_started',{intervalSeconds:settings.intervalSeconds,deepResearch:settings.deepResearch},'manager')
-  void runFullAgentPipeline({productId:'BTC-USD',deepResearch:settings.deepResearch}).catch(error=>{
+  publish('auto_agents_cycle_started',{intervalSeconds:settings.intervalSeconds,deepResearch:settings.deepResearch,productId},'manager')
+  void runFullAgentPipeline({productId,deepResearch:settings.deepResearch}).catch(error=>{
     const message=error instanceof Error?error.message:String(error)
     publish('auto_agents_cycle_failed',{error:message},'manager')
   })
