@@ -154,62 +154,28 @@ export function TradeJournal({language}:Props){
           const status=journalStatus(event)
           const confidence=normalizeConfidence(p.confidence)
           const decision=String(p.decision||'').toUpperCase()
-          const rotationDetail=event.type==='capital_rotation_plan' ? ('Need 
+          const rotationDetail=event.type==='capital_rotation_plan'
+            ? 'Need $'+Number(p.fundingRequiredUsd||0).toFixed(2)+
+              ' • XRP sell candidate: '+(p.xrpSellCandidate?'YES':'NO')+
+              ' • Suggested XRP sale: $'+Number(p.suggestedSellUsd||0).toFixed(2)+
+              ' • Approval required'
+            : ''
+          const generatedDetail=[
             decision?('Decision: '+decision):'',
             confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
             p.attempted===false?'No execution attempted':''
           ].filter(Boolean).join(' • ')
           const detail=String(rotationDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
           const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
           return <div className="journal-table journal-row" key={event.id}>
             <span>{new Date(event.createdAt).toLocaleString()}</span>
             <span><b className={'journal-status '+statusClass(status)}>{status}</b></span>
-            <span>{String(p.productId||p.buyProductId||'—')}</span>
-            <span className={String(p.side)==='SELL'?'sell-text':String(p.side)==='BUY'?'buy-text':''}>{String(p.side||'—')}</span>
-            <span>{money(p.notionalUsd)}</span>
-            <span className="journal-order-id" title={orderId}>{orderId}</span>
-            <span className="journal-detail" title={detail}>{detail}</span>
-          </div>
-        })}
-      </div>
-    </section>
-  </main>
-}
-+Number(p.fundingRequiredUsd||0).toFixed(2)+' • XRP sell candidate: '+(p.xrpSellCandidate?'YES':'NO')+' • Suggested XRP sale: 
-            decision?('Decision: '+decision):'',
-            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
-            p.attempted===false?'No execution attempted':''
-          ].filter(Boolean).join(' • ')
-          const detail=String(p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
-          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
-          return <div className="journal-table journal-row" key={event.id}>
-            <span>{new Date(event.createdAt).toLocaleString()}</span>
-            <span><b className={'journal-status '+statusClass(status)}>{status}</b></span>
-            <span>{String(p.productId||'—')}</span>
-            <span className={String(p.side)==='SELL'?'sell-text':String(p.side)==='BUY'?'buy-text':''}>{String(p.side||'—')}</span>
-            <span>{money(p.notionalUsd)}</span>
-            <span className="journal-order-id" title={orderId}>{orderId}</span>
-            <span className="journal-detail" title={detail}>{detail}</span>
-          </div>
-        })}
-      </div>
-    </section>
-  </main>
-}
-+Number(p.suggestedSellUsd||0).toFixed(2)+' • Approval required') : ''
-          const generatedDetail=[
-            decision?('Decision: '+decision):'',
-            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
-            p.attempted===false?'No execution attempted':''
-          ].filter(Boolean).join(' • ')
-          const detail=String(p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
-          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
-          return <div className="journal-table journal-row" key={event.id}>
-            <span>{new Date(event.createdAt).toLocaleString()}</span>
-            <span><b className={'journal-status '+statusClass(status)}>{status}</b></span>
-            <span>{String(p.productId||'—')}</span>
-            <span className={String(p.side)==='SELL'?'sell-text':String(p.side)==='BUY'?'buy-text':''}>{String(p.side||'—')}</span>
-            <span>{money(p.notionalUsd)}</span>
+            <span>{displayCoin}</span>
+            <span className={displaySide==='SELL'?'sell-text':displaySide==='BUY'?'buy-text':''}>{displaySide}</span>
+            <span>{displayAmount}</span>
             <span className="journal-order-id" title={orderId}>{orderId}</span>
             <span className="journal-detail" title={detail}>{detail}</span>
           </div>
