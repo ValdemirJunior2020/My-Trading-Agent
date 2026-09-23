@@ -37,6 +37,10 @@ export const api={
   nautilusSmoke:()=>request('/api/quant/nautilus/smoke',{method:'POST',body:'{}'}),
   rdAgentHealth:()=>request('/api/quant/rdagent/health'),
   rdAgentRun:(body:{command:'fin_quant'|'fin_factor'|'health'|'info';stepN?:number;loopN?:number})=>request('/api/quant/rdagent/run',{method:'POST',body:JSON.stringify(body)}),
-  copilotChat:(body:{message:string;language:'en'|'pt'})=>request<{ok:boolean;model:string;answer:string}>('/api/copilot/chat',{method:'POST',body:JSON.stringify(body)}),
+  copilotChat:(body:{message:string;language:'en'|'pt'})=>request<{ok:boolean;model:string;answer:string;action?:any}>('/api/copilot/chat',{method:'POST',body:JSON.stringify(body)}),
+  getChallenge:()=>request<any>('/api/challenge'),
+  setChallenge:(body:{enabled?:boolean;startingBalanceUsd?:number;targetBalanceUsd?:number;durationDays?:number;restart?:boolean})=>request<any>('/api/challenge',{method:'POST',body:JSON.stringify(body)}),
+  getRiskSettings:()=>request<any>('/api/risk/settings'),
+  setRiskSettings:(body:{maxPositionPercent?:number;maxTotalExposurePercent?:number;maxDailyLossPercent?:number})=>request<any>('/api/risk/settings',{method:'POST',body:JSON.stringify(body)}),
   eventUrl:`${base}/api/events`
 }
