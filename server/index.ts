@@ -74,7 +74,7 @@ const server=createServer(async(req,res)=>{
     const language=body.language==='pt'?'pt':'en'
     if(!message)return json(res,400,{error:'message is required.'})
     const [system,events,challenge,pipeline]=await Promise.all([statusPayload(),Promise.resolve(recentEvents(20)),getChallengeSnapshot(),Promise.resolve(getPipelineStatus())])
-    const context={system,events,challenge,pipeline,riskLimits:getRuntimeRiskLimits()}
+    const context={system,events,challenge,pipeline,riskLimits:getRuntimeRiskLimits(),backtestConfig:{marketCandles:120,backtestCandles:1200,granularity:'ONE_HOUR',initialCashSource:'challenge.startingBalanceUsd',parameterSets:[{fast:5,slow:20},{fast:10,slow:30},{fast:20,slow:50},{fast:30,slow:100}]}}
     const plan=await runToolCopilotPlanner(message,context,language)
     let actionResult:any=null
 
