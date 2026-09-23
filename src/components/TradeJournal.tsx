@@ -72,7 +72,10 @@ export function TradeJournal({language}:Props){
         {loading?<div className="journal-empty">{pt?'Carregando...':'Loading...'}</div>:rows.length===0?<div className="journal-empty">{pt?'Nenhum ciclo de trading registrado ainda.':'No trading cycles recorded yet.'}</div>:rows.map(event=>{
           const p=event.payload||{}
           const status=statusFor(String(event.type))
-          const detail=String(p.reason||p.error||p.preview?.warning?.join?.(', ')||(p.decision?'Final decision: '+p.decision:''))
+          const decisionText=p.decision?('Final decision: '+p.decision):''
+          const confidenceText=p.confidence!=null&&Number.isFinite(Number(p.confidence))?('Confidence: '+Number(p.confidence).toFixed(0)+'%'):''
+          const fallbackDetail=[decisionText,confidenceText,p.attempted===false?'No execution attempted':''].filter(Boolean).join(' • ')
+          const detail=String(p.reason||p.error||p.preview?.warning?.join?.(', ')||fallbackDetail)
           const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
           const displayStatus=event.type==='live_execution_cycle' ? (p.executed?'PLACED':p.attempted?'ATTEMPT':'NO TRADE') : status
           return <div className="journal-table journal-row" key={event.id}>
