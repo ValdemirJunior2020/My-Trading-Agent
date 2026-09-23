@@ -217,7 +217,16 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     critic: critic.output,
     quantitativeValidation: { vectorbt, nautilus, rdAgent },
     challenge,
-    instruction: 'Return a candidate decision only. Treat the challenge as a goal, never as permission to increase risk. Do not claim an order was placed.'
+    instruction: [
+      'Return one evidence-based classification using the decision rubric.',
+      'Do not default to WAIT or REJECT merely because trading is uncertain.',
+      'Use BUY_CANDIDATE only when current long evidence is sufficiently aligned.',
+      'Use SELL_CANDIDATE only for an actually held asset when current exit/reduction evidence is sufficiently aligned.',
+      'Use WAIT for genuinely mixed or incomplete timing evidence.',
+      'Use REJECT only for a concrete invalidation or contradiction.',
+      'Treat the challenge as a goal, never as permission to increase risk.',
+      'Do not claim an order was placed; deterministic server checks decide whether any candidate may proceed.'
+    ].join(' ')
   })
 
   // === LIMITED LIVE EXECUTION (Phase 2) ===
