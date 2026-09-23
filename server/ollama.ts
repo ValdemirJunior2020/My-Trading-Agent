@@ -137,3 +137,55 @@ Never reveal secrets, keys, tokens, or .env contents.`
   const data=await response.json() as {message?:{content?:string}}
   return {model,answer:data.message?.content?.trim()||'No response.'}
 }
+
+
+export type CopilotActionPlan=
+  | {action:'NONE';reason?:string}
+  | {action:'SET_CHALLENGE';startingBalanceUsd?:number;targetBalanceUsd?:number;durationDays?:number}
+  | {action:'RUN_AGENTS';deepResearch?:boolean}
+  | {action:'EMERGENCY_STOP';active:boolean}
+  | {action:'SET_RISK_LIMITS';maxPositionPercent?:number;maxTotalExposurePercent?:number;maxDailyLossPercent?:number}
+
+export const runToolCopilotPlanner=async(message:string,context:unknown,language:'en'|'pt'='en'):Promise<CopilotActionPlan>=>{
+  const model=await getRequiredChatModel()
+  const system=`You are the command planner for My Trading Agent.
+Convert the user's request into AT MOST ONE allowed backend action.
+Allowed actions:
+- NONE
+- SET_CHALLENGE with optional startingBalanceUsd, targetBalanceUsd, durationDays
+- RUN_AGENTS with optional deepResearch boolean
+- EMERGENCY_STOP with active boolean
+- SET_RISK_LIMITS with optional maxPositionPercent, maxTotalExposurePercent, maxDailyLossPercent
+
+Rules:
+- Never create orders, buy, sell, transfer money, withdraw, deposit, edit API keys, reveal secrets, or alter .env.
+- Never bypass hard risk controls.
+- Only choose an action when the user clearly asks the tool to change/do something.
+- Questions, explanations, status requests, and vague suggestions must use NONE.
+- For challenge requests, parse the explicit numbers from the user's message.
+- Return JSON only, no markdown.`
+
+  const response=await fetch(`${config.ollamaBaseUrl}/api/chat`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model,
+      stream:false,
+      format:'json',
+      messages:[
+        {role:'system',content:system},
+        {role:'user',content:`Language: ${language}\nContext: ${JSON.stringify(context)}\nUser request: ${message}`}
+      ]
+    }),
+    signal:AbortSignal.timeout(120000)
+  })
+  if(!response.ok) throw new Error(await ollamaError(response))
+  const data=await response.json() as {message?:{content?:string}}
+  const raw=data.message?.content||'{}'
+  try{
+    const parsed=JSON.parse(raw) as CopilotActionPlan
+    if(!parsed||typeof parsed!=='object'||!('action' in parsed)) return {action:'NONE'}
+    if(!['NONE','SET_CHALLENGE','RUN_AGENTS','EMERGENCY_STOP','SET_RISK_LIMITS'].includes(String(parsed.action))) return {action:'NONE'}
+    return parsed
+  }catch{return {action:'NONE'}}
+}
