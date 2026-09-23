@@ -114,3 +114,28 @@ body{font-size:14px;line-height:1.45}
 .scanner-best.sell strong{color:#ffadb4}
 .scanner-best.sell span{color:#d9a4a9}
 @media(max-width:650px){.scanner-sides{grid-template-columns:1fr}}
+
+.journal-page{padding:18px;display:grid;place-items:start center}
+.journal-panel{width:min(1280px,100%);padding:18px}
+.journal-heading{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;border-bottom:1px solid #183043;padding-bottom:13px}
+.journal-heading h1{margin:4px 0 5px;font-size:24px}
+.journal-heading p{margin:0;color:#8aa1b2;font-size:11px}
+.journal-refresh{border:1px solid #2d617d;background:#0b2a3a;color:#d9f4ff;border-radius:7px;padding:9px 13px;font-weight:800;cursor:pointer}
+.journal-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.journal-stats>div{border:1px solid #173448;background:#081620;border-radius:7px;padding:10px}
+.journal-stats small{display:block;color:#7890a5;font-size:9px}.journal-stats strong{display:block;margin-top:3px;font-size:18px}
+.journal-filters{display:flex;gap:6px;margin:12px 0}
+.journal-filters button{border:1px solid #28495d;background:#0a1822;color:#91aabb;border-radius:999px;padding:6px 10px;font-size:9px;font-weight:800;cursor:pointer}
+.journal-filters button.active{border-color:#2a9479;background:#0d3a30;color:#8df5d8}
+.journal-table-wrap{border:1px solid #173448;border-radius:8px;overflow:hidden;background:#07131c}
+.journal-table{display:grid;grid-template-columns:150px 95px 100px 65px 90px minmax(170px,1.2fr) minmax(180px,1.5fr);gap:8px;align-items:center;padding:9px 10px}
+.journal-header{background:#0b1c28;border-bottom:1px solid #24465d;color:#7894a7;font-size:9px;font-weight:800}
+.journal-row{border-bottom:1px solid #13293a;font-size:10px}
+.journal-row:last-child{border-bottom:0}
+.journal-status{display:inline-block;border-radius:999px;padding:4px 7px;font-size:8px}
+.journal-status.placed{background:#0d3c30;color:#7ef0cb}.journal-status.blocked{background:#3a2e0d;color:#f1cc62}.journal-status.failed{background:#41181d;color:#ff9da4}.journal-status.preview-ok{background:#113145;color:#87d9ff}
+.buy-text{color:#72efc5;font-weight:800}.sell-text{color:#ff9da4;font-weight:800}
+.journal-order-id,.journal-detail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a6bac8}
+.journal-empty{padding:28px;text-align:center;color:#7890a5;font-size:11px}
+@media(max-width:900px){.journal-stats{grid-template-columns:1fr 1fr}.journal-table-wrap{overflow-x:auto}.journal-table{min-width:950px}}
+@media(max-width:520px){.journal-stats{grid-template-columns:1fr}.journal-heading{display:block}.journal-refresh{margin-top:10px}}
