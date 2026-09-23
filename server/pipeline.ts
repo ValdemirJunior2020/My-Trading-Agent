@@ -2,7 +2,7 @@ import { config,coinbaseConfigured } from './config.js'
 import { getCandles,getProduct,listAccounts } from './coinbase.js'
 import { publish } from './events.js'
 import { runAgent } from './ollama.js'
-import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from './quant.js'
+import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtValidation } from './quant.js'
 import { saveAnalysis } from './db.js'
 import { getChallengeSnapshot } from './challenge.js'
 
@@ -64,7 +64,7 @@ const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
   const [product,candles,backtestCandles,accounts,engineStatus,challenge]=await Promise.all([
     getProduct(productId),
     getCandles(productId,'ONE_HOUR',120),
-    getCandles(productId,'ONE_HOUR',1200),
+    getCandles(productId,'ONE_HOUR',3000),
     listAccounts(),
     quantStatus(),
     getChallengeSnapshot()
@@ -75,6 +75,7 @@ const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
 
   const closes=candles.map(c=>c.close)
   const backtestCloses=backtestCandles.map(c=>c.close)
+  const backtestTimestamps=backtestCandles.map(c=>c.start)
   const latest=candles.at(-1)!
   const previous=candles.at(-2)!
   const dayAgo=candles[Math.max(0,candles.length-25)]
@@ -111,17 +112,19 @@ const runFullAgentPipelineInternal=async(options:PipelineOptions={})=>{
         {fast:20,slow:50},
         {fast:30,slow:100}
       ]
-      const runs=[]
-      for(const params of parameterSets){
-        runs.push(await runVectorbtSma({prices:backtestCloses,fast:params.fast,slow:params.slow,initialCash}))
-      }
+      const validation=await runVectorbtValidation({
+        prices:backtestCloses,
+        timestamps:backtestTimestamps,
+        initialCash,
+        parameterSets
+      })
       vectorbt={
         available:true,
         candleCount:backtestCandles.length,
         granularity:'ONE_HOUR',
         initialCash,
         parameterSets,
-        runs
+        ...validation
       }
       publish('agent_completed',{asset:productId,engine:'vectorbt',result:vectorbt},'backtest')
     }catch(error){
