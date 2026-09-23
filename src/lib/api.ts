@@ -33,6 +33,7 @@ export const api={
   getMarketTrades:(productId:string)=>request<{trades:any[]}>(`/api/coinbase/trades/${encodeURIComponent(productId)}`),
   getRecentEvents:()=>request<{events:any[]}>('/api/events/recent'),
   getLiveHistory:(limit=200)=>request<{events:any[]}>(`/api/live/history?limit=${limit}`),
+  getPortfolioAllocation:()=>request<any>('/api/coinbase/portfolio-allocation'),
   paperOrder:(body:{productId:string;side:'BUY'|'SELL';size:number;price:number})=>request('/api/paper/orders',{method:'POST',body:JSON.stringify(body)}),
   runAgent:(body:{agentId:string;asset:string;summary:string})=>request('/api/agents/run',{method:'POST',body:JSON.stringify(body)}),
   runPipeline:(body:{productId?:string;deepResearch?:boolean})=>request<{ok:boolean;result:any}>('/api/agents/pipeline',{method:'POST',body:JSON.stringify(body)}),
