@@ -157,7 +157,10 @@ const server=createServer(async(req,res)=>{
       accountCount:accounts.length,
       dailyLossGuard:daily,
       riskLimits:getRuntimeRiskLimits(),
-      readyForManualLive:Boolean(config.liveTradingEnabled&&!config.autoTradingEnabled&&config.manualApprovalRequired&&!emergencyStopActive()&&totalPortfolioUsd>0&&!(daily?.blocked))
+      liveOrderLimits:{maxLiveOrderUsd:config.maxLiveOrderUsd,minLiveOrderUsd:config.minLiveOrderUsd,cooldownSeconds:config.autoTradeCooldownSeconds,minConfidencePercent:config.autoTradeMinConfidencePercent},
+      readyForLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!emergencyStopActive()&&totalPortfolioUsd>0&&!(daily?.blocked)),
+      readyForAutoLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&config.autoTradingEnabled&&!emergencyStopActive()&&totalPortfolioUsd>0&&!(daily?.blocked)),
+      readyForManualLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!config.autoTradingEnabled&&config.manualApprovalRequired&&!emergencyStopActive()&&totalPortfolioUsd>0&&!(daily?.blocked))
     })
   }
   if(path==='/api/live/preflight'&&req.method==='POST'){
@@ -174,9 +177,11 @@ const server=createServer(async(req,res)=>{
     const usdAccount=accounts.find((a:any)=>String(a.currency).toUpperCase()==='USD')
     const baseAccount=accounts.find((a:any)=>String(a.currency).toUpperCase()===baseCurrency)
     const availableUsd=balanceValue(usdAccount?.availableBalance)
-    const baseAmount=balanceValue(baseAccount?.availableBalance)+balanceValue(baseAccount?.hold)
+    const availableBase=balanceValue(baseAccount?.availableBalance)
+    const baseAmount=availableBase+balanceValue(baseAccount?.hold)
     const currentAssetUsd=Number.isFinite(price)?baseAmount*price:0
-    const preflight=evaluateLiveOrder({productId,side,notionalUsd,totalPortfolioUsd,availableUsd,currentAssetUsd})
+    const availableAssetUsd=Number.isFinite(price)?availableBase*price:0
+    const preflight=evaluateLiveOrder({productId,side,notionalUsd,totalPortfolioUsd,availableUsd,currentAssetUsd,availableAssetUsd})
     publish(preflight.approved?'live_preflight_approved':'live_preflight_rejected',{preflight},'risk')
     return json(res,preflight.approved?200:422,{ok:preflight.approved,preflight})
   }
