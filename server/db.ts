@@ -122,3 +122,21 @@ export const clearLiveTradeHistory=()=>{
   `).run()
   return {deleted:Number(result.changes||0)}
 }
+
+
+export const livePlacedOrders=(limit=2000)=>{
+  const bounded=Math.max(1,Math.min(5000,Math.floor(limit)))
+  const rows=db.prepare(`
+    SELECT * FROM agent_events
+    WHERE type='live_order_placed'
+    ORDER BY id ASC
+    LIMIT ?
+  `).all(bounded) as Array<any>
+  return rows.map(row=>({
+    id:row.id,
+    type:row.type,
+    agentId:row.agent_id,
+    payload:JSON.parse(row.payload),
+    createdAt:row.created_at
+  }))
+}
