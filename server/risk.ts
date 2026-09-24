@@ -178,11 +178,11 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   if (!['BUY', 'SELL'].includes(side)) reasons.push('Invalid side.')
   if (!(notionalUsd > 0)) reasons.push('Order notional must be positive.')
   if (!(totalPortfolioUsd > 0)) reasons.push('Live portfolio value is unavailable.')
-  if (notionalUsd > maxPositionUsd + 1e-8) reasons.push('Order exceeds the hard ' + limits.maxPositionPercent + '% live position cap.')
+  if (side === 'BUY' && notionalUsd > maxPositionUsd + 1e-8) reasons.push('Order exceeds the hard ' + limits.maxPositionPercent + '% live position cap.')
   if (side === 'BUY' && notionalUsd > availableUsd + 1e-8) reasons.push('Insufficient available USD for this buy.')
   if (side === 'SELL' && notionalUsd > availableAssetUsd + 1e-8) reasons.push('Insufficient available asset balance for this sell.')
   const projectedExposure = side === 'BUY' ? currentAssetUsd + notionalUsd : Math.max(0, currentAssetUsd - notionalUsd)
-  if (projectedExposure > maxExposureUsd + 1e-8) reasons.push('Projected asset exposure exceeds ' + limits.maxTotalExposurePercent + '% of the live portfolio.')
+  if (side === 'BUY' && projectedExposure > maxExposureUsd + 1e-8) reasons.push('Projected asset exposure exceeds ' + limits.maxTotalExposurePercent + '% of the live portfolio.')
   if (daily.blocked) reasons.push('Bot realized-loss guard is active at ' + daily.botLossPercent.toFixed(2) + '% loss.')
 
   return {
@@ -218,6 +218,13 @@ const floorToIncrement = (value: number, increment: unknown) => {
   if (!(step > 0) || !Number.isFinite(value)) return value
   const floored = Math.floor((value + Number.EPSILON) / step) * step
   return Number(floored.toFixed(Math.min(12, decimalsFromIncrement(increment))))
+}
+
+const ceilToIncrement = (value: number, increment: unknown) => {
+  const step = Number(increment)
+  if (!(step > 0) || !Number.isFinite(value)) return value
+  const ceiled = Math.ceil((value - Number.EPSILON) / step) * step
+  return Number(ceiled.toFixed(Math.min(12, decimalsFromIncrement(increment))))
 }
 
 const normalizedConfidencePercent = (value: unknown) => {
@@ -335,17 +342,47 @@ export const tryLimitedLiveExecution = async (opts: {
     if (quoteSizeUsd > quoteMax) quoteSizeUsd = floorToIncrement(quoteMax, productInfo?.quote_increment || 0.01)
     notionalUsd = quoteSizeUsd
   } else {
-    const rawNotional = Math.min(maxFromPercent, hardCap, availableAssetUsd)
-    const rawBase = Math.min(
-      availableBase,
-      rawNotional / price,
-      Number(productInfo?.base_max_size || Infinity)
-    )
-    baseSize = floorToIncrement(rawBase, productInfo?.base_increment || 0.00000001)
+    const baseIncrement = productInfo?.base_increment || 0.00000001
     const baseMin = Number(productInfo?.base_min_size || 0)
+    const baseMax = Number(productInfo?.base_max_size || Infinity)
+    const minBaseRequired = Math.max(
+      baseMin,
+      config.minLiveOrderUsd > 0 ? config.minLiveOrderUsd / price : 0
+    )
+    const minExecutableBase = ceilToIncrement(minBaseRequired, baseIncrement)
+    const targetNotional = Math.min(hardCap, availableAssetUsd)
+    const targetBase = Math.min(
+      availableBase,
+      targetNotional / price,
+      baseMax
+    )
+
+    baseSize = floorToIncrement(targetBase, baseIncrement)
+
+    if (baseSize < minExecutableBase && availableBase >= minExecutableBase && minExecutableBase <= baseMax) {
+      baseSize = minExecutableBase
+    }
+
     notionalUsd = baseSize * price
-    if (!(baseSize > 0) || baseSize < baseMin || notionalUsd < config.minLiveOrderUsd) {
-      return { executed: false, reason: 'Calculated SELL size is below the configured/Coinbase minimum', baseSize, baseMin, notionalUsd }
+    const minimumNotionalUsd = minExecutableBase * price
+
+    if (
+      !(baseSize > 0) ||
+      baseSize < minExecutableBase ||
+      baseSize > baseMax ||
+      notionalUsd < config.minLiveOrderUsd
+    ) {
+      return {
+        executed: false,
+        reason: 'Available holding cannot meet the configured/Coinbase SELL minimum',
+        baseSize,
+        baseMin,
+        minExecutableBase,
+        minimumNotionalUsd,
+        availableBase,
+        availableAssetUsd,
+        hardCap
+      }
     }
   }
 
