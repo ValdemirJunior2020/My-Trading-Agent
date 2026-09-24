@@ -33,7 +33,7 @@ let ws:WebSocket|null=null
 let reconnectTimer:NodeJS.Timeout|null=null
 let safetyTimer:NodeJS.Timeout|null=null
 let running=false
-let halted=false
+let safePause=false
 let reconnectAttempt=0
 let products:string[]=[]
 
@@ -112,7 +112,7 @@ const runAgentsForSignal=(productId:string)=>{
 
 const handleClosedCandle=async(productId:string,candle:Candle)=>{
   const state=states.get(productId)
-  if(!state||halted)return
+  if(!state)return
 
   appendClosed(state,candle)
   const closes=state.closed.map(x=>x.close)
@@ -193,7 +193,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
 }
 
 const handleTicker=async(productId:string,price:number)=>{
-  if(halted||!(price>0))return
+  if(!(price>0))return
   const state=states.get(productId)
   if(!state)return
 
@@ -296,7 +296,7 @@ const processTickerPayload=(data:any)=>{
 }
 
 const scheduleReconnect=()=>{
-  if(!running||halted||reconnectTimer)return
+  if(!running||reconnectTimer)return
   const delay=Math.min(30000,1000*(2**Math.min(reconnectAttempt,5)))
   reconnectAttempt+=1
   reconnectTimer=setTimeout(()=>{
@@ -306,7 +306,7 @@ const scheduleReconnect=()=>{
 }
 
 const connect=()=>{
-  if(!running||halted||!products.length)return
+  if(!running||!products.length)return
 
   try{
     ws=new WebSocket(WS_URL)
@@ -392,20 +392,22 @@ const seedUniverse=async()=>{
 const startSafetyTimer=()=>{
   if(safetyTimer)clearInterval(safetyTimer)
   safetyTimer=setInterval(()=>{
-    if(halted)return
     void (async()=>{
       try{
         const snapshot=await getChallengeSnapshot()
         const equity=Number(snapshot.currentPortfolioUsd||0)
         if(!(equity>0))return
         const guard=await checkRollingEquityKillSwitch(equity)
-        if(guard.blocked){
-          halted=true
-          publish('mean_reversion_engine_halted',{
-            reason:'ROLLING_24H_KILL_SWITCH',
-            guard
+        const nextSafePause=Boolean(guard.blocked)
+
+        if(nextSafePause!==safePause){
+          safePause=nextSafePause
+          publish(safePause?'mean_reversion_auto_safe_pause':'mean_reversion_auto_safe_resumed',{
+            guard,
+            streamRemainsActive:true,
+            newBuysBlocked:safePause,
+            protectiveSellsAllowed:true
           },'risk')
-          try{ws?.close()}catch{}
         }
       }catch(error){
         publish('rolling_equity_monitor_failed',{
@@ -419,7 +421,7 @@ const startSafetyTimer=()=>{
 export const startMeanReversionEngine=async()=>{
   if(running)return
   running=true
-  halted=false
+  safePause=false
 
   if(!coinbaseConfigured()){
     publish('mean_reversion_engine_disabled',{reason:'Coinbase is not configured'},'strategy')
@@ -465,7 +467,8 @@ export const stopMeanReversionEngine=()=>{
 
 export const getMeanReversionEngineStatus=()=>({
   running,
-  halted,
+  halted:false,
+  safePause,
   connected:ws?.readyState===WebSocket.OPEN,
   products,
   monitoredProducts:states.size,
