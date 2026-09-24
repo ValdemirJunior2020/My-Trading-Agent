@@ -1,4 +1,3 @@
-import WebSocket from 'ws'
 import { config, coinbaseConfigured } from './config.js'
 import { getCandles } from './coinbase.js'
 import { publish } from './events.js'
@@ -312,17 +311,18 @@ const connect=()=>{
   try{
     ws=new WebSocket(WS_URL)
 
-    ws.on('open',()=>{
+    ws.onopen=()=>{
       reconnectAttempt=0
       publish('coinbase_strategy_stream_connected',{products:products.length},'strategy')
       ws?.send(JSON.stringify({type:'subscribe',channel:'candles',product_ids:products}))
       ws?.send(JSON.stringify({type:'subscribe',channel:'ticker',product_ids:products}))
       ws?.send(JSON.stringify({type:'subscribe',channel:'heartbeats'}))
-    })
+    }
 
-    ws.on('message',(buffer)=>{
+    ws.onmessage=(event)=>{
       try{
-        const data=JSON.parse(buffer.toString())
+        const raw=typeof event.data==='string'?event.data:String(event.data)
+        const data=JSON.parse(raw)
         const channel=String(data?.channel||'')
         if(channel==='candles')processCandlePayload(data)
         else if(channel==='ticker')processTickerPayload(data)
@@ -331,20 +331,20 @@ const connect=()=>{
           error:error instanceof Error?error.message:String(error)
         },'strategy')
       }
-    })
+    }
 
-    ws.on('error',(error)=>{
-      publish('coinbase_strategy_stream_error',{error:error.message},'strategy')
-    })
+    ws.onerror=()=>{
+      publish('coinbase_strategy_stream_error',{error:'WebSocket connection error'},'strategy')
+    }
 
-    ws.on('close',(code,reason)=>{
+    ws.onclose=(event)=>{
       publish('coinbase_strategy_stream_closed',{
-        code,
-        reason:reason.toString()
+        code:event.code,
+        reason:event.reason
       },'strategy')
       ws=null
       scheduleReconnect()
-    })
+    }
   }catch(error){
     publish('coinbase_strategy_stream_error',{
       error:error instanceof Error?error.message:String(error)
