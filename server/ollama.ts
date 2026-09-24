@@ -67,10 +67,10 @@ const ollamaError=async(response:Response)=>{
 
 const roles:Record<string,string>={
   market:'Analyze market structure, trend, momentum, support, resistance, volume and volatility.',
-  risk:'Act as a strict risk manager. Prefer blocking a weak trade over allowing avoidable risk.',
+  risk:'Act as a strict risk manager. Return REJECT only for a concrete hard blocker such as invalid exposure, unavailable capital, disabled trading, excessive deterministic risk, or another explicit safety violation. If risk is acceptable but evidence is uncertain, use WAIT rather than REJECT.',
   strategy:'Check whether the setup matches explicit strategy rules. Do not invent missing evidence.',
   sentiment:'Assess sentiment evidence and clearly flag stale, weak, duplicated or unverified information.',
-  critic:'Try to disprove the trade thesis. Search for failure modes, bad assumptions and asymmetric downside.',
+  critic:'Try to disprove the trade thesis. Return REJECT only when you find a decisive invalidation that directly contradicts the setup. If concerns are meaningful but not decisive, use WAIT and explain them.',
   portfolio:'Check concentration, correlation, open exposure, available capital and portfolio-level risk.',
   decision:'Combine the structured reports into one evidence-based candidate classification. Do not favor action or inaction by default.'
 }
