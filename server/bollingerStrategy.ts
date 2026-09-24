@@ -25,16 +25,6 @@ const rsi=(closes:number[],period=14)=>{
   return 100-(100/(1+rs))
 }
 
-const atr=(candles:Candle[],period=14)=>{
-  if(candles.length<period+1)return null
-  const trs:number[]=[]
-  for(let i=candles.length-period;i<candles.length;i++){
-    const c=candles[i],p=candles[i-1]
-    trs.push(Math.max(c.high-c.low,Math.abs(c.high-p.close),Math.abs(c.low-p.close)))
-  }
-  return avg(trs)
-}
-
 const bandsAt=(closes:number[],endExclusive:number,period=20,mult=2)=>{
   const slice=closes.slice(endExclusive-period,endExclusive)
   if(slice.length<period)return null
@@ -77,12 +67,11 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
   const latestBands=bandsAt(closes,closes.length,config.bbPeriod,config.bbStdDev)
   const prevBands=bandsAt(closes,closes.length-1,config.bbPeriod,config.bbStdDev)
   const latestRsi=rsi(closes,config.rsiPeriod)
-  const latestAtr=atr(candles,config.atrPeriod)
   const product:any=await getProduct(productId)
   const livePrice=Number(product?.price||latest.close)
   const position=botPosition(productId)
 
-  if(!latestBands||!prevBands||latestRsi==null||latestAtr==null){
+  if(!latestBands||!prevBands||latestRsi==null){
     return {action:'NONE',reason:'Indicators unavailable',productId}
   }
 
@@ -92,16 +81,12 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
 
   const oversold=latestRsi<config.rsiOversold
 
-  let stopFixed:number|null=null
-  let stopAtr:number|null=null
   let stopPrice:number|null=null
   let takeProfitPrice:number|null=null
   let exitReason:string|null=null
 
   if(position.qty>0&&position.avgEntryPrice>0){
-    stopFixed=position.avgEntryPrice*(1-config.fixedStopLossPercent/100)
-    stopAtr=position.avgEntryPrice-(config.atrStopMultiplier*latestAtr)
-    stopPrice=Math.max(stopFixed,stopAtr)
+    stopPrice=position.avgEntryPrice*(1-config.fixedStopLossPercent/100)
     takeProfitPrice=latestBands.middle
 
     if(livePrice>=takeProfitPrice)exitReason='MIDDLE_BAND_TAKE_PROFIT'
@@ -133,9 +118,13 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
       previousLower:prevBands.lower
     },
     rsi:{period:config.rsiPeriod,value:latestRsi,threshold:config.rsiOversold},
-    atr:{period:config.atrPeriod,value:latestAtr,multiplier:config.atrStopMultiplier},
     entry:{crossedBelowLower,oversold},
     position,
-    exits:{takeProfitPrice,stopFixed,stopAtr,stopPrice,exitReason}
+    exits:{
+      takeProfitPrice,
+      stopLossPercent:config.fixedStopLossPercent,
+      stopPrice,
+      exitReason
+    }
   }
 }
