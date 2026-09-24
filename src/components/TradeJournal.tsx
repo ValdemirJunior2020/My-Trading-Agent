@@ -69,17 +69,28 @@ export function TradeJournal({language}:Props){
   const [events,setEvents]=useState<any[]>([])
   const [loading,setLoading]=useState(true)
   const [refreshing,setRefreshing]=useState(false)
+  const [refreshNotice,setRefreshNotice]=useState('')
   const [clearing,setClearing]=useState(false)
   const [lastUpdated,setLastUpdated]=useState<Date|null>(null)
   const [filter,setFilter]=useState<JournalFilter>('ALL')
   const pt=language==='pt'
 
   const load=async(manual=false)=>{
-    if(manual)setRefreshing(true)
+    if(manual){
+      setRefreshing(true)
+      setRefreshNotice('')
+    }
     try{
       const result=await api.getLiveHistory(300)
-      setEvents(result.events||[])
+      const nextEvents=result.events||[]
+      setEvents(nextEvents)
       setLastUpdated(new Date())
+      if(manual){
+        setRefreshNotice(pt
+          ? `✓ Atualizado agora • ${nextEvents.length} registros`
+          : `✓ Updated now • ${nextEvents.length} records`)
+        window.setTimeout(()=>setRefreshNotice(''),2200)
+      }
     }finally{
       setLoading(false)
       setRefreshing(false)
@@ -128,8 +139,23 @@ export function TradeJournal({language}:Props){
           <p>{pt?'Cada linha mostra claramente o que os agentes decidiram e se uma ordem real chegou ao Coinbase.':'Each row clearly shows what the agents decided and whether a real order reached Coinbase.'}</p>
         </div>
         <div className="journal-actions">
-          <div className="journal-updated">{lastUpdated?(pt?'Atualizado ':'Updated ')+lastUpdated.toLocaleTimeString():''}</div>
-          <button className="journal-refresh" disabled={refreshing||clearing} onClick={()=>void load(true)}>{refreshing?(pt?'Atualizando...':'Refreshing...'):(pt?'Atualizar':'Refresh')}</button>
+          <div className="journal-updated">
+            {refreshNotice || (lastUpdated
+              ? (pt?'Atualizado ':'Updated ')+lastUpdated.toLocaleTimeString()+' • '+events.length+(pt?' registros':' records')
+              : '')}
+          </div>
+          <button
+            className="journal-refresh"
+            disabled={refreshing||clearing}
+            onClick={()=>void load(true)}
+            title={pt?'Buscar o histórico mais recente agora':'Fetch the newest trading history now'}
+          >
+            {refreshing
+              ? (pt?'↻ Atualizando...':'↻ Refreshing...')
+              : refreshNotice
+                ? (pt?'✓ Atualizado':'✓ Updated')
+                : (pt?'↻ Atualizar agora':'↻ Refresh now')}
+          </button>
           <button className="journal-clear" disabled={refreshing||clearing} onClick={()=>void clearHistory()}>{clearing?(pt?'Limpando...':'Clearing...'):(pt?'Limpar histórico':'Clear History')}</button>
         </div>
       </div>
