@@ -1,5 +1,5 @@
 import { config } from './config.js'
-import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince } from './db.js'
+import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { publish } from './events.js'
@@ -43,7 +43,31 @@ export const saveRuntimeRiskLimits = (input: Partial<RuntimeRiskLimits>) => {
 }
 
 export const emergencyStopActive = () => getSetting('emergency_stop', 'false') === 'true'
+export const rollingRiskPauseActive = () => getSetting('rolling_risk_pause', 'false') === 'true'
 
+export const getRollingRiskState=()=>{
+  const raw=getSetting('rolling_risk_last_state','')
+  if(!raw)return {paused:rollingRiskPauseActive(),drawdownPercent:0,limitPercent:config.rollingKillSwitchPercent,rollingWindowHours:24}
+  try{return JSON.parse(raw)}catch{return {paused:rollingRiskPauseActive(),drawdownPercent:0,limitPercent:config.rollingKillSwitchPercent,rollingWindowHours:24}}
+}
+
+const migrateLegacyRollingEmergencyStop=()=>{
+  if(!emergencyStopActive())return
+  if(getSetting('rolling_pause_migration_done','false')==='true')return
+
+  const relevant=recentEvents(120).find((event:any)=>
+    ['rolling_kill_switch_triggered','emergency_stop_activated','emergency_stop_cleared'].includes(String(event.type))
+  )
+
+  if(relevant?.type==='rolling_kill_switch_triggered'){
+    setSetting('emergency_stop','false')
+    setSetting('rolling_risk_pause','true')
+    setSetting('rolling_pause_migration_done','true')
+    publish('legacy_rolling_stop_migrated',{
+      message:'Converted old rolling kill-switch emergency stop into AUTO SAFE PAUSE so protective SELL exits remain available.'
+    },'risk')
+  }
+}
 
 let lastRollingEquitySnapshotAt=0
 
@@ -66,43 +90,88 @@ export const checkRollingEquityKillSwitch=async(currentPortfolioUsd:number)=>{
   const drawdownPercent=peakEquityUsd>0
     ? Math.max(0,((peakEquityUsd-equity)/peakEquityUsd)*100)
     : 0
-  const blocked=drawdownPercent>=config.rollingKillSwitchPercent
+  migrateLegacyRollingEmergencyStop()
 
+  const thresholdBreached=drawdownPercent>=config.rollingKillSwitchPercent
+  let paused=rollingRiskPauseActive()
+  const recoveryStableMs=30*60*1000
   let canceledOrderIds:string[]=[]
-  if(blocked){
-    setSetting('emergency_stop','true')
-    try{
-      const openOrders=await listOpenOrders()
-      const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
-      if(ids.length){
-        await cancelOrders(ids)
-        canceledOrderIds=ids
+
+  if(thresholdBreached){
+    const wasPaused=paused
+    paused=true
+    setSetting('rolling_risk_pause','true')
+    setSetting('rolling_risk_recovery_since','')
+
+    if(!wasPaused){
+      setSetting('rolling_risk_pause_started_at',new Date(now).toISOString())
+      try{
+        const openOrders=await listOpenOrders()
+        const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
+        if(ids.length){
+          await cancelOrders(ids)
+          canceledOrderIds=ids
+        }
+      }catch(error){
+        publish('rolling_kill_switch_cancel_failed',{
+          error:error instanceof Error?error.message:String(error)
+        },'risk')
       }
-    }catch(error){
-      publish('rolling_kill_switch_cancel_failed',{
-        error:error instanceof Error?error.message:String(error)
+
+      publish('rolling_kill_switch_triggered',{
+        mode:'AUTO_SAFE_PAUSE',
+        currentEquityUsd:equity,
+        peakEquityUsd,
+        drawdownPercent,
+        limitPercent:config.rollingKillSwitchPercent,
+        rollingWindowHours:24,
+        canceledOrderIds,
+        entryBehavior:'NEW_BUYS_BLOCKED',
+        exitBehavior:'PROTECTIVE_SELLS_ALLOWED'
       },'risk')
     }
-    publish('rolling_kill_switch_triggered',{
-      currentEquityUsd:equity,
-      peakEquityUsd,
-      drawdownPercent,
-      limitPercent:config.rollingKillSwitchPercent,
-      rollingWindowHours:24,
-      canceledOrderIds
-    },'risk')
+  }else if(paused){
+    let recoverySince=Number(getSetting('rolling_risk_recovery_since','0'))||0
+    if(!recoverySince){
+      recoverySince=now
+      setSetting('rolling_risk_recovery_since',String(recoverySince))
+      publish('rolling_safe_recovery_started',{
+        drawdownPercent,
+        requiredStableMinutes:30
+      },'risk')
+    }
+
+    if(now-recoverySince>=recoveryStableMs){
+      paused=false
+      setSetting('rolling_risk_pause','false')
+      setSetting('rolling_risk_recovery_since','')
+      publish('rolling_safe_pause_cleared',{
+        drawdownPercent,
+        stableMinutes:30,
+        message:'AUTO SAFE PAUSE cleared automatically. New entries may resume.'
+      },'risk')
+    }
   }
 
-  return {
-    blocked,
+  const state={
+    blocked:paused,
+    paused,
+    thresholdBreached,
     currentEquityUsd:equity,
     peakEquityUsd:Number(peakEquityUsd.toFixed(2)),
     drawdownPercent:Number(drawdownPercent.toFixed(4)),
     limitPercent:config.rollingKillSwitchPercent,
     rollingWindowHours:24,
+    recoveryStableMinutes:30,
+    recoverySince:getSetting('rolling_risk_recovery_since','')||null,
+    pauseStartedAt:getSetting('rolling_risk_pause_started_at','')||null,
+    newBuysBlocked:paused,
+    protectiveSellsAllowed:true,
     snapshotCount:snapshots.length,
     canceledOrderIds
   }
+  setSetting('rolling_risk_last_state',JSON.stringify(state))
+  return state
 }
 
 export const evaluatePaperOrder = (order: PaperOrderRequest) => {
@@ -357,10 +426,10 @@ export const tryLimitedLiveExecution = async (opts: {
   }
 
   const rollingKillSwitch=await checkRollingEquityKillSwitch(totalPortfolioUsd)
-  if(rollingKillSwitch.blocked){
+  if(side==='BUY' && rollingKillSwitch.blocked){
     return {
       executed:false,
-      reason:'Rolling 24-hour equity kill switch is active',
+      reason:'AUTO SAFE PAUSE is active: new BUY entries are temporarily blocked while protective SELL exits remain enabled',
       rollingKillSwitch
     }
   }
