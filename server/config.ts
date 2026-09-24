@@ -39,9 +39,9 @@ export const config = {
   bbStdDev: Math.max(0.5, num(process.env.BB_STD_DEV, 2)),
   rsiPeriod: Math.max(2, Math.floor(num(process.env.RSI_PERIOD, 14))),
   rsiOversold: Math.max(1, Math.min(50, num(process.env.RSI_OVERSOLD, 30))),
-  atrPeriod: Math.max(2, Math.floor(num(process.env.ATR_PERIOD, 14))),
-  atrStopMultiplier: Math.max(0.1, num(process.env.ATR_STOP_MULTIPLIER, 1.5)),
-  fixedStopLossPercent: Math.max(0.1, Math.min(10, num(process.env.FIXED_STOP_LOSS_PERCENT, 1))),
+  fixedStopLossPercent: 0.8,
+  rollingKillSwitchPercent: 3,
+  rollingKillSwitchWindowMs: 24 * 60 * 60 * 1000,
   maxSlippagePercent: Math.max(0.01, Math.min(5, num(process.env.MAX_SLIPPAGE_PERCENT, 0.1))),
   watchlist: (process.env.WATCHLIST || 'XRP,BTC,ETH,SOL,LINK')
     .split(',')
