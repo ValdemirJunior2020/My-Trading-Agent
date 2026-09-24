@@ -40,9 +40,10 @@ const botPosition=(productId:string)=>{
     if(String(p.productId||'').toUpperCase()!==productId.toUpperCase())continue
     const side=String(p.side||'').toUpperCase()
     const preview:any=p.preview||{}
-    const price=Number(preview.est_average_filled_price||0)
-    const notional=Number(p.notionalUsd||preview.order_total||0)
-    const base=Number(preview.base_size||(price>0&&notional>0?notional/price:0))
+    const fill:any=p.fill||{}
+    const price=Number(p.actualFillPrice||fill.filledPrice||preview.est_average_filled_price||0)
+    const notional=Number(p.notionalUsd||fill.filledValue||preview.order_total||0)
+    const base=Number(p.executedQty||fill.executedQty||preview.base_size||(price>0&&notional>0?notional/price:0))
     if(!(price>0)||!(base>0))continue
     if(side==='BUY'){
       qty+=base
