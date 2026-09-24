@@ -7,6 +7,7 @@ import { saveAnalysis } from './db.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { tryLimitedLiveExecution } from './risk.js'
 import { scanCryptoMarket } from './scanner.js'
+import { evaluateBollingerRsiStrategy } from './bollingerStrategy.js'
 
 type AgentResult = { model: string; output: any }
 type PipelineOptions = { productId?: string; deepResearch?: boolean }
@@ -92,12 +93,17 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   const lows = candles.slice(-24).map((c) => c.low)
   const avgVolume = candles.slice(-24).reduce((sum, c) => sum + c.volume, 0) / Math.min(24, candles.length)
 
-  const scanSnapshot = await scanCryptoMarket([productId])
+  const [scanSnapshot, deterministicStrategy] = await Promise.all([
+    scanCryptoMarket([productId]),
+    evaluateBollingerRsiStrategy(productId)
+  ])
   const technicalSignal = scanSnapshot.results.find((row:any)=>row.productId===productId) || null
+  publish('deterministic_strategy_evaluated', deterministicStrategy, 'strategy')
 
   const marketEvidence = {
     source: 'Coinbase Advanced Trade',
     technicalSignal,
+    deterministicStrategy,
     productId,
     latestPrice: latest.close,
     change1hPercent: pct(latest.close, previous.close),
@@ -173,6 +179,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   const strategy = await agentStep('strategy', productId, {
     market: market.output,
     technicalSignal,
+    deterministicStrategy,
     vectorbt,
     nautilus,
     rdAgent
@@ -201,6 +208,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     market: market.output,
     strategy: strategy.output,
     technicalSignal,
+    deterministicStrategy,
     portfolio: portfolio.output,
     challenge,
     hardLimits: 'The deterministic server risk engine remains authoritative and cannot be overridden by the challenge or AI.'
@@ -210,6 +218,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     market: market.output,
     strategy: strategy.output,
     technicalSignal,
+    deterministicStrategy,
     sentiment: sentiment.output,
     portfolio: portfolio.output,
     risk: risk.output,
@@ -248,6 +257,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   const decision = await agentStep('decision', productId, {
     market: market.output,
     technicalSignal,
+    deterministicStrategy,
     deterministicConsensus,
     strategy: strategy.output,
     sentiment: sentiment.output,
@@ -268,48 +278,47 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     ].join(' ')
   })
 
-  let resolvedDecisionOutput = decision.output
   const rawDecision = String(decision.output?.decision || 'WAIT').toUpperCase()
+  const strategyAction = String((deterministicStrategy as any)?.action || 'NONE').toUpperCase()
 
-  if (
-    deterministicConsensus.buyEligible &&
-    !['BUY_CANDIDATE','SELL_CANDIDATE'].includes(rawDecision)
-  ) {
-    resolvedDecisionOutput = {
+  let resolvedDecisionOutput:any = {
+    ...decision.output,
+    decision:'WAIT',
+    confidence:Number(decision.output?.confidence||0),
+    summary:'AI agents completed analysis; no deterministic Bollinger/RSI/ATR trade trigger is active.',
+    aiDecision:rawDecision,
+    resolutionSource:'BOLLINGER_RSI_ATR_RULES'
+  }
+
+  if(strategyAction==='BUY'){
+    resolvedDecisionOutput={
       ...decision.output,
       decision:'BUY_CANDIDATE',
-      confidence:Math.max(Number(decision.output?.confidence||0),0.72),
-      summary:'Scanner BUY candidate confirmed by agent consensus with no risk/critic hard rejection.',
-      originalDecision:rawDecision,
-      resolutionSource:'DETERMINISTIC_CONSENSUS'
+      confidence:0.99,
+      summary:'Deterministic BUY: close crossed below the lower Bollinger Band and RSI is below the oversold threshold.',
+      aiDecision:rawDecision,
+      resolutionSource:'BOLLINGER_RSI_ATR_RULES',
+      deterministicStrategy
     }
-    publish('decision_consensus_override',{
-      productId,
-      from:rawDecision,
-      to:'BUY_CANDIDATE',
-      deterministicConsensus,
-      technicalSignal
-    },'decision')
-  } else if (
-    deterministicConsensus.sellEligible &&
-    !['BUY_CANDIDATE','SELL_CANDIDATE'].includes(rawDecision)
-  ) {
-    resolvedDecisionOutput = {
+  }else if(strategyAction==='SELL'){
+    resolvedDecisionOutput={
       ...decision.output,
       decision:'SELL_CANDIDATE',
-      confidence:Math.max(Number(decision.output?.confidence||0),0.72),
-      summary:'Scanner SELL candidate confirmed by agent consensus with no risk/critic hard rejection.',
-      originalDecision:rawDecision,
-      resolutionSource:'DETERMINISTIC_CONSENSUS'
+      confidence:0.99,
+      summary:'Deterministic SELL: automatic take-profit or stop-loss exit rule triggered.',
+      aiDecision:rawDecision,
+      resolutionSource:'BOLLINGER_RSI_ATR_RULES',
+      deterministicStrategy
     }
-    publish('decision_consensus_override',{
-      productId,
-      from:rawDecision,
-      to:'SELL_CANDIDATE',
-      deterministicConsensus,
-      technicalSignal
-    },'decision')
   }
+
+  publish('hybrid_decision_resolved',{
+    productId,
+    deterministicAction:strategyAction,
+    finalDecision:resolvedDecisionOutput.decision,
+    aiDecision:rawDecision,
+    deterministicStrategy
+  },'decision')
 
   // === LIMITED LIVE EXECUTION (Phase 2) ===
   publish('agent_started', { asset: productId, stage: 'candidate-preflight' }, 'paper')
@@ -420,6 +429,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     rawDecision: decision.output,
     deterministicConsensus,
     technicalSignal,
+    deterministicStrategy,
     paperPreflight,
     execution: executionResult,
     quantitative: { vectorbt, nautilus, rdAgent }
