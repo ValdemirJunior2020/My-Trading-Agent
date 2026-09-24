@@ -67,14 +67,26 @@ const shouldRunNow = () => {
 
 const balanceValue = (balance: any) => Number(balance?.value ?? balance ?? 0) || 0
 
-const heldProducts = async () => {
+const accountSnapshot = async () => {
   const accounts = await listAccounts()
   const held = new Map<string, number>()
+  let availableCashUsd = 0
+
   for (const account of accounts) {
     const currency = String(account.currency || '').toUpperCase()
-    if (!currency || ['USD', 'USDC', 'USDT'].includes(currency)) continue
-    const amount = balanceValue(account.availableBalance) + balanceValue(account.hold)
+    const available = balanceValue(account.availableBalance)
+    const hold = balanceValue(account.hold)
+
+    if (currency === 'USD' || currency === 'USDC') {
+      availableCashUsd += available
+      continue
+    }
+
+    if (!currency || currency === 'USDT') continue
+
+    const amount = available + hold
     if (!(amount > 0)) continue
+
     const productId = currency + '-USD'
     try {
       const product: any = await getProduct(productId)
@@ -83,13 +95,15 @@ const heldProducts = async () => {
       if (Number.isFinite(usdValue) && usdValue > 0) held.set(productId, usdValue)
     } catch {}
   }
-  return held
+
+  return { held, availableCashUsd }
 }
 
 const chooseAutoProduct = async () => {
   const scan = await scanCryptoMarket()
-  const held = await heldProducts()
+  const { held, availableCashUsd } = await accountSnapshot()
   const lastProduct = lastSelectedProduct()
+  const hasUsableCash = availableCashUsd >= Math.max(config.minLiveOrderUsd, 1)
 
   // A held sell-risk still gets priority, but it must be a material holding and
   // it cannot bypass rotation/cooldown anymore.
@@ -106,48 +120,64 @@ const chooseAutoProduct = async () => {
       scan,
       reason: 'HELD_SELL_CANDIDATE_ROTATED',
       heldUsd: Number(held.get(heldSell.productId) || 0),
+      availableCashUsd,
       previousProductId: lastProduct || null
     }
   }
 
-  // XRP is the primary focus asset whenever it is due for a fresh analysis.
-  const xrp = scan.results.find((row: any) => row.productId === 'XRP-USD')
-  if (xrp && selectable('XRP-USD')) {
-    return {
-      productId: 'XRP-USD',
-      scan,
-      reason: 'XRP_FOCUS_ROTATION',
-      heldUsd: Number(held.get('XRP-USD') || 0),
-      previousProductId: lastProduct || null
-    }
-  }
-
-  // Analyze the strongest fresh buy candidate next.
+  // When spendable USD is available, analyze the strongest fresh BUY candidate first.
   const freshBuy = [...scan.results]
-    .filter((row: any) => row.buyCandidate && selectable(row.productId))
+    .filter((row: any) =>
+      hasUsableCash &&
+      row.buyCandidate &&
+      selectable(row.productId)
+    )
     .sort((a: any, b: any) => b.buyScore - a.buyScore)[0]
+
   if (freshBuy) {
     return {
       productId: freshBuy.productId,
       scan,
-      reason: 'FRESH_BUY_CANDIDATE',
+      reason: 'CASH_READY_BUY_CANDIDATE',
       heldUsd: Number(held.get(freshBuy.productId) || 0),
+      availableCashUsd,
       previousProductId: lastProduct || null
     }
   }
 
-  // Otherwise rotate through the strongest fresh liquid market setup.
+  // Only keep XRP as a focus asset when there is still a material XRP holding.
+  const xrpHeldUsd = Number(held.get('XRP-USD') || 0)
+  const xrp = scan.results.find((row: any) => row.productId === 'XRP-USD')
+  if (xrp && xrpHeldUsd >= 5 && selectable('XRP-USD')) {
+    return {
+      productId: 'XRP-USD',
+      scan,
+      reason: 'XRP_HELD_FOCUS_ROTATION',
+      heldUsd: xrpHeldUsd,
+      availableCashUsd,
+      previousProductId: lastProduct || null
+    }
+  }
+
+  // Otherwise rotate through the strongest fresh setup. With cash available,
+  // prefer long-side strength and skip unheld sell-only setups.
   const freshMarket = [...scan.results]
-    .filter((row: any) => selectable(row.productId))
+    .filter((row: any) =>
+      selectable(row.productId) &&
+      (!hasUsableCash || !row.sellCandidate || Number(held.get(row.productId) || 0) >= 5)
+    )
     .sort((a: any, b: any) =>
-      Math.max(b.buyScore || 0, b.sellScore || 0) - Math.max(a.buyScore || 0, a.sellScore || 0)
+      hasUsableCash
+        ? Number(b.buyScore || 0) - Number(a.buyScore || 0)
+        : Math.max(b.buyScore || 0, b.sellScore || 0) - Math.max(a.buyScore || 0, a.sellScore || 0)
     )[0]
   if (freshMarket) {
     return {
       productId: freshMarket.productId,
       scan,
-      reason: 'MARKET_ROTATION',
+      reason: hasUsableCash ? 'CASH_READY_MARKET_ROTATION' : 'MARKET_ROTATION',
       heldUsd: Number(held.get(freshMarket.productId) || 0),
+      availableCashUsd,
       previousProductId: lastProduct || null
     }
   }
@@ -165,6 +195,7 @@ const chooseAutoProduct = async () => {
       scan,
       reason: 'COOLDOWN_EXHAUSTED_OLDEST',
       heldUsd: Number(held.get(oldest.productId) || 0),
+      availableCashUsd,
       previousProductId: lastProduct || null
     }
   }
@@ -175,6 +206,7 @@ const chooseAutoProduct = async () => {
     scan,
     reason: 'WATCHLIST_FALLBACK',
     heldUsd: Number(held.get(fallback) || 0),
+    availableCashUsd,
     previousProductId: lastProduct || null
   }
 }
@@ -206,7 +238,7 @@ const tick = async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     publish('crypto_scanner_failed', { error: message }, 'strategy')
-    selection = { productId: config.watchlist[0] || 'XRP-USD', scan: null as any, reason: 'SCAN_FAILED_FALLBACK', heldUsd: 0, previousProductId: lastSelectedProduct() || null }
+    selection = { productId: config.watchlist[0] || 'XRP-USD', scan: null as any, reason: 'SCAN_FAILED_FALLBACK', heldUsd: 0, availableCashUsd: 0, previousProductId: lastSelectedProduct() || null }
   }
 
   lastAttemptAt = Date.now()
@@ -218,7 +250,8 @@ const tick = async () => {
     productId: selection.productId,
     selectionReason: selection.reason,
     previousProductId: selection.previousProductId || null,
-    heldUsd: selection.heldUsd || 0
+    heldUsd: selection.heldUsd || 0,
+    availableCashUsd: selection.availableCashUsd || 0
   }, 'manager')
 
   void runFullAgentPipeline({
