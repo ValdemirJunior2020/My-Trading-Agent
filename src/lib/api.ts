@@ -16,7 +16,23 @@ export interface SystemStatus {
   coinbase:{configured:boolean}
   engines:{available?:boolean;vectorbt?:{installed?:boolean;version?:string};nautilusTrader?:{installed?:boolean;version?:string};rdAgent?:{installed?:boolean;transport?:string};python?:string|null}
   autoAgents:{enabled:boolean;intervalSeconds:number;deepResearch:boolean}
-  safety:{emergencyStop:boolean;mode:string;liveTradingEnabled:boolean;automaticTradingEnabled:boolean;manualApprovalRequired:boolean}
+  meanReversion?:{running?:boolean;halted?:boolean;safePause?:boolean;connected?:boolean;products?:string[];monitoredProducts?:number}
+  safety:{
+    emergencyStop:boolean
+    rollingRisk?:{
+      paused?:boolean
+      drawdownPercent?:number
+      limitPercent?:number
+      rollingWindowHours?:number
+      recoveryStableMinutes?:number
+      recoverySince?:string|null
+      protectiveSellsAllowed?:boolean
+    }
+    mode:string
+    liveTradingEnabled:boolean
+    automaticTradingEnabled:boolean
+    manualApprovalRequired:boolean
+  }
 }
 const base=(import.meta.env.VITE_API_BASE_URL||'').replace(/\/$/,'')
 const request=async<T>(path:string,init?:RequestInit):Promise<T>=>{
