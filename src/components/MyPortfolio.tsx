@@ -20,12 +20,14 @@ export function MyPortfolio({language}:Props){
   const [data,setData]=useState<any|null>(null)
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
+  const [lastUpdated,setLastUpdated]=useState<Date|null>(null)
   const pt=language==='pt'
 
   const load=async()=>{
     setLoading(true)
     try{
       setData(await api.getPortfolioAllocation())
+      setLastUpdated(new Date())
       setError('')
     }catch(e){
       setError(e instanceof Error?e.message:String(e))
@@ -48,10 +50,13 @@ export function MyPortfolio({language}:Props){
           <h1>{pt?'Meu Portfólio':'My Portfolio'}</h1>
           <p>{pt?'Veja onde seu dinheiro está investido agora na Coinbase.':'See where your money is currently held in Coinbase.'}</p>
         </div>
-        <button className="portfolio-refresh" onClick={()=>void load()}>{pt?'Atualizar':'Refresh'}</button>
+        <button className="portfolio-refresh" disabled={loading} onClick={()=>void load()}>
+          {loading?(pt?'Atualizando...':'Refreshing...'):(pt?'Atualizar':'Refresh')}
+        </button>
       </div>
 
       {error?<div className="portfolio-error">{error}</div>:null}
+      {!error&&lastUpdated?<div className="portfolio-note">{(pt?'Atualizado ':'Updated ')+lastUpdated.toLocaleTimeString()}</div>:null}
 
       <div className="portfolio-summary">
         <div><small>{pt?'Total Coinbase':'Coinbase total'}</small><strong>{loading&&!data?'—':usd(data?.totalUsd)}</strong></div>
