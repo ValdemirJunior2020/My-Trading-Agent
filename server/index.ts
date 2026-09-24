@@ -5,7 +5,7 @@ import { config,coinbaseConfigured,coinbaseCredentialShape } from './config.js'
 import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liveTradeHistory,clearLiveTradeHistory } from './db.js'
 import { attachEventStream,publish } from './events.js'
 import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner,type CopilotActionPlan } from './ollama.js'
-import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts } from './coinbase.js'
+import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts,listSpotUsdProducts } from './coinbase.js'
 import { emergencyStopActive,evaluateLiveOrder,evaluatePaperOrder,getDailyEquityGuard,getRuntimeRiskLimits,saveRuntimeRiskLimits,getRollingRiskState,type PaperOrderRequest } from './risk.js'
 import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from './quant.js'
 import { getPipelineStatus,runFullAgentPipeline } from './pipeline.js'
@@ -205,28 +205,44 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/coinbase/accounts'&&req.method==='GET'){if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'});return json(res,200,{accounts:await listAccounts()})}
   if(path==='/api/coinbase/portfolio-allocation'&&req.method==='GET'){
     if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'})
-    const accounts=await listAccounts()
+
+    // Fetch balances plus one Coinbase SPOT product snapshot instead of making
+    // one price request per holding. This keeps the portfolio page responsive
+    // and avoids flooding the shared Coinbase request queue.
+    const [accounts,products]=await Promise.all([
+      listAccounts(),
+      listSpotUsdProducts(500)
+    ])
+
+    const priceByProduct=new Map(
+      products.map((product:any)=>[String(product.productId||'').toUpperCase(),Number(product.price||0)])
+    )
     const balanceValue=(balance:any)=>Number(balance?.value??balance??0)||0
     const cashCurrencies=new Set(['USD','USDC'])
     const rows:any[]=[]
+
     for(const account of accounts){
       const currency=String(account.currency||'').toUpperCase()
       const available=balanceValue(account.availableBalance)
       const hold=balanceValue(account.hold)
       const units=available+hold
       if(!currency||!(units>0))continue
+
       if(cashCurrencies.has(currency)){
         rows.push({currency,productId:null,units,available,hold,priceUsd:1,valueUsd:units,type:'cash'})
         continue
       }
-      try{
-        const product:any=await getProduct(currency+'-USD')
-        const priceUsd=Number(product?.price||0)
-        if(priceUsd>0) rows.push({currency,productId:currency+'-USD',units,available,hold,priceUsd,valueUsd:units*priceUsd,type:'crypto'})
-      }catch{}
+
+      const productId=currency+'-USD'
+      const priceUsd=Number(priceByProduct.get(productId)||0)
+      if(priceUsd>0){
+        rows.push({currency,productId,units,available,hold,priceUsd,valueUsd:units*priceUsd,type:'crypto'})
+      }
     }
+
     const totalUsd=rows.reduce((sum,row)=>sum+Number(row.valueUsd||0),0)
     rows.sort((a,b)=>b.valueUsd-a.valueUsd)
+
     return json(res,200,{
       totalUsd:Number(totalUsd.toFixed(2)),
       cashUsd:Number(rows.filter(r=>r.type==='cash').reduce((sum,r)=>sum+r.valueUsd,0).toFixed(2)),
