@@ -410,12 +410,40 @@ export const tryLimitedLiveExecution = async (opts: {
       return { executed: false, reason, preflight, preview }
     }
 
+    const estimatedFillPrice = Number(preview.est_average_filled_price || 0)
+    const adverseSlippagePercent =
+      estimatedFillPrice > 0 && price > 0
+        ? side === 'BUY'
+          ? Math.max(0, ((estimatedFillPrice - price) / price) * 100)
+          : Math.max(0, ((price - estimatedFillPrice) / price) * 100)
+        : 0
+
+    if (adverseSlippagePercent > config.maxSlippagePercent) {
+      const reason =
+        'Preview slippage ' + adverseSlippagePercent.toFixed(3) +
+        '% exceeds max ' + config.maxSlippagePercent.toFixed(3) + '%'
+      publish('live_order_preview_rejected', {
+        productId,
+        side,
+        notionalUsd,
+        preview,
+        referencePrice: price,
+        estimatedFillPrice,
+        adverseSlippagePercent,
+        maxSlippagePercent: config.maxSlippagePercent,
+        reason
+      }, 'risk')
+      return { executed: false, reason, preflight, preview, adverseSlippagePercent }
+    }
+
     publish('live_order_preview_approved', {
       productId,
       side,
       notionalUsd,
       commissionTotal: preview.commission_total || null,
       estimatedFillPrice: preview.est_average_filled_price || null,
+      adverseSlippagePercent,
+      maxSlippagePercent: config.maxSlippagePercent,
       warnings: preview.warning || []
     }, 'execution')
 
