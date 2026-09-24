@@ -19,14 +19,13 @@ export function LiveTrading({ language }: Props) {
   const load = async () => {
     setLoading(true)
     try {
-      const [ready, pipe, scan] = await Promise.all([
+      // Readiness is safety-critical, so load it before the heavy market scanner.
+      const [ready, pipe] = await Promise.all([
         api.getLiveReadiness(),
-        api.getPipelineStatus(),
-        api.getScanner()
+        api.getPipelineStatus()
       ])
       setReadiness({ ...ready, transientError: null })
       setPipeline(pipe)
-      setScanner(scan)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setReadiness((previous:any) => previous
@@ -37,10 +36,31 @@ export function LiveTrading({ language }: Props) {
     }
   }
 
+  const loadScanner = async () => {
+    try {
+      setScanner(await api.getScanner())
+    } catch {
+      // Keep the last good scanner snapshot; readiness should not be blocked by scanner traffic.
+    }
+  }
+
   useEffect(() => {
-    void load()
-    const id = setInterval(() => void load(), 5000)
-    return () => clearInterval(id)
+    let cancelled = false
+
+    const initial = async () => {
+      await load()
+      if (!cancelled) void loadScanner()
+    }
+
+    void initial()
+    const readinessId = setInterval(() => void load(), 5000)
+    const scannerId = setInterval(() => void loadScanner(), 30000)
+
+    return () => {
+      cancelled = true
+      clearInterval(readinessId)
+      clearInterval(scannerId)
+    }
   }, [])
 
   const candidate = String(pipeline?.decision || 'WAIT')
