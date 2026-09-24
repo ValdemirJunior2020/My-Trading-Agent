@@ -192,3 +192,66 @@ export const listSpotUsdProducts=async(limit=250)=>{
     }))
     .filter((p:any)=>p.productId&&Number.isFinite(p.price)&&p.price>0)
 }
+
+
+export const getOrder=async(orderId:string)=>{
+  const data=await request('GET',`/api/v3/brokerage/orders/historical/${encodeURIComponent(orderId)}`) as {order?:any}
+  return data.order||null
+}
+
+export const waitForOrderFill=async(orderId:string,timeoutMs=10000)=>{
+  const deadline=Date.now()+Math.max(1000,timeoutMs)
+  let last:any=null
+  while(Date.now()<deadline){
+    last=await getOrder(orderId)
+    const averageFilledPrice=Number(last?.average_filled_price||0)
+    const filledSize=Number(last?.filled_size||0)
+    const completion=Number(last?.completion_percentage||0)
+    const settled=Boolean(last?.settled)
+    if(averageFilledPrice>0&&filledSize>0&&(settled||completion>=100)){
+      return {
+        orderId,
+        productId:String(last?.product_id||''),
+        side:String(last?.side||'').toUpperCase(),
+        filledPrice:averageFilledPrice,
+        executedQty:filledSize,
+        filledValue:Number(last?.filled_value||0),
+        totalFees:Number(last?.total_fees||0),
+        settled,
+        status:String(last?.status||''),
+        timestamp:Date.now(),
+        raw:last
+      }
+    }
+    await new Promise(resolve=>setTimeout(resolve,350))
+  }
+  const averageFilledPrice=Number(last?.average_filled_price||0)
+  const filledSize=Number(last?.filled_size||0)
+  if(averageFilledPrice>0&&filledSize>0){
+    return {
+      orderId,
+      productId:String(last?.product_id||''),
+      side:String(last?.side||'').toUpperCase(),
+      filledPrice:averageFilledPrice,
+      executedQty:filledSize,
+      filledValue:Number(last?.filled_value||0),
+      totalFees:Number(last?.total_fees||0),
+      settled:Boolean(last?.settled),
+      status:String(last?.status||''),
+      timestamp:Date.now(),
+      raw:last
+    }
+  }
+  throw new Error('Coinbase order was accepted but an actual fill price was not available before timeout.')
+}
+
+export const listOpenOrders=async()=>{
+  const data=await request('GET','/api/v3/brokerage/orders/historical/batch?order_status=OPEN&limit=250') as {orders?:Array<any>}
+  return data.orders||[]
+}
+
+export const cancelOrders=async(orderIds:string[])=>{
+  const ids=[...new Set(orderIds.map(String).filter(Boolean))]
+  if(!ids.length)return {results:[]}
+  return request('POST','/api/v3/brokerage/orders/batch_cancel',{order_ids:ids}) as Promise<any>
+}
