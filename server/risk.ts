@@ -334,8 +334,8 @@ export const tryLimitedLiveExecution = async (opts: {
   const side = opts.decision === 'BUY_CANDIDATE' ? 'BUY' : 'SELL'
   const productId = opts.productId.toUpperCase()
   const cooldown = cooldownRemainingSeconds(productId)
-  if (cooldown > 0) {
-    return { executed: false, reason: 'Live-trade cooldown is active', cooldownRemainingSeconds: cooldown }
+  if (side === 'BUY' && cooldown > 0) {
+    return { executed: false, reason: 'Live-trade cooldown is active for new BUY entries', cooldownRemainingSeconds: cooldown }
   }
 
   const [accounts, portfolio, product] = await Promise.all([
