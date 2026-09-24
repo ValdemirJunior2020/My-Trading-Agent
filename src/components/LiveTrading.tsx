@@ -63,7 +63,7 @@ export function LiveTrading({ language }: Props) {
     ? 'BLOCKED'
     : autoSafePause
       ? 'AUTO SAFE PAUSE'
-    : pipelineRunning
+      : pipelineRunning
       ? 'ANALYZING ' + pipelineProduct + ' — WAIT FOR FINAL DECISION'
       : candidate === 'BUY_CANDIDATE'
         ? 'BUY NOW'
@@ -232,14 +232,14 @@ export function LiveTrading({ language }: Props) {
           <small>{pt ? 'O que fazer agora' : 'What to do now'}</small>
           <strong>{plainSignal}</strong>
           <p>
-            {pipelineRunning && !hardBlocked && !autoSafePause
+            {pipelineRunning && !hardBlocked
               ? (pt
                   ? 'Os agentes ainda estão analisando ' + pipelineProduct + '. Aguarde a decisão final.'
                   : 'The agents are still analyzing ' + pipelineProduct + '. Wait for the final decision.')
               : plainSignal === 'BLOCKED'
                 ? (pt ? 'O Emergency Stop manual está bloqueando ordens reais.' : 'The manual Emergency Stop is blocking real orders.')
                 : plainSignal === 'AUTO SAFE PAUSE'
-                  ? (pt ? 'Novas compras estão pausadas automaticamente; vendas de proteção continuam ativas e o bot volta sozinho quando estiver seguro.' : 'New buys are automatically paused; protective sells remain active and the bot resumes itself when safe.')
+                  ? (pt ? 'Novas compras estão pausadas automaticamente; vendas protetoras continuam ativas e o bot volta sozinho quando estiver seguro.' : 'New buys are automatically paused; protective sells remain active and the bot resumes itself when safe.')
                 : plainSignal === 'BUY NOW'
                   ? (pt ? 'Os agentes encontraram um candidato de compra.' : 'The agents found a buy candidate.')
                   : plainSignal === 'SELL NOW'
@@ -320,7 +320,7 @@ export function LiveTrading({ language }: Props) {
                 <strong>{side + ' ' + pipelineProduct + ' • $' + guidedAmount.toFixed(2)}</strong>
                 <p>{pt ? 'Esse valor fica dentro do seu limite atual por posição.' : 'This amount stays within your current per-position limit.'}</p>
               </div>
-              <button className="preflight-btn" onClick={() => void runGuidedPreflight()} disabled={busy || loading || !readiness?.readyForLive}>
+              <button className="preflight-btn" onClick={() => void runGuidedPreflight()} disabled={busy || loading || !readiness?.readyForLive || autoSafePause}>
                 {busy ? (pt ? 'VALIDANDO...' : 'CHECKING...') : (pt ? 'VALIDAR ORDEM' : 'CHECK TRADE')}
               </button>
             </>
@@ -353,11 +353,15 @@ export function LiveTrading({ language }: Props) {
         <div className="live-warning">
           <strong>{pt ? 'Importante' : 'Important'}</strong>
           <span>
-            {readiness?.readyForAutoLive
+            {autoSafePause
               ? (pt
+                  ? 'AUTO SAFE PAUSE está ativo. Novas compras estão pausadas automaticamente; stop-loss e take-profit continuam ativos.'
+                  : 'AUTO SAFE PAUSE is active. New buys are paused automatically; stop-loss and take-profit remain active.')
+              : readiness?.readyForAutoLive
+                ? (pt
                   ? 'AUTO LIVE está habilitado. Ordens candidatas ainda passam pelos limites de risco, preview da Coinbase, limite de confiança e cooldown antes de serem enviadas.'
                   : 'AUTO LIVE is enabled. Candidate orders still pass risk limits, Coinbase preview, the confidence threshold, and cooldown before submission.')
-              : (pt
+                : (pt
                   ? 'O modo live está disponível, mas a execução automática não está ativa.'
                   : 'Live mode is available, but automatic execution is not active.')}
           </span>
@@ -436,7 +440,7 @@ export function LiveTrading({ language }: Props) {
           <small>{pt ? 'O que fazer agora' : 'What to do now'}</small>
           <strong>{plainSignal}</strong>
           <p>
-            {pipelineRunning && !hardBlocked && !autoSafePause
+            {pipelineRunning && !hardBlocked
               ? (pt
                   ? 'Os agentes ainda estão analisando ' + pipelineProduct + '. Aguarde a decisão final.'
                   : 'The agents are still analyzing ' + pipelineProduct + '. Wait for the final decision.')
@@ -581,11 +585,9 @@ export function LiveTrading({ language }: Props) {
             <small>
               {autoSafePause
                 ? (pt
-                    ? 'AUTO SAFE PAUSE: novas compras estão pausadas. Stop-loss e take-profit continuam ativos. O bot volta sozinho após 30 minutos estáveis abaixo do limite.'
-                    : 'AUTO SAFE PAUSE: new buys are paused. Stop-loss and take-profit remain active. The bot resumes automatically after 30 stable minutes below the limit.')
-                : (pt
-                    ? 'Proteção automática monitorando continuamente.'
-                    : 'Automatic protection is continuously monitoring.')}
+                    ? 'AUTO SAFE PAUSE: novas compras pausadas; stop-loss e take-profit continuam ativos. O bot volta sozinho após 30 minutos estáveis abaixo do limite.'
+                    : 'AUTO SAFE PAUSE: new buys are paused; stop-loss and take-profit remain active. The bot resumes automatically after 30 stable minutes below the limit.')
+                : (pt ? 'Proteção automática monitorando continuamente.' : 'Automatic protection is continuously monitoring.')}
             </small>
           </div>
         ) : null}
@@ -658,7 +660,7 @@ export function LiveTrading({ language }: Props) {
           <small>{pt ? 'O que fazer agora' : 'What to do now'}</small>
           <strong>{plainSignal}</strong>
           <p>
-            {pipelineRunning && !hardBlocked && !autoSafePause
+            {pipelineRunning && !hardBlocked
               ? (pt
                   ? 'Os agentes ainda estão analisando ' + pipelineProduct + '. Aguarde a decisão final.'
                   : 'The agents are still analyzing ' + pipelineProduct + '. Wait for the final decision.')
