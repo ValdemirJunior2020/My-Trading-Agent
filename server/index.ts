@@ -6,7 +6,7 @@ import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liv
 import { attachEventStream,publish } from './events.js'
 import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner,type CopilotActionPlan } from './ollama.js'
 import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts } from './coinbase.js'
-import { emergencyStopActive,evaluateLiveOrder,evaluatePaperOrder,getDailyEquityGuard,getRuntimeRiskLimits,saveRuntimeRiskLimits,type PaperOrderRequest } from './risk.js'
+import { emergencyStopActive,evaluateLiveOrder,evaluatePaperOrder,getDailyEquityGuard,getRuntimeRiskLimits,saveRuntimeRiskLimits,getRollingRiskState,type PaperOrderRequest } from './risk.js'
 import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from './quant.js'
 import { getPipelineStatus,runFullAgentPipeline } from './pipeline.js'
 import { getChallengeSnapshot,getTradingChallenge,saveTradingChallenge } from './challenge.js'
@@ -45,7 +45,7 @@ const serveStatic=(pathname:string,res:ServerResponse)=>{
   return true
 }
 
-const statusPayload=async()=>{const [ollama,engines]=await Promise.all([getOllamaStatus(),quantStatus()]);return {server:{online:true,version:'0.6.0',startedAt},ollama,coinbase:{configured:coinbaseConfigured()},engines,autoAgents:getAutoRunSettings(),meanReversion:getMeanReversionEngineStatus(),safety:{emergencyStop:emergencyStopActive(),mode:config.tradingMode,liveTradingEnabled:config.liveTradingEnabled,automaticTradingEnabled:config.autoTradingEnabled,manualApprovalRequired:config.manualApprovalRequired}}}
+const statusPayload=async()=>{const [ollama,engines]=await Promise.all([getOllamaStatus(),quantStatus()]);return {server:{online:true,version:'0.6.1',startedAt},ollama,coinbase:{configured:coinbaseConfigured()},engines,autoAgents:getAutoRunSettings(),meanReversion:getMeanReversionEngineStatus(),safety:{emergencyStop:emergencyStopActive(),rollingRisk:getRollingRiskState(),mode:config.tradingMode,liveTradingEnabled:config.liveTradingEnabled,automaticTradingEnabled:config.autoTradingEnabled,manualApprovalRequired:config.manualApprovalRequired}}}
 
 const server=createServer(async(req,res)=>{
  try{
@@ -150,21 +150,27 @@ const server=createServer(async(req,res)=>{
     const [accounts,portfolio]=await Promise.all([listAccounts(),getChallengeSnapshot()])
     const totalPortfolioUsd=Number(portfolio.currentPortfolioUsd||0)
     const daily=totalPortfolioUsd>0?getDailyEquityGuard(totalPortfolioUsd):null
+    const rollingRisk=getRollingRiskState()
+    const hardStopped=emergencyStopActive()
+    const entryPaused=Boolean(rollingRisk?.paused)
     return json(res,200,{
       ok:true,
       configured:true,
       liveTradingEnabled:config.liveTradingEnabled,
       automaticTradingEnabled:config.autoTradingEnabled,
       manualApprovalRequired:config.manualApprovalRequired,
-      emergencyStop:emergencyStopActive(),
+      emergencyStop:hardStopped,
+      autoSafePause:entryPaused,
+      rollingRiskGuard:rollingRisk,
       currentPortfolioUsd:totalPortfolioUsd,
       accountCount:accounts.length,
       dailyLossGuard:daily,
       riskLimits:getRuntimeRiskLimits(),
       liveOrderLimits:{maxLiveOrderUsd:config.maxLiveOrderUsd,minLiveOrderUsd:config.minLiveOrderUsd,cooldownSeconds:config.autoTradeCooldownSeconds,minConfidencePercent:config.autoTradeMinConfidencePercent},
-      readyForLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!emergencyStopActive()&&totalPortfolioUsd>0&&!(daily?.blocked)),
-      readyForAutoLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&config.autoTradingEnabled&&!emergencyStopActive()&&totalPortfolioUsd>0&&!(daily?.blocked)),
-      readyForManualLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!config.autoTradingEnabled&&config.manualApprovalRequired&&!emergencyStopActive()&&totalPortfolioUsd>0&&!(daily?.blocked))
+      readyForLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!hardStopped&&totalPortfolioUsd>0&&!(daily?.blocked)),
+      readyForAutoLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&config.autoTradingEnabled&&!hardStopped&&!entryPaused&&totalPortfolioUsd>0&&!(daily?.blocked)),
+      readyForProtectiveExits:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!hardStopped&&totalPortfolioUsd>0),
+      readyForManualLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!config.autoTradingEnabled&&config.manualApprovalRequired&&!hardStopped&&totalPortfolioUsd>0&&!(daily?.blocked))
     })
   }
   if(path==='/api/live/preflight'&&req.method==='POST'){
