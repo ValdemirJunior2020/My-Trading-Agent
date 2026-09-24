@@ -371,7 +371,8 @@ const seedProduct=async(productId:string)=>{
 
 const seedUniverse=async()=>{
   const scan=await scanCryptoMarket()
-  products=[...new Set((scan.universe||[]).map((x:string)=>String(x).toUpperCase()))].slice(0,28)
+  const universe:string[] = Array.isArray(scan.universe) ? scan.universe.map((x:any)=>String(x).toUpperCase()) : []
+  products=[...new Set<string>(universe)].slice(0,28)
 
   for(let i=0;i<products.length;i+=4){
     const batch=products.slice(i,i+4)
