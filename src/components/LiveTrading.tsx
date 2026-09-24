@@ -24,11 +24,14 @@ export function LiveTrading({ language }: Props) {
         api.getPipelineStatus(),
         api.getScanner()
       ])
-      setReadiness(ready)
+      setReadiness({ ...ready, transientError: null })
       setPipeline(pipe)
       setScanner(scan)
     } catch (error) {
-      setReadiness({ error: error instanceof Error ? error.message : String(error) })
+      const message = error instanceof Error ? error.message : String(error)
+      setReadiness((previous:any) => previous
+        ? { ...previous, transientError: message }
+        : { transientError: message })
     } finally {
       setLoading(false)
     }
@@ -49,16 +52,20 @@ export function LiveTrading({ language }: Props) {
   const scannerSell = scanner?.bestSell || null
   const side: CandidateSide = candidate === 'BUY_CANDIDATE' ? 'BUY' : candidate === 'SELL_CANDIDATE' ? 'SELL' : null
 
-  const hardBlocked = !readiness?.readyForLive
+  const readinessLoaded = readiness?.readyForLive !== undefined
+  const syncingReadiness = !readinessLoaded
+  const hardBlocked = readinessLoaded && readiness?.readyForLive === false
   const autoSafePause = Boolean(readiness?.autoSafePause)
   const rollingGuard = readiness?.rollingRiskGuard || null
   const dailyGuard = readiness?.dailyLossGuard || null
   const botLossPercent = Number(dailyGuard?.botLossPercent ?? dailyGuard?.lossPercent ?? 0)
   const marketDrawdownPercent = Number(dailyGuard?.marketDrawdownPercent ?? 0)
 
-  const plainSignal = hardBlocked
-    ? 'BLOCKED'
-    : autoSafePause
+  const plainSignal = syncingReadiness
+    ? 'SYNCING'
+    : hardBlocked
+      ? 'BLOCKED'
+      : autoSafePause
       ? 'AUTO SAFE PAUSE'
       : pipelineRunning
         ? 'ANALYZING ' + pipelineProduct
@@ -125,20 +132,24 @@ export function LiveTrading({ language }: Props) {
             <p>{pt ? 'Você acompanha; o sistema monitora entradas, saídas e segurança.' : 'You monitor; the system handles entries, exits, and safety.'}</p>
           </div>
           <span className={readiness?.readyForLive && !autoSafePause ? 'live-ready-badge ok' : 'live-ready-badge'}>
-            {hardBlocked
-              ? (pt ? 'BLOQUEADO' : 'LOCKED')
+            {syncingReadiness
+              ? (pt ? 'SINCRONIZANDO' : 'SYNCING')
+              : hardBlocked
+                ? (pt ? 'BLOQUEADO' : 'LOCKED')
               : autoSafePause
                 ? (pt ? 'PAUSA SEGURA AUTO' : 'AUTO SAFE PAUSE')
-                : readiness?.readyForAutoLive
-                  ? (pt ? 'AUTO LIVE PRONTO' : 'AUTO LIVE READY')
-                  : (pt ? 'LIVE PRONTO' : 'LIVE READY')}
+                  : readiness?.readyForAutoLive
+                    ? (pt ? 'AUTO LIVE PRONTO' : 'AUTO LIVE READY')
+                    : (pt ? 'LIVE PRONTO' : 'LIVE READY')}
           </span>
         </div>
 
         <div className="live-readiness-grid">
           {readinessItems.map((item) => (
             <div className="live-check" key={item.label}>
-              <span className={item.ok ? 'check-dot ok' : 'check-dot'}>{item.ok ? '✓' : '×'}</span>
+              <span className={readinessLoaded ? (item.ok ? 'check-dot ok' : 'check-dot') : 'check-dot'}>
+                {readinessLoaded ? (item.ok ? '✓' : '×') : '…'}
+              </span>
               <div>
                 <strong>{item.label}</strong>
                 <small>{item.detail}</small>
@@ -203,9 +214,13 @@ export function LiveTrading({ language }: Props) {
           <small>{pt ? 'Status agora' : 'Status now'}</small>
           <strong>{plainSignal}</strong>
           <p>
-            {hardBlocked
-              ? (pt ? 'O Emergency Stop manual está bloqueando ordens reais.' : 'The manual Emergency Stop is blocking real orders.')
-              : autoSafePause
+            {syncingReadiness
+              ? (pt ? 'Sincronizando os dados da Coinbase e os checks de segurança.' : 'Syncing Coinbase data and safety checks.')
+              : hardBlocked
+                ? readiness?.emergencyStop
+                  ? (pt ? 'O Emergency Stop manual está bloqueando ordens reais.' : 'The manual Emergency Stop is blocking real orders.')
+                  : (pt ? 'Um check de segurança ainda não está pronto para ordens reais.' : 'A safety check is not ready for real orders yet.')
+                : autoSafePause
                 ? (pt ? 'Compras pausadas; saídas de proteção continuam ativas.' : 'Buys paused; protective exits remain active.')
                 : pipelineRunning
                   ? (pt ? 'Os agentes estão analisando ' + pipelineProduct + '.' : 'The agents are analyzing ' + pipelineProduct + '.')
@@ -254,7 +269,7 @@ export function LiveTrading({ language }: Props) {
                 <small>{pt ? 'Pré-checagem manual opcional' : 'Optional manual preflight'}</small>
                 <strong>{side + ' ' + pipelineProduct + ' • $' + guidedAmount.toFixed(2)}</strong>
               </div>
-              <button className="preflight-btn" onClick={() => void runGuidedPreflight()} disabled={busy || loading || hardBlocked || autoSafePause}>
+              <button className="preflight-btn" onClick={() => void runGuidedPreflight()} disabled={busy || loading || syncingReadiness || hardBlocked || autoSafePause}>
                 {busy ? (pt ? 'VALIDANDO...' : 'CHECKING...') : (pt ? 'VALIDAR ORDEM' : 'CHECK TRADE')}
               </button>
             </>
