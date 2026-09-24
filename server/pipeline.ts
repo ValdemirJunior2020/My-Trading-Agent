@@ -92,8 +92,12 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   const lows = candles.slice(-24).map((c) => c.low)
   const avgVolume = candles.slice(-24).reduce((sum, c) => sum + c.volume, 0) / Math.min(24, candles.length)
 
+  const scanSnapshot = await scanCryptoMarket([productId])
+  const technicalSignal = scanSnapshot.results.find((row:any)=>row.productId===productId) || null
+
   const marketEvidence = {
     source: 'Coinbase Advanced Trade',
+    technicalSignal,
     productId,
     latestPrice: latest.close,
     change1hPercent: pct(latest.close, previous.close),
@@ -168,6 +172,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
 
   const strategy = await agentStep('strategy', productId, {
     market: market.output,
+    technicalSignal,
     vectorbt,
     nautilus,
     rdAgent
@@ -195,6 +200,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   const risk = await agentStep('risk', productId, {
     market: market.output,
     strategy: strategy.output,
+    technicalSignal,
     portfolio: portfolio.output,
     challenge,
     hardLimits: 'The deterministic server risk engine remains authoritative and cannot be overridden by the challenge or AI.'
@@ -203,14 +209,46 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   const critic = await agentStep('critic', productId, {
     market: market.output,
     strategy: strategy.output,
+    technicalSignal,
     sentiment: sentiment.output,
     portfolio: portfolio.output,
     risk: risk.output,
     vectorbt
   })
 
+  const agentDecisions = [
+    market.output?.decision,
+    strategy.output?.decision,
+    sentiment.output?.decision,
+    portfolio.output?.decision,
+    risk.output?.decision,
+    critic.output?.decision
+  ].map((x:any)=>String(x||'WAIT').toUpperCase())
+
+  const buyVotes = agentDecisions.filter((x:string)=>x==='BUY_CANDIDATE').length
+  const sellVotes = agentDecisions.filter((x:string)=>x==='SELL_CANDIDATE').length
+  const rejectVotes = agentDecisions.filter((x:string)=>x==='REJECT').length
+  const riskReject = String(risk.output?.decision||'').toUpperCase()==='REJECT'
+  const criticReject = String(critic.output?.decision||'').toUpperCase()==='REJECT'
+
+  const deterministicConsensus = {
+    scannerBuyCandidate:Boolean(technicalSignal?.buyCandidate),
+    scannerSellCandidate:Boolean(technicalSignal?.sellCandidate),
+    scannerBuyScore:Number(technicalSignal?.buyScore||0),
+    scannerSellScore:Number(technicalSignal?.sellScore||0),
+    buyVotes,
+    sellVotes,
+    rejectVotes,
+    riskReject,
+    criticReject,
+    buyEligible:Boolean(technicalSignal?.buyCandidate && !riskReject && !criticReject && buyVotes>=1),
+    sellEligible:Boolean(technicalSignal?.sellCandidate && !riskReject && !criticReject && sellVotes>=1)
+  }
+
   const decision = await agentStep('decision', productId, {
     market: market.output,
+    technicalSignal,
+    deterministicConsensus,
     strategy: strategy.output,
     sentiment: sentiment.output,
     portfolio: portfolio.output,
@@ -221,8 +259,8 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     instruction: [
       'Return one evidence-based classification using the decision rubric.',
       'Do not default to WAIT or REJECT merely because trading is uncertain.',
-      'Use BUY_CANDIDATE only when current long evidence is sufficiently aligned.',
-      'Use SELL_CANDIDATE only for an actually held asset when current exit/reduction evidence is sufficiently aligned.',
+      'Use BUY_CANDIDATE when deterministicConsensus.buyEligible is true unless you identify a concrete hard invalidation in risk or critic evidence.',
+      'Use SELL_CANDIDATE when deterministicConsensus.sellEligible is true and the asset is actually held unless you identify a concrete hard invalidation in risk or critic evidence.',
       'Use WAIT for genuinely mixed or incomplete timing evidence.',
       'Use REJECT only for a concrete invalidation or contradiction.',
       'Treat the challenge as a goal, never as permission to increase risk.',
@@ -230,10 +268,53 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     ].join(' ')
   })
 
+  let resolvedDecisionOutput = decision.output
+  const rawDecision = String(decision.output?.decision || 'WAIT').toUpperCase()
+
+  if (
+    deterministicConsensus.buyEligible &&
+    !['BUY_CANDIDATE','SELL_CANDIDATE'].includes(rawDecision)
+  ) {
+    resolvedDecisionOutput = {
+      ...decision.output,
+      decision:'BUY_CANDIDATE',
+      confidence:Math.max(Number(decision.output?.confidence||0),0.72),
+      summary:'Scanner BUY candidate confirmed by agent consensus with no risk/critic hard rejection.',
+      originalDecision:rawDecision,
+      resolutionSource:'DETERMINISTIC_CONSENSUS'
+    }
+    publish('decision_consensus_override',{
+      productId,
+      from:rawDecision,
+      to:'BUY_CANDIDATE',
+      deterministicConsensus,
+      technicalSignal
+    },'decision')
+  } else if (
+    deterministicConsensus.sellEligible &&
+    !['BUY_CANDIDATE','SELL_CANDIDATE'].includes(rawDecision)
+  ) {
+    resolvedDecisionOutput = {
+      ...decision.output,
+      decision:'SELL_CANDIDATE',
+      confidence:Math.max(Number(decision.output?.confidence||0),0.72),
+      summary:'Scanner SELL candidate confirmed by agent consensus with no risk/critic hard rejection.',
+      originalDecision:rawDecision,
+      resolutionSource:'DETERMINISTIC_CONSENSUS'
+    }
+    publish('decision_consensus_override',{
+      productId,
+      from:rawDecision,
+      to:'SELL_CANDIDATE',
+      deterministicConsensus,
+      technicalSignal
+    },'decision')
+  }
+
   // === LIMITED LIVE EXECUTION (Phase 2) ===
   publish('agent_started', { asset: productId, stage: 'candidate-preflight' }, 'paper')
-  const candidateDecision = String(decision.output?.decision || 'WAIT')
-  const confidence = Number(decision.output?.confidence)
+  const candidateDecision = String(resolvedDecisionOutput?.decision || 'WAIT')
+  const confidence = Number(resolvedDecisionOutput?.confidence)
 
   const paperPreflight = {
     eligible: ['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(candidateDecision),
@@ -335,7 +416,10 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     portfolio: portfolio.output,
     risk: risk.output,
     critic: critic.output,
-    decision: decision.output,
+    decision: resolvedDecisionOutput,
+    rawDecision: decision.output,
+    deterministicConsensus,
+    technicalSignal,
     paperPreflight,
     execution: executionResult,
     quantitative: { vectorbt, nautilus, rdAgent }
