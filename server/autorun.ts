@@ -5,6 +5,8 @@ import { getSetting, setSetting } from './db.js'
 import { publish } from './events.js'
 import { getOllamaStatus } from './ollama.js'
 import { getPipelineStatus, runFullAgentPipeline } from './pipeline.js'
+import { getChallengeSnapshot } from './challenge.js'
+import { getRuntimeRiskLimits } from './risk.js'
 
 export interface AutoRunSettings {
   enabled: boolean
@@ -105,6 +107,39 @@ const chooseAutoProduct = async () => {
   const lastProduct = lastSelectedProduct()
   const hasUsableCash = availableCashUsd >= Math.max(config.minLiveOrderUsd, 1)
 
+  let currentPortfolioUsd = 0
+  try {
+    currentPortfolioUsd = Number((await getChallengeSnapshot()).currentPortfolioUsd || 0)
+  } catch {}
+
+  const limits = getRuntimeRiskLimits()
+  const maxRiskSizedBuyUsd = Math.min(
+    availableCashUsd,
+    config.maxLiveOrderUsd,
+    currentPortfolioUsd > 0 ? currentPortfolioUsd * (limits.maxPositionPercent / 100) : 0
+  )
+
+  const executableBuyProducts = new Set<string>()
+  if (hasUsableCash && maxRiskSizedBuyUsd > 0) {
+    await Promise.all(scan.results.map(async (row:any) => {
+      try {
+        const product:any = await getProduct(row.productId)
+        const quoteMin = Math.max(config.minLiveOrderUsd, Number(product?.quote_min_size || 0))
+        const quoteMax = Number(product?.quote_max_size || Infinity)
+        if (
+          maxRiskSizedBuyUsd >= quoteMin &&
+          quoteMin <= quoteMax &&
+          product?.trading_disabled !== true &&
+          product?.is_disabled !== true &&
+          product?.cancel_only !== true &&
+          product?.limit_only !== true
+        ) {
+          executableBuyProducts.add(row.productId)
+        }
+      } catch {}
+    }))
+  }
+
   // A held sell-risk still gets priority, but it must be a material holding and
   // it cannot bypass rotation/cooldown anymore.
   const heldSell = [...scan.results]
@@ -121,6 +156,7 @@ const chooseAutoProduct = async () => {
       reason: 'HELD_SELL_CANDIDATE_ROTATED',
       heldUsd: Number(held.get(heldSell.productId) || 0),
       availableCashUsd,
+      maxRiskSizedBuyUsd,
       previousProductId: lastProduct || null
     }
   }
@@ -130,6 +166,7 @@ const chooseAutoProduct = async () => {
     .filter((row: any) =>
       hasUsableCash &&
       row.buyCandidate &&
+      executableBuyProducts.has(row.productId) &&
       selectable(row.productId)
     )
     .sort((a: any, b: any) => b.buyScore - a.buyScore)[0]
@@ -141,6 +178,7 @@ const chooseAutoProduct = async () => {
       reason: 'CASH_READY_BUY_CANDIDATE',
       heldUsd: Number(held.get(freshBuy.productId) || 0),
       availableCashUsd,
+      maxRiskSizedBuyUsd,
       previousProductId: lastProduct || null
     }
   }
@@ -155,6 +193,7 @@ const chooseAutoProduct = async () => {
       reason: 'XRP_HELD_FOCUS_ROTATION',
       heldUsd: xrpHeldUsd,
       availableCashUsd,
+      maxRiskSizedBuyUsd,
       previousProductId: lastProduct || null
     }
   }
@@ -164,6 +203,7 @@ const chooseAutoProduct = async () => {
   const freshMarket = [...scan.results]
     .filter((row: any) =>
       selectable(row.productId) &&
+      (!hasUsableCash || executableBuyProducts.has(row.productId) || Number(held.get(row.productId) || 0) >= 5) &&
       (!hasUsableCash || !row.sellCandidate || Number(held.get(row.productId) || 0) >= 5)
     )
     .sort((a: any, b: any) =>
@@ -178,6 +218,7 @@ const chooseAutoProduct = async () => {
       reason: hasUsableCash ? 'CASH_READY_MARKET_ROTATION' : 'MARKET_ROTATION',
       heldUsd: Number(held.get(freshMarket.productId) || 0),
       availableCashUsd,
+      maxRiskSizedBuyUsd,
       previousProductId: lastProduct || null
     }
   }
@@ -196,6 +237,7 @@ const chooseAutoProduct = async () => {
       reason: 'COOLDOWN_EXHAUSTED_OLDEST',
       heldUsd: Number(held.get(oldest.productId) || 0),
       availableCashUsd,
+      maxRiskSizedBuyUsd,
       previousProductId: lastProduct || null
     }
   }
@@ -207,6 +249,7 @@ const chooseAutoProduct = async () => {
     reason: 'WATCHLIST_FALLBACK',
     heldUsd: Number(held.get(fallback) || 0),
     availableCashUsd,
+    maxRiskSizedBuyUsd,
     previousProductId: lastProduct || null
   }
 }
@@ -238,7 +281,7 @@ const tick = async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     publish('crypto_scanner_failed', { error: message }, 'strategy')
-    selection = { productId: config.watchlist[0] || 'XRP-USD', scan: null as any, reason: 'SCAN_FAILED_FALLBACK', heldUsd: 0, availableCashUsd: 0, previousProductId: lastSelectedProduct() || null }
+    selection = { productId: config.watchlist[0] || 'XRP-USD', scan: null as any, reason: 'SCAN_FAILED_FALLBACK', heldUsd: 0, availableCashUsd: 0, maxRiskSizedBuyUsd: 0, previousProductId: lastSelectedProduct() || null }
   }
 
   lastAttemptAt = Date.now()
@@ -251,7 +294,8 @@ const tick = async () => {
     selectionReason: selection.reason,
     previousProductId: selection.previousProductId || null,
     heldUsd: selection.heldUsd || 0,
-    availableCashUsd: selection.availableCashUsd || 0
+    availableCashUsd: selection.availableCashUsd || 0,
+    maxRiskSizedBuyUsd: selection.maxRiskSizedBuyUsd || 0
   }, 'manager')
 
   void runFullAgentPipeline({
