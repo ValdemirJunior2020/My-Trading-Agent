@@ -42,6 +42,12 @@ CREATE TABLE IF NOT EXISTS paper_trades (
   close_price REAL,
   pnl REAL
 );
+CREATE TABLE IF NOT EXISTS equity_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  equity_usd REAL NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_equity_snapshots_created_at ON equity_snapshots(created_at);
 `)
 
 export const setSetting = (key: string, value: string) => {
@@ -139,4 +145,22 @@ export const livePlacedOrders=(limit=2000)=>{
     payload:JSON.parse(row.payload),
     createdAt:row.created_at
   }))
+}
+
+
+export const addEquitySnapshot=(equityUsd:number,createdAt=new Date().toISOString())=>{
+  const value=Number(equityUsd)
+  if(!Number.isFinite(value)||value<=0) throw new Error('Equity snapshot must be positive.')
+  const result=db.prepare('INSERT INTO equity_snapshots (equity_usd,created_at) VALUES (?,?)').run(value,createdAt)
+  return {id:Number(result.lastInsertRowid),equityUsd:value,createdAt}
+}
+
+export const pruneEquitySnapshots=(beforeIso:string)=>{
+  const result=db.prepare('DELETE FROM equity_snapshots WHERE created_at < ?').run(beforeIso)
+  return Number(result.changes||0)
+}
+
+export const equitySnapshotsSince=(sinceIso:string)=>{
+  const rows=db.prepare('SELECT id,equity_usd,created_at FROM equity_snapshots WHERE created_at >= ? ORDER BY created_at ASC').all(sinceIso) as Array<any>
+  return rows.map(row=>({id:Number(row.id),equityUsd:Number(row.equity_usd),createdAt:String(row.created_at)}))
 }
