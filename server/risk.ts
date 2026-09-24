@@ -307,6 +307,8 @@ export const tryLimitedLiveExecution = async (opts: {
   productId: string
   decision: string
   confidence?: number
+  triggerPrice?: number
+  baseSizeOverride?: number
 }) => {
   if (String(config.tradingMode).toLowerCase() !== 'live') {
     return { executed: false, reason: 'TRADING_MODE is not live' }
@@ -347,6 +349,8 @@ export const tryLimitedLiveExecution = async (opts: {
   const productInfo: any = product
   const totalPortfolioUsd = Number(portfolio.currentPortfolioUsd || 0)
   const price = Number(productInfo?.price || 0)
+  const triggerPrice = Number(opts.triggerPrice || 0)
+  const slippageReferencePrice = triggerPrice > 0 ? triggerPrice : price
 
   if (!(totalPortfolioUsd > 0) || !(price > 0)) {
     return { executed: false, reason: 'Missing portfolio value or product price' }
@@ -420,12 +424,15 @@ export const tryLimitedLiveExecution = async (opts: {
       config.minLiveOrderUsd > 0 ? config.minLiveOrderUsd / price : 0
     )
     const minExecutableBase = ceilToIncrement(minBaseRequired, baseIncrement)
+    const requestedBase = Number(opts.baseSizeOverride || 0)
     const targetNotional = Math.min(hardCap, availableAssetUsd)
-    const targetBase = Math.min(
-      availableBase,
-      targetNotional / price,
-      baseMax
-    )
+    const targetBase = requestedBase > 0
+      ? Math.min(availableBase, requestedBase, baseMax)
+      : Math.min(
+          availableBase,
+          targetNotional / price,
+          baseMax
+        )
 
     baseSize = floorToIncrement(targetBase, baseIncrement)
 
@@ -482,10 +489,10 @@ export const tryLimitedLiveExecution = async (opts: {
 
     const estimatedFillPrice = Number(preview.est_average_filled_price || 0)
     const adverseSlippagePercent =
-      estimatedFillPrice > 0 && price > 0
+      estimatedFillPrice > 0 && slippageReferencePrice > 0
         ? side === 'BUY'
-          ? Math.max(0, ((estimatedFillPrice - price) / price) * 100)
-          : Math.max(0, ((price - estimatedFillPrice) / price) * 100)
+          ? Math.max(0, ((estimatedFillPrice - slippageReferencePrice) / slippageReferencePrice) * 100)
+          : Math.max(0, ((slippageReferencePrice - estimatedFillPrice) / slippageReferencePrice) * 100)
         : 0
 
     if (adverseSlippagePercent > config.maxSlippagePercent) {
@@ -497,7 +504,7 @@ export const tryLimitedLiveExecution = async (opts: {
         side,
         notionalUsd,
         preview,
-        referencePrice: price,
+        referencePrice: slippageReferencePrice,
         estimatedFillPrice,
         adverseSlippagePercent,
         maxSlippagePercent: config.maxSlippagePercent,
@@ -530,10 +537,10 @@ export const tryLimitedLiveExecution = async (opts: {
     const placedAt = new Date().toISOString()
     const actualFillPrice=Number(fill.filledPrice||0)
     const actualSlippagePercent =
-      actualFillPrice>0 && price>0
+      actualFillPrice>0 && slippageReferencePrice>0
         ? side==='BUY'
-          ? Math.max(0,((actualFillPrice-price)/price)*100)
-          : Math.max(0,((price-actualFillPrice)/price)*100)
+          ? Math.max(0,((actualFillPrice-slippageReferencePrice)/slippageReferencePrice)*100)
+          : Math.max(0,((slippageReferencePrice-actualFillPrice)/slippageReferencePrice)*100)
         : 0
 
     setSetting('live_last_order_at_' + productId, placedAt)
