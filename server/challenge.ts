@@ -1,5 +1,5 @@
 import { getSetting,setSetting } from './db.js'
-import { getProduct,listAccounts } from './coinbase.js'
+import { listAccounts,listSpotUsdProducts } from './coinbase.js'
 
 export interface TradingChallenge {
   enabled:boolean
@@ -54,32 +54,45 @@ export const saveTradingChallenge=(input:Partial<TradingChallenge>)=>{
 const balanceValue=(balance:any)=>Number(balance?.value??balance??0)||0
 
 export const getEstimatedPortfolioUsd=async()=>{
-  const accounts=await listAccounts()
+  const [accounts,products]=await Promise.all([
+    listAccounts(),
+    listSpotUsdProducts(500)
+  ])
+
+  const priceByProduct=new Map(
+    products.map((product:any)=>[String(product.productId||'').toUpperCase(),Number(product.price||0)])
+  )
   const nonZero=accounts.filter((account:any)=>balanceValue(account.availableBalance)+balanceValue(account.hold)>0)
   let total=0
   const details:any[]=[]
+
   for(const account of nonZero){
     const amount=balanceValue(account.availableBalance)+balanceValue(account.hold)
     const currency=String(account.currency||'').toUpperCase()
     if(!amount||!currency)continue
+
     if(currency==='USD'||currency==='USDC'){
       total+=amount
       details.push({currency,amount,usdValue:amount})
       continue
     }
-    try{
-      const product:any=await getProduct(currency+'-USD')
-      const price=Number(product?.price||0)
+
+    const productId=currency+'-USD'
+    const price=Number(priceByProduct.get(productId)||0)
+    if(price>0){
       const usdValue=amount*price
-      if(Number.isFinite(usdValue)){
-        total+=usdValue
-        details.push({currency,amount,price,usdValue})
-      }
-    }catch{
+      total+=usdValue
+      details.push({currency,amount,price,usdValue})
+    }else{
       details.push({currency,amount,usdValue:null})
     }
   }
-  return {totalUsd:Number(total.toFixed(2)),details}
+
+  return {
+    totalUsd:Number(total.toFixed(2)),
+    details,
+    accountCount:accounts.length
+  }
 }
 
 export const getChallengeSnapshot=async()=>{
@@ -88,13 +101,19 @@ export const getChallengeSnapshot=async()=>{
   const now=new Date()
   const daysRemaining=Math.max(0,Math.ceil((deadline.getTime()-now.getTime())/86400000))
   let portfolioUsd:number|null=null
-  try{portfolioUsd=(await getEstimatedPortfolioUsd()).totalUsd}catch{}
+  let accountCount=0
+  try{
+    const estimated=await getEstimatedPortfolioUsd()
+    portfolioUsd=estimated.totalUsd
+    accountCount=estimated.accountCount
+  }catch{}
   const progressPercent=portfolioUsd==null?null:Math.max(0,Math.min(100,((portfolioUsd-challenge.startingBalanceUsd)/(challenge.targetBalanceUsd-challenge.startingBalanceUsd))*100))
   return {
     ...challenge,
     deadline:deadline.toISOString(),
     daysRemaining,
     currentPortfolioUsd:portfolioUsd,
+    accountCount,
     progressPercent:progressPercent==null?null:Number(progressPercent.toFixed(1)),
     requiredGainPercent:Number((((challenge.targetBalanceUsd/challenge.startingBalanceUsd)-1)*100).toFixed(1)),
     riskNote:'This is a goal, not a mandate. Hard risk limits override the target.'
