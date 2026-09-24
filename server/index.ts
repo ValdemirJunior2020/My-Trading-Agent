@@ -147,7 +147,7 @@ const server=createServer(async(req,res)=>{
   }
   if(path==='/api/live/readiness'&&req.method==='GET'){
     if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'})
-    const [accounts,portfolio]=await Promise.all([listAccounts(),getChallengeSnapshot()])
+    const portfolio=await getChallengeSnapshot()
     const totalPortfolioUsd=Number(portfolio.currentPortfolioUsd||0)
     const daily=totalPortfolioUsd>0?getDailyEquityGuard(totalPortfolioUsd):null
     const rollingRisk=getRollingRiskState()
@@ -163,7 +163,7 @@ const server=createServer(async(req,res)=>{
       autoSafePause:entryPaused,
       rollingRiskGuard:rollingRisk,
       currentPortfolioUsd:totalPortfolioUsd,
-      accountCount:accounts.length,
+      accountCount:Number(portfolio.accountCount||0),
       dailyLossGuard:daily,
       riskLimits:getRuntimeRiskLimits(),
       liveOrderLimits:{maxLiveOrderUsd:config.maxLiveOrderUsd,minLiveOrderUsd:config.minLiveOrderUsd,cooldownSeconds:config.autoTradeCooldownSeconds,minConfidencePercent:config.autoTradeMinConfidencePercent},
