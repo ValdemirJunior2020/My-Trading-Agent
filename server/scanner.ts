@@ -54,6 +54,7 @@ export interface ScanResult{
 let cachedScan:any=null
 let cachedAt=0
 let cachedKey=''
+const inFlightScans=new Map<string,Promise<any>>()
 
 const spreadBpsFromBook=(book:any)=>{
   const bid=Number(book?.bids?.[0]?.price||0)
@@ -68,7 +69,11 @@ export const scanCryptoMarket=async(products?:string[])=>{
   const key=universe.join('|')
   if(cachedScan&&cachedKey===key&&Date.now()-cachedAt<config.scannerCacheMs) return cachedScan
 
-  const preliminary:ScanResult[]=[]
+  const existing=inFlightScans.get(key)
+  if(existing) return existing
+
+  const work=(async()=>{
+    const preliminary:ScanResult[]=[]
 
   for(const productId of universe){
     try{
@@ -219,8 +224,16 @@ export const scanCryptoMarket=async(products?:string[])=>{
     results:preliminary
   }
 
-  cachedScan=result
-  cachedAt=Date.now()
-  cachedKey=key
-  return result
+    cachedScan=result
+    cachedAt=Date.now()
+    cachedKey=key
+    return result
+  })()
+
+  inFlightScans.set(key,work)
+  try{
+    return await work
+  }finally{
+    if(inFlightScans.get(key)===work) inFlightScans.delete(key)
+  }
 }
