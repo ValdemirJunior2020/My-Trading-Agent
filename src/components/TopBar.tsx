@@ -68,11 +68,14 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
  },[running,pipeline])
 
 
+ const safePause=Boolean(system?.safety?.rollingRisk?.paused||system?.meanReversion?.safePause)
  const liveModeLabel=system?.safety.liveTradingEnabled
-  ?(system?.safety.automaticTradingEnabled?'Auto Live Trading':'Live Trading')
+  ?(safePause?'AUTO SAFE PAUSE':system?.safety.automaticTradingEnabled?'Auto Live Trading':'Live Trading')
   :'Paper Trading'
  const liveModeDetail=system?.safety.liveTradingEnabled
-  ?(system?.safety.automaticTradingEnabled?'auto live':system?.safety.manualApprovalRequired?'manual live':'live')
+  ?(safePause
+    ?'new buys paused • protective sells active'
+    :system?.safety.automaticTradingEnabled?'auto live':system?.safety.manualApprovalRequired?'manual live':'live')
   :(system?.safety.mode||t('simulatedExecution'))
  const lastLiveLabel=(()=>{
   if(!lastLiveEvent)return 'NO LIVE ORDER YET'
@@ -108,6 +111,7 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
    <button className="language-btn" onClick={()=>void runAgents(false)} disabled={running||!system?.coinbase.configured||!ollama} title={title}>{runLabel}</button>
    <button className="language-btn" onClick={()=>void runAgents(true)} disabled={running||!system?.coinbase.configured||!ollama||!rdReady} title={rdReady?'Run pipeline with RD-Agent factor research':'Install RD-Agent to enable deep research'}>◆ DEEP RESEARCH</button>
    <button className="language-btn" onClick={onLanguage}>🌐 {t('language')}</button>
+   {safePause?<div className="simulation-chip" title="Automatic rolling 24h safety pause. New BUYs are paused; protective SELL exits remain active.">AUTO SAFE</div>:null}
    <button className={'emergency-btn '+(emergency?'is-active':'')} onClick={onEmergency}>⚠ {emergency?t('emergencyActive'):t('emergencyStop')}</button>
   </div>
  </header>
