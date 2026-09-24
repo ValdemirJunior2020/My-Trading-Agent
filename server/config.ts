@@ -34,6 +34,15 @@ export const config = {
   autoTradeCooldownSeconds: Math.max(60, num(process.env.AUTO_TRADE_COOLDOWN_SECONDS, 900)),
   autoTradeMinConfidencePercent: Math.max(0, Math.min(100, num(process.env.AUTO_TRADE_MIN_CONFIDENCE_PERCENT, 70))),
   scannerCacheMs: Math.max(5000, num(process.env.SCANNER_CACHE_MS, 15000)),
+  strategyGranularity: process.env.STRATEGY_GRANULARITY || 'FIVE_MINUTE',
+  bbPeriod: Math.max(5, Math.floor(num(process.env.BB_PERIOD, 20))),
+  bbStdDev: Math.max(0.5, num(process.env.BB_STD_DEV, 2)),
+  rsiPeriod: Math.max(2, Math.floor(num(process.env.RSI_PERIOD, 14))),
+  rsiOversold: Math.max(1, Math.min(50, num(process.env.RSI_OVERSOLD, 30))),
+  atrPeriod: Math.max(2, Math.floor(num(process.env.ATR_PERIOD, 14))),
+  atrStopMultiplier: Math.max(0.1, num(process.env.ATR_STOP_MULTIPLIER, 1.5)),
+  fixedStopLossPercent: Math.max(0.1, Math.min(10, num(process.env.FIXED_STOP_LOSS_PERCENT, 1))),
+  maxSlippagePercent: Math.max(0.01, Math.min(5, num(process.env.MAX_SLIPPAGE_PERCENT, 0.1))),
   watchlist: (process.env.WATCHLIST || 'XRP,BTC,ETH,SOL,LINK')
     .split(',')
     .map((s) => s.trim().toUpperCase())
