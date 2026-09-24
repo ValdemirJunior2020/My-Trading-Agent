@@ -33,7 +33,7 @@ const bandsAt=(closes:number[],endExclusive:number,period=20,mult=2)=>{
   return {middle,upper:middle+mult*sd,lower:middle-mult*sd}
 }
 
-const botPosition=(productId:string)=>{
+export const getBotManagedPosition=(productId:string)=>{
   let qty=0,cost=0
   for(const event of livePlacedOrders(5000)){
     const p:any=event.payload||{}
@@ -70,7 +70,7 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
   const latestRsi=rsi(closes,config.rsiPeriod)
   const product:any=await getProduct(productId)
   const livePrice=Number(product?.price||latest.close)
-  const position=botPosition(productId)
+  const position=getBotManagedPosition(productId)
 
   if(!latestBands||!prevBands||latestRsi==null){
     return {action:'NONE',reason:'Indicators unavailable',productId}
