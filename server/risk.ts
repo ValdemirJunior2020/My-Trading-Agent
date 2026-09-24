@@ -1,6 +1,6 @@
 import { config } from './config.js'
-import { getSetting, openPaperNotional, setSetting, livePlacedOrders } from './db.js'
-import { createMarketOrder, listAccounts, getProduct, previewMarketOrder } from './coinbase.js'
+import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince } from './db.js'
+import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { publish } from './events.js'
 
@@ -43,6 +43,67 @@ export const saveRuntimeRiskLimits = (input: Partial<RuntimeRiskLimits>) => {
 }
 
 export const emergencyStopActive = () => getSetting('emergency_stop', 'false') === 'true'
+
+
+let lastRollingEquitySnapshotAt=0
+
+export const checkRollingEquityKillSwitch=async(currentPortfolioUsd:number)=>{
+  const now=Date.now()
+  const equity=Number(currentPortfolioUsd)
+  const cutoff=new Date(now-config.rollingKillSwitchWindowMs).toISOString()
+
+  pruneEquitySnapshots(cutoff)
+
+  if(equity>0 && (now-lastRollingEquitySnapshotAt>=10000 || equitySnapshotsSince(cutoff).length===0)){
+    addEquitySnapshot(equity,new Date(now).toISOString())
+    lastRollingEquitySnapshotAt=now
+  }
+
+  const snapshots=equitySnapshotsSince(cutoff)
+  const peakEquityUsd=snapshots.length
+    ? Math.max(...snapshots.map(x=>x.equityUsd),equity)
+    : equity
+  const drawdownPercent=peakEquityUsd>0
+    ? Math.max(0,((peakEquityUsd-equity)/peakEquityUsd)*100)
+    : 0
+  const blocked=drawdownPercent>=config.rollingKillSwitchPercent
+
+  let canceledOrderIds:string[]=[]
+  if(blocked){
+    setSetting('emergency_stop','true')
+    try{
+      const openOrders=await listOpenOrders()
+      const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
+      if(ids.length){
+        await cancelOrders(ids)
+        canceledOrderIds=ids
+      }
+    }catch(error){
+      publish('rolling_kill_switch_cancel_failed',{
+        error:error instanceof Error?error.message:String(error)
+      },'risk')
+    }
+    publish('rolling_kill_switch_triggered',{
+      currentEquityUsd:equity,
+      peakEquityUsd,
+      drawdownPercent,
+      limitPercent:config.rollingKillSwitchPercent,
+      rollingWindowHours:24,
+      canceledOrderIds
+    },'risk')
+  }
+
+  return {
+    blocked,
+    currentEquityUsd:equity,
+    peakEquityUsd:Number(peakEquityUsd.toFixed(2)),
+    drawdownPercent:Number(drawdownPercent.toFixed(4)),
+    limitPercent:config.rollingKillSwitchPercent,
+    rollingWindowHours:24,
+    snapshotCount:snapshots.length,
+    canceledOrderIds
+  }
+}
 
 export const evaluatePaperOrder = (order: PaperOrderRequest) => {
   const reasons: string[] = []
@@ -290,6 +351,15 @@ export const tryLimitedLiveExecution = async (opts: {
   if (!(totalPortfolioUsd > 0) || !(price > 0)) {
     return { executed: false, reason: 'Missing portfolio value or product price' }
   }
+
+  const rollingKillSwitch=await checkRollingEquityKillSwitch(totalPortfolioUsd)
+  if(rollingKillSwitch.blocked){
+    return {
+      executed:false,
+      reason:'Rolling 24-hour equity kill switch is active',
+      rollingKillSwitch
+    }
+  }
   if (productInfo?.trading_disabled === true || productInfo?.is_disabled === true || productInfo?.cancel_only === true || productInfo?.limit_only === true) {
     return { executed: false, reason: 'Coinbase product is not available for market trading right now' }
   }
@@ -455,17 +525,31 @@ export const tryLimitedLiveExecution = async (opts: {
       previewId: preview.preview_id
     })
 
+    const orderId=String(orderResult.success_response?.order_id||'')
+    const fill=await waitForOrderFill(orderId,10000)
     const placedAt = new Date().toISOString()
+    const actualFillPrice=Number(fill.filledPrice||0)
+    const actualSlippagePercent =
+      actualFillPrice>0 && price>0
+        ? side==='BUY'
+          ? Math.max(0,((actualFillPrice-price)/price)*100)
+          : Math.max(0,((price-actualFillPrice)/price)*100)
+        : 0
+
     setSetting('live_last_order_at_' + productId, placedAt)
-    setSetting('live_last_order_id_' + productId, String(orderResult.success_response?.order_id || ''))
+    setSetting('live_last_order_id_' + productId, orderId)
 
     publish('live_order_placed', {
       productId,
       side,
       notionalUsd,
-      orderId: orderResult.success_response?.order_id || null,
+      orderId,
       placedAt,
-      preview
+      preview,
+      fill,
+      actualFillPrice,
+      executedQty:fill.executedQty,
+      actualSlippagePercent
     }, 'execution')
 
     return {
@@ -476,9 +560,13 @@ export const tryLimitedLiveExecution = async (opts: {
       quoteSizeUsd,
       baseSize,
       confidencePercent,
-      orderId: orderResult.success_response?.order_id || null,
+      orderId,
       orderResult,
       preview,
+      fill,
+      actualFillPrice,
+      executedQty:fill.executedQty,
+      actualSlippagePercent,
       preflight
     }
   } catch (error) {
