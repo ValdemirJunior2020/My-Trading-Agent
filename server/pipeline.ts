@@ -241,8 +241,8 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     rejectVotes,
     riskReject,
     criticReject,
-    buyEligible:Boolean(technicalSignal?.buyCandidate && !riskReject && !criticReject && buyVotes>=1),
-    sellEligible:Boolean(technicalSignal?.sellCandidate && !riskReject && !criticReject && sellVotes>=1)
+    buyEligible:Boolean(technicalSignal?.buyCandidate && !riskReject && !criticReject),
+    sellEligible:Boolean(technicalSignal?.sellCandidate && !riskReject && !criticReject)
   }
 
   const decision = await agentStep('decision', productId, {
