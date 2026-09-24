@@ -5,6 +5,28 @@ const apiUrl=new URL(config.coinbaseApiBaseUrl)
 const host=apiUrl.host
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms))
 
+// Coinbase is shared by the dashboard, scanner, agents, and live execution.
+// Keep requests in one small queue so those callers cannot burst the API together.
+const MIN_REQUEST_GAP_MS=250
+let requestQueue:Promise<void>=Promise.resolve()
+let nextRequestAt=0
+let globalRateLimitUntil=0
+
+const runQueued=<T>(work:()=>Promise<T>):Promise<T>=>{
+  const run=requestQueue.then(async()=>{
+    const waitUntil=Math.max(nextRequestAt,globalRateLimitUntil)
+    const waitMs=waitUntil-Date.now()
+    if(waitMs>0) await sleep(waitMs)
+    try{
+      return await work()
+    }finally{
+      nextRequestAt=Math.max(nextRequestAt,Date.now()+MIN_REQUEST_GAP_MS)
+    }
+  })
+  requestQueue=run.then(()=>undefined,()=>undefined)
+  return run
+}
+
 const request=async(method:string,path:string,body?:unknown)=>{
   if(!coinbaseConfigured()) throw new Error('Coinbase credentials are not configured.')
 
@@ -12,49 +34,55 @@ const request=async(method:string,path:string,body?:unknown)=>{
   const signingPath=requestUrl.pathname
   const max429Retries=3
 
-  for(let attempt=0;attempt<=max429Retries;attempt++){
-    const token=await generateJwt({
-      apiKeyId:config.cdpApiKeyId,
-      apiKeySecret:config.cdpApiKeySecret.replace(/\\n/g,'\n'),
-      requestMethod:method,
-      requestHost:host,
-      requestPath:signingPath,
-      expiresIn:120
-    })
+  return runQueued(async()=>{
+    for(let attempt=0;attempt<=max429Retries;attempt++){
+      const waitForGlobal=globalRateLimitUntil-Date.now()
+      if(waitForGlobal>0) await sleep(waitForGlobal)
 
-    const response=await fetch(requestUrl,{
-      method,
-      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:body==null?undefined:JSON.stringify(body),
-      signal:AbortSignal.timeout(10000)
-    })
+      const token=await generateJwt({
+        apiKeyId:config.cdpApiKeyId,
+        apiKeySecret:config.cdpApiKeySecret.replace(/\\n/g,'\n'),
+        requestMethod:method,
+        requestHost:host,
+        requestPath:signingPath,
+        expiresIn:120
+      })
 
-    const text=await response.text()
-    let data:unknown
-    try{data=JSON.parse(text)}catch{data={message:text}}
+      const response=await fetch(requestUrl,{
+        method,
+        headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:body==null?undefined:JSON.stringify(body),
+        signal:AbortSignal.timeout(10000)
+      })
 
-    if(response.ok)return data
+      const text=await response.text()
+      let data:unknown
+      try{data=JSON.parse(text)}catch{data={message:text}}
 
-    if(response.status===429 && attempt<max429Retries){
-      const retryAfterHeader=response.headers.get('retry-after')
-      const retryAfterSeconds=retryAfterHeader==null?NaN:Number(retryAfterHeader)
-      const fallbackMs=1000*Math.pow(2,attempt)
-      const waitMs=Number.isFinite(retryAfterSeconds)&&retryAfterSeconds>=0
-        ? Math.max(500,Math.min(15000,retryAfterSeconds*1000))
-        : fallbackMs
+      if(response.ok)return data
 
-      console.warn(
-        `[coinbase] Rate limited (429) on ${method} ${requestUrl.pathname}. `+
-        `Retrying in ${waitMs}ms (${attempt+1}/${max429Retries}).`
-      )
-      await sleep(waitMs)
-      continue
+      if(response.status===429 && attempt<max429Retries){
+        const retryAfterHeader=response.headers.get('retry-after')
+        const retryAfterSeconds=retryAfterHeader==null?NaN:Number(retryAfterHeader)
+        const fallbackMs=2000*Math.pow(2,attempt)
+        const waitMs=Number.isFinite(retryAfterSeconds)&&retryAfterSeconds>=0
+          ? Math.max(1000,Math.min(30000,retryAfterSeconds*1000))
+          : fallbackMs
+
+        globalRateLimitUntil=Math.max(globalRateLimitUntil,Date.now()+waitMs)
+        console.warn(
+          `[coinbase] Rate limited (429) on ${method} ${requestUrl.pathname}. `+
+          `Cooling down all Coinbase requests for ${waitMs}ms (${attempt+1}/${max429Retries}).`
+        )
+        await sleep(waitMs)
+        continue
+      }
+
+      throw new Error(`Coinbase ${response.status}: ${text.slice(0,240)}`)
     }
 
-    throw new Error(`Coinbase ${response.status}: ${text.slice(0,240)}`)
-  }
-
-  throw new Error('Coinbase request failed after rate-limit retries.')
+    throw new Error('Coinbase request failed after rate-limit retries.')
+  })
 }
 
 export const listAccounts=async()=>{
