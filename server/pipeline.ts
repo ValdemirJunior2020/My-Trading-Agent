@@ -285,7 +285,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     ...decision.output,
     decision:'WAIT',
     confidence:Number(decision.output?.confidence||0),
-    summary:'AI agents completed analysis; no deterministic Bollinger/RSI/ATR trade trigger is active.',
+    summary:'AI agents completed analysis; no deterministic Bollinger/RSI trade trigger is active.',
     aiDecision:rawDecision,
     resolutionSource:'BOLLINGER_RSI_ATR_RULES'
   }
@@ -399,6 +399,34 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
 
   const executionAttempted = ['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(candidateDecision)
   const executionSide = candidateDecision === 'BUY_CANDIDATE' ? 'BUY' : candidateDecision === 'SELL_CANDIDATE' ? 'SELL' : null
+
+  const strategyEntry:any = (deterministicStrategy as any)?.entry || {}
+  const strategyBands:any = (deterministicStrategy as any)?.bollinger || {}
+  const strategyRsi:any = (deterministicStrategy as any)?.rsi || {}
+  const strategyClose = Number((deterministicStrategy as any)?.close || 0)
+  const strategyLower = Number(strategyBands?.lower || 0)
+  const strategyMiddle = Number(strategyBands?.middle || 0)
+  const strategyRsiValue = Number(strategyRsi?.value)
+  const strategyRsiThreshold = Number(strategyRsi?.threshold || 30)
+  const closeVsLowerPct =
+    strategyClose > 0 && strategyLower > 0
+      ? ((strategyClose - strategyLower) / strategyLower) * 100
+      : null
+
+  const deterministicWaitReason = !executionAttempted
+    ? [
+        strategyClose > 0 && strategyLower > 0
+          ? ('Close ' + (closeVsLowerPct! >= 0 ? '+' : '') + closeVsLowerPct!.toFixed(2) + '% vs lower BB')
+          : '',
+        Number.isFinite(strategyRsiValue)
+          ? ('RSI ' + strategyRsiValue.toFixed(1) + ' / needs < ' + strategyRsiThreshold.toFixed(0))
+          : '',
+        strategyEntry?.crossedBelowLower === true ? 'BB cross YES' : 'BB cross NO',
+        strategyEntry?.oversold === true ? 'RSI oversold YES' : 'RSI oversold NO',
+        'No deterministic entry trigger'
+      ].filter(Boolean).join(' • ')
+    : ''
+
   publish('live_execution_cycle', {
     productId,
     side: executionSide,
@@ -409,7 +437,19 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     action: executionResult?.action || (executionAttempted ? 'ATTEMPTED' : 'NO_TRADE'),
     reason: executionAttempted
       ? (executionResult?.reason || 'Execution gate completed.')
-      : ('Final decision: ' + candidateDecision + (Number.isFinite(confidence) ? ' • Confidence: ' + confidence : '') + ' • No execution attempted'),
+      : deterministicWaitReason,
+    deterministicStrategy: {
+      action: (deterministicStrategy as any)?.action || 'NONE',
+      reason: (deterministicStrategy as any)?.reason || null,
+      close: strategyClose || null,
+      bollingerLower: strategyLower || null,
+      bollingerMiddle: strategyMiddle || null,
+      rsi: Number.isFinite(strategyRsiValue) ? strategyRsiValue : null,
+      rsiThreshold: strategyRsiThreshold,
+      crossedBelowLower: Boolean(strategyEntry?.crossedBelowLower),
+      oversold: Boolean(strategyEntry?.oversold),
+      closeVsLowerPct
+    },
     orderId: executionResult?.orderId || null,
     notionalUsd: executionResult?.notionalUsd || null
   }, 'execution')
