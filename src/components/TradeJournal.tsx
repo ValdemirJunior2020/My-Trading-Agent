@@ -160,12 +160,26 @@ export function TradeJournal({language}:Props){
               ' • Suggested XRP sale: $'+Number(p.suggestedSellUsd||0).toFixed(2)+
               ' • Approval required'
             : ''
+          const ds=p.deterministicStrategy||{}
+          const strategyDetail=event.type==='live_execution_cycle' && p.attempted===false && ds
+            ? [
+                Number.isFinite(Number(ds.closeVsLowerPct))
+                  ? ('Close ' + (Number(ds.closeVsLowerPct)>=0?'+':'') + Number(ds.closeVsLowerPct).toFixed(2) + '% vs lower BB')
+                  : '',
+                Number.isFinite(Number(ds.rsi))
+                  ? ('RSI ' + Number(ds.rsi).toFixed(1) + ' / needs < ' + Number(ds.rsiThreshold||30).toFixed(0))
+                  : '',
+                ds.crossedBelowLower===true?'BB cross YES':'BB cross NO',
+                ds.oversold===true?'RSI oversold YES':'RSI oversold NO',
+                'No deterministic entry trigger'
+              ].filter(Boolean).join(' • ')
+            : ''
           const generatedDetail=[
             decision?('Decision: '+decision):'',
             confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
             p.attempted===false?'No execution attempted':''
           ].filter(Boolean).join(' • ')
-          const detail=String(rotationDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const detail=String(rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
           const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
           const displayCoin=String(p.productId||p.buyProductId||'—')
           const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
