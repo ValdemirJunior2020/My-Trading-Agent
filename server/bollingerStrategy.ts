@@ -102,7 +102,15 @@ export const getBotManagedLots=(productId:string):BotManagedLot[]=>{
 
     if(side==='SELL'){
       let remaining=base
-      for(const lot of lots){
+      const sourceLotOrderId=String(p.sourceLotOrderId||'')
+      const orderedLots=sourceLotOrderId
+        ? [
+            ...lots.filter(lot=>lot.orderId===sourceLotOrderId),
+            ...lots.filter(lot=>lot.orderId!==sourceLotOrderId)
+          ]
+        : lots
+
+      for(const lot of orderedLots){
         if(!(remaining>0))break
         if(!(lot.qty>0))continue
         const sold=Math.min(lot.qty,remaining)
