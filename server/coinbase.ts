@@ -6,28 +6,54 @@ const host=apiUrl.host
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms))
 
 // Coinbase is shared by the dashboard, scanner, agents, and live execution.
-// Keep requests in one small queue so those callers cannot burst the API together.
+// Keep one serialized queue to avoid 429 bursts, but allow safety/readiness calls
+// to jump ahead of low-priority scanner traffic.
 const MIN_REQUEST_GAP_MS=250
-let requestQueue:Promise<void>=Promise.resolve()
 let nextRequestAt=0
 let globalRateLimitUntil=0
+let queueSequence=0
+let queueRunning=false
 
-const runQueued=<T>(work:()=>Promise<T>):Promise<T>=>{
-  const run=requestQueue.then(async()=>{
-    const waitUntil=Math.max(nextRequestAt,globalRateLimitUntil)
-    const waitMs=waitUntil-Date.now()
-    if(waitMs>0) await sleep(waitMs)
-    try{
-      return await work()
-    }finally{
-      nextRequestAt=Math.max(nextRequestAt,Date.now()+MIN_REQUEST_GAP_MS)
-    }
-  })
-  requestQueue=run.then(()=>undefined,()=>undefined)
-  return run
+type QueueJob<T=unknown>={
+  priority:number
+  sequence:number
+  work:()=>Promise<T>
+  resolve:(value:T)=>void
+  reject:(reason:unknown)=>void
 }
 
-const request=async(method:string,path:string,body?:unknown)=>{
+const requestJobs:QueueJob<any>[]=[]
+
+const pumpQueue=async()=>{
+  if(queueRunning)return
+  queueRunning=true
+  try{
+    while(requestJobs.length){
+      requestJobs.sort((a,b)=>b.priority-a.priority||a.sequence-b.sequence)
+      const job=requestJobs.shift()!
+      const waitUntil=Math.max(nextRequestAt,globalRateLimitUntil)
+      const waitMs=waitUntil-Date.now()
+      if(waitMs>0)await sleep(waitMs)
+      try{
+        job.resolve(await job.work())
+      }catch(error){
+        job.reject(error)
+      }finally{
+        nextRequestAt=Math.max(nextRequestAt,Date.now()+MIN_REQUEST_GAP_MS)
+      }
+    }
+  }finally{
+    queueRunning=false
+    if(requestJobs.length)void pumpQueue()
+  }
+}
+
+const runQueued=<T>(work:()=>Promise<T>,priority=0):Promise<T>=>new Promise<T>((resolve,reject)=>{
+  requestJobs.push({priority,sequence:queueSequence++,work,resolve,reject})
+  void pumpQueue()
+})
+
+const request=async(method:string,path:string,body?:unknown,priority=0)=>{
   if(!coinbaseConfigured()) throw new Error('Coinbase credentials are not configured.')
 
   const requestUrl=new URL(`${config.coinbaseApiBaseUrl}${path}`)
@@ -82,11 +108,11 @@ const request=async(method:string,path:string,body?:unknown)=>{
     }
 
     throw new Error('Coinbase request failed after rate-limit retries.')
-  })
+  },priority)
 }
 
-export const listAccounts=async()=>{
-  const data=await request('GET','/api/v3/brokerage/accounts') as {accounts?:Array<any>}
+export const listAccounts=async(priority=0)=>{
+  const data=await request('GET','/api/v3/brokerage/accounts',undefined,priority) as {accounts?:Array<any>}
   return (data.accounts||[]).map(account=>({uuid:account.uuid,name:account.name,currency:account.currency,availableBalance:account.available_balance,hold:account.hold,default:account.default,active:account.active}))
 }
 export const getProduct=async(productId:string)=>request('GET',`/api/v3/brokerage/products/${encodeURIComponent(productId)}`)
@@ -235,9 +261,9 @@ export const createMarketOrder = async (params: {
 }
 
 
-export const listSpotUsdProducts=async(limit=250)=>{
+export const listSpotUsdProducts=async(limit=250,priority=0)=>{
   const bounded=Math.max(20,Math.min(500,Math.floor(limit)))
-  const data=await request('GET',`/api/v3/brokerage/products?limit=${bounded}&product_type=SPOT`) as {
+  const data=await request('GET',`/api/v3/brokerage/products?limit=${bounded}&product_type=SPOT`,undefined,priority) as {
     products?:Array<any>
   }
   return (data.products||[])
