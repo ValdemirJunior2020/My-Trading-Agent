@@ -25,6 +25,40 @@ const rsi=(closes:number[],period=14)=>{
   return 100-(100/(1+rs))
 }
 
+export const smallAccountEntryDecision=(params:{
+  rsiValue:number
+  closeVsLowerPct:number
+  crossedBelowLower:boolean
+})=>{
+  const {rsiValue,closeVsLowerPct,crossedBelowLower}=params
+  if(!config.smallAccountMode){
+    const oversold=rsiValue<=config.rsiOversold
+    return {
+      ready:oversold&&(crossedBelowLower||closeVsLowerPct<=config.entryProximityPercent),
+      oversold,
+      nearLowerBand:closeVsLowerPct<=config.entryProximityPercent,
+      proximityThresholdPercent:config.entryProximityPercent,
+      mode:'STANDARD'
+    }
+  }
+
+  const strongOversold=rsiValue<=config.smallAccountStrongRsi
+  const oversold=rsiValue<=config.rsiOversold
+  const proximityThresholdPercent=strongOversold
+    ? config.smallAccountStrongProximityPercent
+    : config.smallAccountNormalProximityPercent
+  const nearLowerBand=closeVsLowerPct<=proximityThresholdPercent
+
+  return {
+    ready:oversold&&(crossedBelowLower||nearLowerBand),
+    oversold,
+    nearLowerBand,
+    proximityThresholdPercent,
+    mode:'SMALL_ACCOUNT',
+    strongOversold
+  }
+}
+
 const bandsAt=(closes:number[],endExclusive:number,period=20,mult=2)=>{
   const slice=closes.slice(endExclusive-period,endExclusive)
   if(slice.length<period)return null
@@ -80,11 +114,16 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
     previous.close>=prevBands.lower &&
     latest.close<latestBands.lower
 
-  const oversold=latestRsi<=config.rsiOversold
   const closeVsLowerPct=latestBands.lower>0
     ? ((latest.close-latestBands.lower)/latestBands.lower)*100
     : Infinity
-  const nearLowerBand=closeVsLowerPct<=config.entryProximityPercent
+  const entryDecision=smallAccountEntryDecision({
+    rsiValue:latestRsi,
+    closeVsLowerPct,
+    crossedBelowLower
+  })
+  const oversold=entryDecision.oversold
+  const nearLowerBand=entryDecision.nearLowerBand
 
   let stopPrice:number|null=null
   let takeProfitPrice:number|null=null
@@ -98,7 +137,7 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
     else if(livePrice<=stopPrice)exitReason='STOP_LOSS'
   }
 
-  const entryReady=position.qty<=0 && oversold && (crossedBelowLower || nearLowerBand)
+  const entryReady=position.qty<=0 && entryDecision.ready
 
   const action=
     position.qty>0 && exitReason ? 'SELL' :
@@ -109,7 +148,9 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
     productId,
     action,
     reason:action==='BUY'
-      ? 'RSI is oversold and price is at or near the lower Bollinger Band'
+      ? (config.smallAccountMode
+          ? 'SMALL ACCOUNT BUY: oversold RSI with adaptive lower-Bollinger proximity'
+          : 'RSI is oversold and price is at or near the lower Bollinger Band')
       : action==='SELL'
         ? exitReason
         : 'No deterministic entry/exit trigger',
@@ -129,8 +170,10 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
       crossedBelowLower,
       nearLowerBand,
       closeVsLowerPct,
-      proximityThresholdPercent:config.entryProximityPercent,
-      oversold
+      proximityThresholdPercent:entryDecision.proximityThresholdPercent,
+      oversold,
+      strongOversold:Boolean((entryDecision as any).strongOversold),
+      mode:entryDecision.mode
     },
     position,
     exits:{
