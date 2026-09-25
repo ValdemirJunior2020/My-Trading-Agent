@@ -261,7 +261,7 @@ const server=createServer(async(req,res)=>{
  }catch(error){const message=error instanceof Error?error.message:'Unknown server error';console.error('[server]',message);if(!res.headersSent)json(res,500,{error:message});else res.end()}
 })
 
-server.listen(config.port,config.host,()=>{writeFileSync(pidFile,String(process.pid),'utf8');console.log(`My Trading Agent running at http://${config.host}:${config.port}`);console.log(`Mode: ${config.tradingMode} | Coinbase configured: ${coinbaseConfigured()} | Live execution: ${config.liveTradingEnabled}`);console.log(`Auto agents: ${getAutoRunSettings().enabled?'ON':'OFF'} every ${getAutoRunSettings().intervalSeconds}s`);startAutoRun();void startMeanReversionEngine()})
+server.listen(config.port,config.host,()=>{writeFileSync(pidFile,String(process.pid),'utf8');console.log(`My Trading Agent running at http://${config.host}:${config.port}`);console.log(`Mode: ${config.tradingMode} | Coinbase configured: ${coinbaseConfigured()} | Live execution: ${config.liveTradingEnabled}`);console.log(`Auto agents: ${getAutoRunSettings().enabled?'ON':'OFF'} every ${getAutoRunSettings().intervalSeconds}s`);startAutoRun();setTimeout(()=>void startMeanReversionEngine(),15000)})
 
 const shutdown=()=>{stopAutoRun();stopMeanReversionEngine();try{if(existsSync(pidFile))rmSync(pidFile)}catch{}server.close(()=>process.exit(0))}
 process.on('SIGINT',shutdown)
