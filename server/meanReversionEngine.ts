@@ -4,7 +4,7 @@ import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
 import { tryLimitedLiveExecution, checkRollingEquityKillSwitch } from './risk.js'
 import { getChallengeSnapshot } from './challenge.js'
-import { getBotManagedPosition } from './bollingerStrategy.js'
+import { getBotManagedPosition, smallAccountEntryDecision } from './bollingerStrategy.js'
 import { getPipelineStatus, runFullAgentPipeline } from './pipeline.js'
 
 type Candle={
@@ -129,7 +129,15 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
   const crossedBelow=
     previousClose>=previousLower &&
     candle.close<currentLower
-  const oversold=currentRsi<config.rsiOversold
+  const closeVsLowerPct=currentLower>0
+    ? ((candle.close-currentLower)/currentLower)*100
+    : Infinity
+  const entryDecision=smallAccountEntryDecision({
+    rsiValue:currentRsi,
+    closeVsLowerPct,
+    crossedBelowLower:crossedBelow
+  })
+  const oversold=entryDecision.oversold
   const position=refreshPosition(productId,state,true)
 
   publish('mean_reversion_candle_closed',{
@@ -138,13 +146,17 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     candleClose:candle.close,
     bollingerLower:currentLower,
     bollingerMiddle:avg(closes.slice(-config.bbPeriod)),
+    closeVsLowerPct,
+    proximityThresholdPercent:entryDecision.proximityThresholdPercent,
+    mode:entryDecision.mode,
     rsi:currentRsi,
     crossedBelowLowerBand:crossedBelow,
+    nearLowerBand:entryDecision.nearLowerBand,
     rsiOversold:oversold,
     positionOpen:position.qty>0
   },'strategy')
 
-  if(position.qty>0||!crossedBelow||!oversold)return
+  if(position.qty>0||!entryDecision.ready)return
 
   publish('mean_reversion_buy_signal',{
     productId,
@@ -154,8 +166,11 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     rsi:currentRsi,
     rules:{
       candleClosed:true,
-      closeBelowLowerBand:true,
-      rsiBelow30:true
+      mode:entryDecision.mode,
+      closeBelowLowerBand:crossedBelow,
+      nearLowerBand:entryDecision.nearLowerBand,
+      proximityThresholdPercent:entryDecision.proximityThresholdPercent,
+      rsiThreshold:config.rsiOversold
     }
   },'strategy')
 
@@ -437,6 +452,10 @@ export const startMeanReversionEngine=async()=>{
       bollingerStdDev:config.bbStdDev,
       rsiPeriod:config.rsiPeriod,
       rsiOversold:config.rsiOversold,
+      smallAccountMode:config.smallAccountMode,
+      smallAccountStrongRsi:config.smallAccountStrongRsi,
+      smallAccountStrongProximityPercent:config.smallAccountStrongProximityPercent,
+      smallAccountNormalProximityPercent:config.smallAccountNormalProximityPercent,
       stopLossPercent:config.fixedStopLossPercent,
       maxSlippagePercent:config.maxSlippagePercent,
       rollingKillSwitchPercent:config.rollingKillSwitchPercent
