@@ -235,6 +235,18 @@ const chooseAutoProduct = async () => {
     Number(held.get(row.productId)||0)>=5 ||
     (executableBuyProducts.has(row.productId)&&smallAccountLiquid(row))
   )
+  if(config.smallAccountMode&&hasUsableCash&&executableFallbackPool.length===0){
+    return {
+      productId:'',
+      scan,
+      reason:'SMALL_ACCOUNT_NO_EXECUTABLE_PAIR',
+      heldUsd:0,
+      availableCashUsd,
+      maxRiskSizedBuyUsd,
+      previousProductId:lastProduct||null
+    }
+  }
+
   const fallbackPool=executableFallbackPool.length?executableFallbackPool:[...scan.results]
   const nonRepeat = fallbackPool.filter((row:any)=>!isSameAsLast(row.productId))
   const oldestPool = nonRepeat.length ? nonRepeat : fallbackPool
@@ -299,6 +311,17 @@ const tick = async () => {
   }
 
   lastAttemptAt = Date.now()
+
+  if(!selection.productId){
+    publish('auto_agents_cycle_skipped',{
+      reason:selection.reason,
+      availableCashUsd:selection.availableCashUsd||0,
+      maxRiskSizedBuyUsd:selection.maxRiskSizedBuyUsd||0,
+      message:'Small Account Mode found no liquid Coinbase pair whose minimum order fits inside the current safe BUY size.'
+    },'manager')
+    return
+  }
+
   markAnalyzed(selection.productId)
   setSetting(LAST_SELECTED_KEY,selection.productId)
   publish('auto_agents_cycle_started', {
