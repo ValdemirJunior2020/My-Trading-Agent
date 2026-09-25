@@ -10,7 +10,13 @@ import { scanCryptoMarket } from './scanner.js'
 import { evaluateBollingerRsiStrategy } from './bollingerStrategy.js'
 
 type AgentResult = { model: string; output: any }
-type PipelineOptions = { productId?: string; deepResearch?: boolean }
+type PipelineOptions = {
+  productId?: string
+  deepResearch?: boolean
+  executeLive?: boolean
+  signalIntent?: 'BUY' | 'SELL' | 'NONE'
+  signalReason?: string
+}
 type PipelineState = {
   status: 'idle' | 'running' | 'completed' | 'failed'
   productId: string
@@ -279,7 +285,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   })
 
   const rawDecision = String(decision.output?.decision || 'WAIT').toUpperCase()
-  const strategyAction = String((deterministicStrategy as any)?.action || 'NONE').toUpperCase()
+  const strategyAction = String(options.signalIntent || (deterministicStrategy as any)?.action || 'NONE').toUpperCase()
 
   let resolvedDecisionOutput:any = {
     ...decision.output,
@@ -290,25 +296,38 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     resolutionSource:'BOLLINGER_RSI_ATR_RULES'
   }
 
-  if(strategyAction==='BUY'){
+  if(strategyAction==='BUY' && rawDecision==='BUY_CANDIDATE'){
     resolvedDecisionOutput={
       ...decision.output,
       decision:'BUY_CANDIDATE',
-      confidence:0.99,
-      summary:'Deterministic BUY: RSI is oversold and price is at or near the lower Bollinger Band.',
+      confidence:Number(decision.output?.confidence||0),
+      summary:'BUY approved only after deterministic signal plus agent analysis.',
       aiDecision:rawDecision,
-      resolutionSource:'BOLLINGER_RSI_ATR_RULES',
-      deterministicStrategy
+      resolutionSource:'AGENT_APPROVED_DETERMINISTIC_SIGNAL',
+      deterministicStrategy,
+      signalReason:options.signalReason||null
     }
-  }else if(strategyAction==='SELL'){
+  }else if(strategyAction==='SELL' && rawDecision==='SELL_CANDIDATE'){
     resolvedDecisionOutput={
       ...decision.output,
       decision:'SELL_CANDIDATE',
-      confidence:0.99,
-      summary:'Deterministic SELL: automatic take-profit or stop-loss exit rule triggered.',
+      confidence:Number(decision.output?.confidence||0),
+      summary:'SELL approved only after deterministic profit signal plus agent analysis.',
       aiDecision:rawDecision,
-      resolutionSource:'BOLLINGER_RSI_ATR_RULES',
-      deterministicStrategy
+      resolutionSource:'AGENT_APPROVED_DETERMINISTIC_SIGNAL',
+      deterministicStrategy,
+      signalReason:options.signalReason||null
+    }
+  }else if(strategyAction==='BUY' || strategyAction==='SELL'){
+    resolvedDecisionOutput={
+      ...decision.output,
+      decision:rawDecision==='REJECT'?'REJECT':'WAIT',
+      confidence:Number(decision.output?.confidence||0),
+      summary:'A deterministic trade signal existed, but the agents did not approve the same trade direction.',
+      aiDecision:rawDecision,
+      resolutionSource:'AGENT_GATE_BLOCKED_SIGNAL',
+      deterministicStrategy,
+      signalReason:options.signalReason||null
     }
   }
 
@@ -339,12 +358,19 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     reason: 'Not a candidate decision or auto trading disabled'
   }
 
-  if (['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(candidateDecision)) {
+  if (options.executeLive !== false && ['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(candidateDecision)) {
     executionResult = await tryLimitedLiveExecution({
       productId,
       decision: candidateDecision,
       confidence
     })
+  } else if (options.executeLive === false && ['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(candidateDecision)) {
+    executionResult = {
+      action:'AGENT_APPROVAL_ONLY',
+      executed:false,
+      approved:true,
+      reason:'Agent analysis approved the candidate; caller owns final deterministic execution.'
+    }
   }
 
   if (
