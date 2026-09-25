@@ -67,8 +67,16 @@ const bandsAt=(closes:number[],endExclusive:number,period=20,mult=2)=>{
   return {middle,upper:middle+mult*sd,lower:middle-mult*sd}
 }
 
-export const getBotManagedPosition=(productId:string)=>{
-  let qty=0,cost=0
+export type BotManagedLot={
+  orderId:string
+  openedAt:string
+  qty:number
+  costUsd:number
+  avgEntryPrice:number
+}
+
+export const getBotManagedLots=(productId:string):BotManagedLot[]=>{
+  const lots:BotManagedLot[]=[]
   for(const event of livePlacedOrders(5000)){
     const p:any=event.payload||{}
     if(String(p.productId||'').toUpperCase()!==productId.toUpperCase())continue
@@ -79,17 +87,41 @@ export const getBotManagedPosition=(productId:string)=>{
     const notional=Number(p.notionalUsd||fill.filledValue||preview.order_total||0)
     const base=Number(p.executedQty||fill.executedQty||preview.base_size||(price>0&&notional>0?notional/price:0))
     if(!(price>0)||!(base>0))continue
+
     if(side==='BUY'){
-      qty+=base
-      cost+=notional+Number(preview.commission_total||0)
-    }else if(side==='SELL'&&qty>0){
-      const sold=Math.min(base,qty)
-      const avgCost=qty>0?cost/qty:0
-      qty-=sold
-      cost=Math.max(0,cost-(avgCost*sold))
+      const costUsd=notional+Number(preview.commission_total||0)
+      lots.push({
+        orderId:String(p.orderId||event.id),
+        openedAt:String(p.placedAt||event.createdAt||''),
+        qty:base,
+        costUsd,
+        avgEntryPrice:costUsd/base
+      })
+      continue
+    }
+
+    if(side==='SELL'){
+      let remaining=base
+      for(const lot of lots){
+        if(!(remaining>0))break
+        if(!(lot.qty>0))continue
+        const sold=Math.min(lot.qty,remaining)
+        const unitCost=lot.qty>0?lot.costUsd/lot.qty:0
+        lot.qty-=sold
+        lot.costUsd=Math.max(0,lot.costUsd-(unitCost*sold))
+        lot.avgEntryPrice=lot.qty>0?lot.costUsd/lot.qty:0
+        remaining-=sold
+      }
     }
   }
-  return {qty,avgEntryPrice:qty>0?cost/qty:0}
+  return lots.filter(lot=>lot.qty>1e-12&&lot.costUsd>0)
+}
+
+export const getBotManagedPosition=(productId:string)=>{
+  const lots=getBotManagedLots(productId)
+  const qty=lots.reduce((sum,lot)=>sum+lot.qty,0)
+  const cost=lots.reduce((sum,lot)=>sum+lot.costUsd,0)
+  return {qty,avgEntryPrice:qty>0?cost/qty:0,lots}
 }
 
 export const evaluateBollingerRsiStrategy=async(productId:string)=>{
