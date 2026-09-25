@@ -332,6 +332,20 @@ const tick = async () => {
     return
   }
 
+  const selectedRow=selection.scan?.results?.find((row:any)=>row.productId===selection.productId)
+  const hasBuySignal=Boolean(selectedRow?.buyCandidate)
+  const hasSellSignal=Boolean(selectedRow?.sellCandidate && Number(selection.heldUsd||0)>=5)
+
+  if(!hasBuySignal&&!hasSellSignal){
+    publish('auto_agents_cycle_skipped',{
+      productId:selection.productId,
+      reason:'NO_TRADE_SIGNAL',
+      selectionReason:selection.reason,
+      message:'No real BUY/SELL signal exists, so agents were not run.'
+    },'manager')
+    return
+  }
+
   markAnalyzed(selection.productId)
   setSetting(LAST_SELECTED_KEY,selection.productId)
   publish('auto_agents_cycle_started', {
@@ -342,12 +356,15 @@ const tick = async () => {
     previousProductId: selection.previousProductId || null,
     heldUsd: selection.heldUsd || 0,
     availableCashUsd: selection.availableCashUsd || 0,
-    maxRiskSizedBuyUsd: selection.maxRiskSizedBuyUsd || 0
+    maxRiskSizedBuyUsd: selection.maxRiskSizedBuyUsd || 0,
+    signalIntent:hasBuySignal?'BUY':'SELL'
   }, 'manager')
 
   void runFullAgentPipeline({
     productId: selection.productId,
-    deepResearch: settings.deepResearch
+    deepResearch: settings.deepResearch,
+    signalIntent:hasBuySignal?'BUY':'SELL',
+    signalReason:hasBuySignal?'Scanner BUY candidate':'Scanner SELL candidate on held asset'
   }).catch((error) => {
     const message = error instanceof Error ? error.message : String(error)
     publish('auto_agents_cycle_failed', { error: message }, 'manager')
