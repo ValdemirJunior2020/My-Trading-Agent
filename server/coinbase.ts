@@ -120,8 +120,29 @@ const request=async(method:string,path:string,body?:unknown,priority=0)=>{
 }
 
 export const listAccounts=async(priority=0)=>{
-  const data=await request('GET','/api/v3/brokerage/accounts',undefined,priority) as {accounts?:Array<any>}
-  return (data.accounts||[]).map(account=>({uuid:account.uuid,name:account.name,currency:account.currency,availableBalance:account.available_balance,hold:account.hold,default:account.default,active:account.active}))
+  const all:any[]=[]
+  let cursor=''
+  for(let page=0;page<8;page++){
+    const qs=new URLSearchParams({limit:'250'})
+    if(cursor)qs.set('cursor',cursor)
+    const data=await request('GET','/api/v3/brokerage/accounts?'+qs.toString(),undefined,priority) as {
+      accounts?:Array<any>
+      has_next?:boolean
+      cursor?:string
+    }
+    all.push(...(data.accounts||[]))
+    if(!data.has_next||!data.cursor)break
+    cursor=String(data.cursor)
+  }
+  return all.map(account=>({
+    uuid:account.uuid,
+    name:account.name,
+    currency:account.currency,
+    availableBalance:account.available_balance,
+    hold:account.hold,
+    default:account.default,
+    active:account.active
+  }))
 }
 export const getProduct=async(productId:string)=>{
   const key=productId.toUpperCase()
