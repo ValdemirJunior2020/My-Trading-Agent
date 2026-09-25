@@ -112,6 +112,10 @@ const smallAccountBuyIsExecutable=async(productId:string)=>{
     const usdAccount=(accounts as any[]).find((a:any)=>String(a.currency||'').toUpperCase()==='USD')
     const availableUsd=Number(usdAccount?.availableBalance?.value??usdAccount?.availableBalance??0)||0
     const quoteMin=Math.max(config.minLiveOrderUsd,Number((product as any)?.quote_min_size||0))
+    const quoteIncrement=Number((product as any)?.quote_increment||0.01)
+    const minExecutableQuoteUsd=quoteIncrement>0
+      ? Math.ceil((quoteMin-Number.EPSILON)/quoteIncrement)*quoteIncrement
+      : quoteMin
     const normalRiskSizedBuyUsd=
       totalPortfolioUsd>0?totalPortfolioUsd*(limits.maxPositionPercent/100):0
     const smallAccountOverrideUsd=
@@ -122,8 +126,9 @@ const smallAccountBuyIsExecutable=async(productId:string)=>{
       Math.max(normalRiskSizedBuyUsd,smallAccountOverrideUsd)
     )
     return {
-      ok:safeMaxBuyUsd+1e-8>=quoteMin,
+      ok:safeMaxBuyUsd+1e-8>=minExecutableQuoteUsd,
       quoteMin,
+      minExecutableQuoteUsd,
       safeMaxBuyUsd,
       availableUsd,
       totalPortfolioUsd
