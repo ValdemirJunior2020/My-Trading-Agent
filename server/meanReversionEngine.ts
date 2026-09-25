@@ -4,7 +4,7 @@ import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
 import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, getRuntimeRiskLimits } from './risk.js'
 import { getChallengeSnapshot } from './challenge.js'
-import { getBotManagedPosition, smallAccountEntryDecision } from './bollingerStrategy.js'
+import { getBotManagedLots, getBotManagedPosition, smallAccountEntryDecision } from './bollingerStrategy.js'
 import { getPipelineStatus, runFullAgentPipeline } from './pipeline.js'
 
 type Candle={
@@ -138,15 +138,39 @@ const smallAccountBuyIsExecutable=async(productId:string)=>{
   }
 }
 
-const runAgentsForSignal=(productId:string)=>{
+const getAgentApproval=async(productId:string,intent:'BUY'|'SELL',reason:string)=>{
   const status=getPipelineStatus()
-  if(status.status==='running')return
-  void runFullAgentPipeline({productId,deepResearch:false}).catch(error=>{
+  if(status.status==='running'){
+    publish('signal_agent_approval_skipped',{
+      productId,
+      intent,
+      reason:'Another agent analysis is already running.'
+    },'manager')
+    return {approved:false,decision:'WAIT',confidence:0,result:null as any}
+  }
+  try{
+    const result=await runFullAgentPipeline({
+      productId,
+      deepResearch:false,
+      executeLive:false,
+      signalIntent:intent,
+      signalReason:reason
+    })
+    const decision=String(result?.decision?.decision||'WAIT').toUpperCase()
+    const confidence=Number(result?.decision?.confidence||0)
+    const approved=decision===intent+'_CANDIDATE'
+    publish('signal_agent_approval_completed',{
+      productId,intent,decision,confidence,approved,reason
+    },'manager')
+    return {approved,decision,confidence,result}
+  }catch(error){
     publish('signal_agent_pipeline_failed',{
       productId,
+      intent,
       error:error instanceof Error?error.message:String(error)
     },'manager')
-  })
+    return {approved:false,decision:'WAIT',confidence:0,result:null as any}
+  }
 }
 
 const handleClosedCandle=async(productId:string,candle:Candle)=>{
@@ -223,16 +247,28 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     }
   },'strategy')
 
-  runAgentsForSignal(productId)
-
   const lock='BUY:'+productId
   if(executionLocks.has(lock))return
   executionLocks.add(lock)
   try{
+    const approval=await getAgentApproval(
+      productId,
+      'BUY',
+      'Closed 5-minute candle met RSI/Bollinger entry rules.'
+    )
+    if(!approval.approved){
+      publish('mean_reversion_buy_blocked_by_agents',{
+        productId,
+        decision:approval.decision,
+        confidence:approval.confidence
+      },'decision')
+      return
+    }
+
     const result=await tryLimitedLiveExecution({
       productId,
       decision:'BUY_CANDIDATE',
-      confidence:1,
+      confidence:approval.confidence,
       triggerPrice:candle.close
     })
     publish('mean_reversion_entry_result',{productId,result},'execution')
@@ -261,65 +297,88 @@ const handleTicker=async(productId:string,price:number)=>{
   const state=states.get(productId)
   if(!state)return
 
-  const position=refreshPosition(productId,state)
-  if(!(position.qty>0)||!(position.avgEntryPrice>0))return
+  const lots=getBotManagedLots(productId)
+  if(!lots.length)return
 
   const closes=state.closed.map(x=>x.close)
   const middle=middleBandWithLivePrice(closes,price)
   if(middle==null)return
 
-  const stopPrice=position.avgEntryPrice*(1-config.fixedStopLossPercent/100)
-  const fixedTakeProfitPrice=position.avgEntryPrice*(1+config.takeProfitPercent/100)
-  const takeProfit=config.smallAccountMode
-    ? price>=fixedTakeProfitPrice
-    : price>=middle
-  const stopLoss=price<=stopPrice
-  if(!takeProfit&&!stopLoss)return
+  const stopLot=lots.find(lot=>price<=lot.avgEntryPrice*(1-config.fixedStopLossPercent/100))
+  const profitLot=lots.find(lot=>price>=lot.avgEntryPrice*(1+config.takeProfitPercent/100))
+  const targetLot=stopLot||profitLot
+  if(!targetLot)return
 
-  const reason=stopLoss
-    ? 'STOP_LOSS'
-    : config.smallAccountMode
-      ? 'SMALL_ACCOUNT_FIXED_TAKE_PROFIT'
-      : 'MIDDLE_BAND_TAKE_PROFIT'
+  const stopLoss=Boolean(stopLot)
+  const reason=stopLoss?'STOP_LOSS':'LOT_NET_TAKE_PROFIT'
+  const stopPrice=targetLot.avgEntryPrice*(1-config.fixedStopLossPercent/100)
+  const takeProfitPrice=targetLot.avgEntryPrice*(1+config.takeProfitPercent/100)
   const lock='SELL:'+productId
   if(executionLocks.has(lock))return
   executionLocks.add(lock)
 
   publish('mean_reversion_exit_signal',{
     productId,
+    sourceLotOrderId:targetLot.orderId,
     reason,
     livePrice:price,
-    entryPrice:position.avgEntryPrice,
-    quantity:position.qty,
+    entryPrice:targetLot.avgEntryPrice,
+    quantity:targetLot.qty,
+    lotCostUsd:targetLot.costUsd,
     middleBand:middle,
-    fixedTakeProfitPrice,
+    takeProfitPrice,
     takeProfitPercent:config.takeProfitPercent,
     stopPrice,
     stopLossPercent:config.fixedStopLossPercent
   },'strategy')
 
-  runAgentsForSignal(productId)
-
   try{
+    let confidence=1
+
+    // Protective stop-losses never wait for AI approval.
+    if(!stopLoss){
+      const approval=await getAgentApproval(
+        productId,
+        'SELL',
+        'Tracked bot BUY lot reached the configured take-profit threshold.'
+      )
+      if(!approval.approved){
+        publish('mean_reversion_sell_blocked_by_agents',{
+          productId,
+          sourceLotOrderId:targetLot.orderId,
+          decision:approval.decision,
+          confidence:approval.confidence
+        },'decision')
+        return
+      }
+      confidence=approval.confidence
+    }
+
     const result=await tryLimitedLiveExecution({
       productId,
       decision:'SELL_CANDIDATE',
-      confidence:1,
+      confidence,
       triggerPrice:price,
-      baseSizeOverride:position.qty,
+      baseSizeOverride:targetLot.qty,
       exitReason:reason,
-      avgEntryPrice:position.avgEntryPrice
+      avgEntryPrice:targetLot.avgEntryPrice,
+      sourceLotOrderId:targetLot.orderId,
+      requiredNetProfitPercent:stopLoss?0:config.takeProfitPercent
     })
-    publish('mean_reversion_exit_result',{productId,reason,result},'execution')
+    publish('mean_reversion_exit_result',{
+      productId,
+      sourceLotOrderId:targetLot.orderId,
+      reason,
+      result
+    },'execution')
     if(result?.executed){
-      state.position={qty:0,avgEntryPrice:0}
+      state.position=getBotManagedPosition(productId)
       state.lastPositionRefreshAt=Date.now()
     }
   }finally{
     executionLocks.delete(lock)
   }
 }
-
 const processCandlePayload=(data:any)=>{
   const events=Array.isArray(data?.events)?data.events:[]
   for(const event of events){
