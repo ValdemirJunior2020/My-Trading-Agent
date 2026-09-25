@@ -106,6 +106,9 @@ const chooseAutoProduct = async () => {
   const { held, availableCashUsd } = await accountSnapshot()
   const lastProduct = lastSelectedProduct()
   const hasUsableCash = availableCashUsd >= Math.max(config.minLiveOrderUsd, 1)
+  const smallAccountLiquid=(row:any)=>
+    !config.smallAccountMode ||
+    Number(row?.dollarVolume24h||0)>=config.smallAccountMinDollarVolume24h
 
   let currentPortfolioUsd = 0
   try {
@@ -167,6 +170,7 @@ const chooseAutoProduct = async () => {
       hasUsableCash &&
       row.buyCandidate &&
       executableBuyProducts.has(row.productId) &&
+      smallAccountLiquid(row) &&
       selectable(row.productId)
     )
     .sort((a: any, b: any) => b.buyScore - a.buyScore)[0]
@@ -204,6 +208,7 @@ const chooseAutoProduct = async () => {
     .filter((row: any) =>
       selectable(row.productId) &&
       (!hasUsableCash || executableBuyProducts.has(row.productId) || Number(held.get(row.productId) || 0) >= 5) &&
+      (!hasUsableCash || Number(held.get(row.productId) || 0) >= 5 || smallAccountLiquid(row)) &&
       (!hasUsableCash || !row.sellCandidate || Number(held.get(row.productId) || 0) >= 5)
     )
     .sort((a: any, b: any) =>
@@ -225,8 +230,14 @@ const chooseAutoProduct = async () => {
 
   // If all assets are cooling down, pick the least recently analyzed asset,
   // but never immediately repeat the previous coin when another coin exists.
-  const nonRepeat = [...scan.results].filter((row:any)=>!isSameAsLast(row.productId))
-  const oldestPool = nonRepeat.length ? nonRepeat : [...scan.results]
+  const executableFallbackPool=[...scan.results].filter((row:any)=>
+    !hasUsableCash ||
+    Number(held.get(row.productId)||0)>=5 ||
+    (executableBuyProducts.has(row.productId)&&smallAccountLiquid(row))
+  )
+  const fallbackPool=executableFallbackPool.length?executableFallbackPool:[...scan.results]
+  const nonRepeat = fallbackPool.filter((row:any)=>!isSameAsLast(row.productId))
+  const oldestPool = nonRepeat.length ? nonRepeat : fallbackPool
   const oldest = oldestPool
     .sort((a: any, b: any) => lastAnalyzedAt(a.productId) - lastAnalyzedAt(b.productId))[0]
 
@@ -242,7 +253,10 @@ const chooseAutoProduct = async () => {
     }
   }
 
-  const fallback = config.watchlist.find(p=>p!==lastProduct) || 'XRP-USD'
+  const fallback =
+    config.watchlist.find(p=>p!==lastProduct && (!hasUsableCash || executableBuyProducts.has(p))) ||
+    fallbackPool.find((row:any)=>row.productId!==lastProduct)?.productId ||
+    'XRP-USD'
   return {
     productId: fallback,
     scan,
