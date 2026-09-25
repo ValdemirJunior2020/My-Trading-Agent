@@ -295,7 +295,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
       ...decision.output,
       decision:'BUY_CANDIDATE',
       confidence:0.99,
-      summary:'Deterministic BUY: close crossed below the lower Bollinger Band and RSI is below the oversold threshold.',
+      summary:'Deterministic BUY: RSI is oversold and price is at or near the lower Bollinger Band.',
       aiDecision:rawDecision,
       resolutionSource:'BOLLINGER_RSI_ATR_RULES',
       deterministicStrategy
@@ -407,7 +407,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   const strategyLower = Number(strategyBands?.lower || 0)
   const strategyMiddle = Number(strategyBands?.middle || 0)
   const strategyRsiValue = Number(strategyRsi?.value)
-  const strategyRsiThreshold = Number(strategyRsi?.threshold || 30)
+  const strategyRsiThreshold = Number(strategyRsi?.threshold || 35)
   const closeVsLowerPct =
     strategyClose > 0 && strategyLower > 0
       ? ((strategyClose - strategyLower) / strategyLower) * 100
@@ -422,6 +422,9 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
           ? ('RSI ' + strategyRsiValue.toFixed(1) + ' / needs < ' + strategyRsiThreshold.toFixed(0))
           : '',
         strategyEntry?.crossedBelowLower === true ? 'BB cross YES' : 'BB cross NO',
+        strategyEntry?.nearLowerBand === true
+          ? 'Near lower BB YES'
+          : 'Near lower BB NO',
         strategyEntry?.oversold === true ? 'RSI oversold YES' : 'RSI oversold NO',
         'No deterministic entry trigger'
       ].filter(Boolean).join(' • ')
@@ -447,6 +450,8 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
       rsi: Number.isFinite(strategyRsiValue) ? strategyRsiValue : null,
       rsiThreshold: strategyRsiThreshold,
       crossedBelowLower: Boolean(strategyEntry?.crossedBelowLower),
+      nearLowerBand: Boolean(strategyEntry?.nearLowerBand),
+      proximityThresholdPercent: Number(strategyEntry?.proximityThresholdPercent ?? 0.25),
       oversold: Boolean(strategyEntry?.oversold),
       closeVsLowerPct
     },
