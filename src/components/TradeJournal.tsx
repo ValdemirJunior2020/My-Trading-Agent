@@ -196,6 +196,7 @@ export function TradeJournal({language}:Props){
                   ? ('RSI ' + Number(ds.rsi).toFixed(1) + ' / needs < ' + Number(ds.rsiThreshold||30).toFixed(0))
                   : '',
                 ds.crossedBelowLower===true?'BB cross YES':'BB cross NO',
+                ds.nearLowerBand===true?'Near lower BB YES':'Near lower BB NO',
                 ds.oversold===true?'RSI oversold YES':'RSI oversold NO',
                 'No deterministic entry trigger'
               ].filter(Boolean).join(' • ')
