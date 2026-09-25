@@ -459,30 +459,62 @@ export const tryLimitedLiveExecution = async (opts: {
 
   if (side === 'BUY') {
     const remainingExposure = Math.max(0, maxExposureUsd - currentAssetUsd)
-    const desiredBeforeCash = Math.min(maxFromPercent, hardCap, remainingExposure)
     const quoteMin = Math.max(config.minLiveOrderUsd, Number(productInfo?.quote_min_size || 0))
-    const fundingRequiredUsd = Math.max(0, desiredBeforeCash - availableUsd)
+    const quoteMax = Number(productInfo?.quote_max_size || Infinity)
 
-    if (fundingRequiredUsd > 0.01 && desiredBeforeCash >= quoteMin) {
+    // Market BUYs use quote_size in USD, so an expensive coin such as ETH/BTC
+    // is purchased fractionally. Never require the price of one whole coin.
+    const safeMaxBuyUsd = Math.min(
+      maxFromPercent,
+      hardCap,
+      remainingExposure,
+      availableUsd,
+      quoteMax
+    )
+
+    if (!(safeMaxBuyUsd > 0)) {
       return {
-        executed: false,
-        reason: 'Insufficient available USD for target BUY size',
+        executed:false,
+        reason:'No spendable USD is available inside the current risk limits',
         productId,
         side,
         availableUsd,
-        desiredNotionalUsd: desiredBeforeCash,
-        fundingRequiredUsd,
-        quoteMin
+        maxFromPercent,
+        hardCap,
+        remainingExposure
       }
     }
 
-    const raw = Math.min(desiredBeforeCash, availableUsd)
-    quoteSizeUsd = floorToIncrement(raw, productInfo?.quote_increment || 0.01)
-    const quoteMax = Number(productInfo?.quote_max_size || Infinity)
-    if (!(quoteSizeUsd > 0) || quoteSizeUsd < quoteMin) {
-      return { executed: false, reason: 'Calculated BUY size is below the configured/Coinbase minimum', quoteSizeUsd, quoteMin, availableUsd, desiredNotionalUsd: desiredBeforeCash }
+    if (safeMaxBuyUsd + 1e-8 < quoteMin) {
+      return {
+        executed:false,
+        reason:'Safe fractional BUY amount is below Coinbase minimum',
+        productId,
+        side,
+        availableUsd,
+        safeMaxBuyUsd,
+        coinbaseMinimumUsd:quoteMin,
+        maxFromPercent,
+        hardCap,
+        remainingExposure,
+        note:'Coin price is not the required order size; Coinbase market BUYs use fractional quote-size USD.'
+      }
     }
+
+    quoteSizeUsd = floorToIncrement(safeMaxBuyUsd, productInfo?.quote_increment || 0.01)
     if (quoteSizeUsd > quoteMax) quoteSizeUsd = floorToIncrement(quoteMax, productInfo?.quote_increment || 0.01)
+
+    if (!(quoteSizeUsd > 0) || quoteSizeUsd + 1e-8 < quoteMin) {
+      return {
+        executed:false,
+        reason:'Rounded fractional BUY amount fell below Coinbase minimum',
+        quoteSizeUsd,
+        coinbaseMinimumUsd:quoteMin,
+        availableUsd,
+        safeMaxBuyUsd
+      }
+    }
+
     notionalUsd = quoteSizeUsd
   } else {
     const baseIncrement = productInfo?.base_increment || 0.00000001
