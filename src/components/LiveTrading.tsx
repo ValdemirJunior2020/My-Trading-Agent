@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
 
 interface Props {
@@ -14,9 +14,13 @@ export function LiveTrading({ language }: Props) {
   const [preflight, setPreflight] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const readinessInFlight = useRef(false)
+  const scannerInFlight = useRef(false)
   const pt = language === 'pt'
 
   const load = async () => {
+    if (readinessInFlight.current) return
+    readinessInFlight.current = true
     setLoading(true)
     try {
       // Readiness is safety-critical, so load it before the heavy market scanner.
@@ -32,15 +36,20 @@ export function LiveTrading({ language }: Props) {
         ? { ...previous, transientError: message }
         : { transientError: message })
     } finally {
+      readinessInFlight.current = false
       setLoading(false)
     }
   }
 
   const loadScanner = async () => {
+    if (scannerInFlight.current) return
+    scannerInFlight.current = true
     try {
       setScanner(await api.getScanner())
     } catch {
       // Keep the last good scanner snapshot; readiness should not be blocked by scanner traffic.
+    } finally {
+      scannerInFlight.current = false
     }
   }
 
