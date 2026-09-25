@@ -384,6 +384,8 @@ export const tryLimitedLiveExecution = async (opts: {
   baseSizeOverride?: number
   exitReason?: string
   avgEntryPrice?: number
+  sourceLotOrderId?: string
+  requiredNetProfitPercent?: number
 }) => {
   if (String(config.tradingMode).toLowerCase() !== 'live') {
     return { executed: false, reason: 'TRADING_MODE is not live' }
@@ -621,24 +623,39 @@ export const tryLimitedLiveExecution = async (opts: {
 
     if (
       side === 'SELL' &&
-      config.smallAccountMode &&
       String(opts.exitReason || '').includes('TAKE_PROFIT')
     ) {
       const sellCommission = Number(preview.commission_total || 0)
       const avgEntryPrice = Number(opts.avgEntryPrice || 0)
       const sellQty = Number(baseSize || 0)
+      const requiredNetProfitPercent = Math.max(
+        config.takeProfitPercent,
+        Number(opts.requiredNetProfitPercent || 0)
+      )
       if (avgEntryPrice > 0 && sellQty > 0 && estimatedFillPrice > 0) {
         const costBasisUsd = avgEntryPrice * sellQty
         const estimatedNetProceedsUsd = (estimatedFillPrice * sellQty) - sellCommission
         const estimatedNetProfitUsd = estimatedNetProceedsUsd - costBasisUsd
-        if (estimatedNetProfitUsd + 1e-8 < config.smallAccountMinNetProfitUsd) {
+        const estimatedNetProfitPercent = costBasisUsd > 0
+          ? (estimatedNetProfitUsd / costBasisUsd) * 100
+          : 0
+        const requiredNetProfitUsd = Math.max(
+          config.smallAccountMinNetProfitUsd,
+          costBasisUsd * (requiredNetProfitPercent / 100)
+        )
+        if (
+          estimatedNetProfitUsd + 1e-8 < requiredNetProfitUsd ||
+          estimatedNetProfitPercent + 1e-8 < requiredNetProfitPercent
+        ) {
           return {
             executed: false,
-            reason: 'Take-profit preview net profit is below the configured small-account minimum',
+            reason: 'Take-profit preview is below the required net profit after fees',
             preflight,
             preview,
             estimatedNetProfitUsd,
-            requiredNetProfitUsd: config.smallAccountMinNetProfitUsd,
+            estimatedNetProfitPercent,
+            requiredNetProfitUsd,
+            requiredNetProfitPercent,
             costBasisUsd,
             estimatedNetProceedsUsd
           }
@@ -714,7 +731,9 @@ export const tryLimitedLiveExecution = async (opts: {
       fill,
       actualFillPrice,
       executedQty:fill.executedQty,
-      actualSlippagePercent
+      actualSlippagePercent,
+      sourceLotOrderId:opts.sourceLotOrderId||null,
+      exitReason:opts.exitReason||null
     }, 'execution')
 
     return {
