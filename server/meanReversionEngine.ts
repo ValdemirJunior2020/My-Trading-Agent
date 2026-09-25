@@ -220,11 +220,18 @@ const handleTicker=async(productId:string,price:number)=>{
   if(middle==null)return
 
   const stopPrice=position.avgEntryPrice*(1-config.fixedStopLossPercent/100)
-  const takeProfit=price>=middle
+  const fixedTakeProfitPrice=position.avgEntryPrice*(1+config.takeProfitPercent/100)
+  const takeProfit=config.smallAccountMode
+    ? price>=fixedTakeProfitPrice
+    : price>=middle
   const stopLoss=price<=stopPrice
   if(!takeProfit&&!stopLoss)return
 
-  const reason=stopLoss?'STOP_LOSS':'MIDDLE_BAND_TAKE_PROFIT'
+  const reason=stopLoss
+    ? 'STOP_LOSS'
+    : config.smallAccountMode
+      ? 'SMALL_ACCOUNT_FIXED_TAKE_PROFIT'
+      : 'MIDDLE_BAND_TAKE_PROFIT'
   const lock='SELL:'+productId
   if(executionLocks.has(lock))return
   executionLocks.add(lock)
@@ -236,6 +243,8 @@ const handleTicker=async(productId:string,price:number)=>{
     entryPrice:position.avgEntryPrice,
     quantity:position.qty,
     middleBand:middle,
+    fixedTakeProfitPrice,
+    takeProfitPercent:config.takeProfitPercent,
     stopPrice,
     stopLossPercent:config.fixedStopLossPercent
   },'strategy')
