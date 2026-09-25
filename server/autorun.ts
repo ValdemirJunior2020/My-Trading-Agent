@@ -116,10 +116,16 @@ const chooseAutoProduct = async () => {
   } catch {}
 
   const limits = getRuntimeRiskLimits()
+  const normalRiskSizedBuyUsd =
+    currentPortfolioUsd > 0 ? currentPortfolioUsd * (limits.maxPositionPercent / 100) : 0
+  const smallAccountOverrideUsd =
+    config.smallAccountMode && currentPortfolioUsd > 0
+      ? Math.min(config.smallAccountMaxBuyUsd, currentPortfolioUsd * 0.10)
+      : 0
   const maxRiskSizedBuyUsd = Math.min(
     availableCashUsd,
     config.maxLiveOrderUsd,
-    currentPortfolioUsd > 0 ? currentPortfolioUsd * (limits.maxPositionPercent / 100) : 0
+    Math.max(normalRiskSizedBuyUsd, smallAccountOverrideUsd)
   )
 
   const executableBuyProducts = new Set<string>()
