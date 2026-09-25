@@ -50,19 +50,40 @@ const safe = (value: unknown) => JSON.stringify(value).slice(0, 12000)
 const agentStep = async (agentId: string, asset: string, evidence: unknown) => {
   pipelineState = { ...pipelineState, currentAgent: agentId }
   publish('agent_started', { asset }, agentId)
-  try {
-    const result = (await runAgent(agentId, asset, safe(evidence))) as AgentResult
-    saveAnalysis(agentId, asset, safe(evidence), result.output, result.model)
-    publish('agent_completed', { asset, output: result.output }, agentId)
-    if (MAIN_AGENTS.includes(agentId) && !pipelineState.completedAgents.includes(agentId)) {
-      pipelineState = { ...pipelineState, completedAgents: [...pipelineState.completedAgents, agentId] }
+
+  let lastError=''
+  for(let attempt=1;attempt<=2;attempt++){
+    try {
+      const result = (await runAgent(agentId, asset, safe(evidence))) as AgentResult
+      saveAnalysis(agentId, asset, safe(evidence), result.output, result.model)
+      publish('agent_completed', { asset, output: result.output, attempt }, agentId)
+      if (MAIN_AGENTS.includes(agentId) && !pipelineState.completedAgents.includes(agentId)) {
+        pipelineState = { ...pipelineState, completedAgents: [...pipelineState.completedAgents, agentId] }
+      }
+      return result
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+      publish('agent_retry', { asset, error:lastError, attempt }, agentId)
+      if(attempt<2) await new Promise(resolve=>setTimeout(resolve,1200))
     }
-    return result
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    publish('agent_failed', { asset, error: message }, agentId)
-    throw error
   }
+
+  const fallback:AgentResult={
+    model:'fallback',
+    output:{
+      status:'error',
+      confidence:0,
+      summary:'Agent failed twice; safe fallback is WAIT.',
+      risks:[lastError||'Unknown agent error'],
+      decision:'WAIT'
+    }
+  }
+  saveAnalysis(agentId, asset, safe(evidence), fallback.output, fallback.model)
+  publish('agent_failed_safe_wait', { asset, error:lastError, output:fallback.output }, agentId)
+  if (MAIN_AGENTS.includes(agentId) && !pipelineState.completedAgents.includes(agentId)) {
+    pipelineState = { ...pipelineState, completedAgents: [...pipelineState.completedAgents, agentId] }
+  }
+  return fallback
 }
 
 const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
