@@ -53,10 +53,17 @@ export const saveTradingChallenge=(input:Partial<TradingChallenge>)=>{
 
 const balanceValue=(balance:any)=>Number(balance?.value??balance??0)||0
 
-export const getEstimatedPortfolioUsd=async()=>{
+let portfolioCache:{value:any;expiresAt:number}|null=null
+let portfolioInFlight:Promise<any>|null=null
+
+export const getEstimatedPortfolioUsd=async(forceFresh=false)=>{
+  if(!forceFresh&&portfolioCache&&portfolioCache.expiresAt>Date.now())return portfolioCache.value
+  if(!forceFresh&&portfolioInFlight)return portfolioInFlight
+
+  const work=(async()=>{
   const [accounts,products]=await Promise.all([
-    listAccounts(),
-    listSpotUsdProducts(500)
+    listAccounts(100),
+    listSpotUsdProducts(500,100)
   ])
 
   const priceByProduct=new Map(
@@ -88,10 +95,20 @@ export const getEstimatedPortfolioUsd=async()=>{
     }
   }
 
-  return {
+  const result={
     totalUsd:Number(total.toFixed(2)),
     details,
     accountCount:accounts.length
+  }
+  portfolioCache={value:result,expiresAt:Date.now()+15000}
+  return result
+  })()
+
+  if(!forceFresh)portfolioInFlight=work
+  try{
+    return await work
+  }finally{
+    if(portfolioInFlight===work)portfolioInFlight=null
   }
 }
 
