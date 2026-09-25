@@ -40,7 +40,7 @@ export const config = {
   rsiPeriod: Math.max(2, Math.floor(num(process.env.RSI_PERIOD, 14))),
   rsiOversold: Math.max(1, Math.min(50, num(process.env.RSI_OVERSOLD, 35))),
   entryProximityPercent: Math.max(0, Math.min(2, num(process.env.ENTRY_PROXIMITY_PERCENT, 0.25))),
-  smallAccountMode: bool(process.env.SMALL_ACCOUNT_MODE, false),
+  smallAccountMode: bool(process.env.SMALL_ACCOUNT_MODE, true),
   smallAccountStrongRsi: Math.max(1, Math.min(35, num(process.env.SMALL_ACCOUNT_STRONG_RSI, 30))),
   smallAccountStrongProximityPercent: Math.max(0.1, Math.min(2, num(process.env.SMALL_ACCOUNT_STRONG_PROXIMITY_PERCENT, 0.9))),
   smallAccountNormalProximityPercent: Math.max(0.1, Math.min(1.5, num(process.env.SMALL_ACCOUNT_NORMAL_PROXIMITY_PERCENT, 0.4))),
