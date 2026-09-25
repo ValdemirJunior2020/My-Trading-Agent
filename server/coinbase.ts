@@ -5,6 +5,14 @@ const apiUrl=new URL(config.coinbaseApiBaseUrl)
 const host=apiUrl.host
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms))
 
+type TimedCache<T>={value:T;expiresAt:number}
+const productCache=new Map<string,TimedCache<any>>()
+const productInFlight=new Map<string,Promise<any>>()
+const candleCache=new Map<string,TimedCache<any[]>>()
+const candleInFlight=new Map<string,Promise<any[]>>()
+let spotProductsCache:TimedCache<any[]>|null=null
+let spotProductsInFlight:Promise<any[]>|null=null
+
 // Coinbase is shared by the dashboard, scanner, agents, and live execution.
 // Keep one serialized queue to avoid 429 bursts, but allow safety/readiness calls
 // to jump ahead of low-priority scanner traffic.
@@ -115,10 +123,34 @@ export const listAccounts=async(priority=0)=>{
   const data=await request('GET','/api/v3/brokerage/accounts',undefined,priority) as {accounts?:Array<any>}
   return (data.accounts||[]).map(account=>({uuid:account.uuid,name:account.name,currency:account.currency,availableBalance:account.available_balance,hold:account.hold,default:account.default,active:account.active}))
 }
-export const getProduct=async(productId:string)=>request('GET',`/api/v3/brokerage/products/${encodeURIComponent(productId)}`)
+export const getProduct=async(productId:string)=>{
+  const key=productId.toUpperCase()
+  const cached=productCache.get(key)
+  if(cached&&cached.expiresAt>Date.now())return cached.value
+  const existing=productInFlight.get(key)
+  if(existing)return existing
+
+  const work=(async()=>{
+    const value=await request('GET',`/api/v3/brokerage/products/${encodeURIComponent(key)}`)
+    productCache.set(key,{value,expiresAt:Date.now()+3000})
+    return value
+  })()
+
+  productInFlight.set(key,work)
+  try{return await work}
+  finally{if(productInFlight.get(key)===work)productInFlight.delete(key)}
+}
 
 
 export const getCandles=async(productId:string,granularity='ONE_HOUR',limit=120)=>{
+  const requested=Math.max(20,Math.min(3000,Math.floor(limit)))
+  const key=productId.toUpperCase()+'|'+granularity+'|'+requested
+  const cached=candleCache.get(key)
+  if(cached&&cached.expiresAt>Date.now())return cached.value
+  const existing=candleInFlight.get(key)
+  if(existing)return existing
+
+  const work=(async()=>{
   const endNow=Math.floor(Date.now()/1000)
   const secondsByGranularity:Record<string,number>={
     ONE_MINUTE:60,
@@ -131,7 +163,6 @@ export const getCandles=async(productId:string,granularity='ONE_HOUR',limit=120)
     ONE_DAY:86400
   }
   const seconds=secondsByGranularity[granularity]||3600
-  const requested=Math.max(20,Math.min(3000,Math.floor(limit)))
   const rows:Array<{start:number;low:number;high:number;open:number;close:number;volume:number}>=[]
   let remaining=requested
   let windowEnd=endNow
@@ -152,7 +183,15 @@ export const getCandles=async(productId:string,granularity='ONE_HOUR',limit=120)
 
   const deduped=new Map<number,{start:number;low:number;high:number;open:number;close:number;volume:number}>()
   for(const row of rows) deduped.set(row.start,row)
-  return [...deduped.values()].sort((a,b)=>a.start-b.start).slice(-requested)
+  const result=[...deduped.values()].sort((a,b)=>a.start-b.start).slice(-requested)
+  const ttl=requested>300?10*60*1000:10000
+  candleCache.set(key,{value:result,expiresAt:Date.now()+ttl})
+  return result
+  })()
+
+  candleInFlight.set(key,work)
+  try{return await work}
+  finally{if(candleInFlight.get(key)===work)candleInFlight.delete(key)}
 }
 
 
@@ -263,10 +302,14 @@ export const createMarketOrder = async (params: {
 
 export const listSpotUsdProducts=async(limit=250,priority=0)=>{
   const bounded=Math.max(20,Math.min(500,Math.floor(limit)))
-  const data=await request('GET',`/api/v3/brokerage/products?limit=${bounded}&product_type=SPOT`,undefined,priority) as {
+  if(spotProductsCache&&spotProductsCache.expiresAt>Date.now())return spotProductsCache.value.slice(0,bounded)
+  if(spotProductsInFlight)return (await spotProductsInFlight).slice(0,bounded)
+
+  const work=(async()=>{
+  const data=await request('GET',`/api/v3/brokerage/products?limit=500&product_type=SPOT`,undefined,priority) as {
     products?:Array<any>
   }
-  return (data.products||[])
+  const result=(data.products||[])
     .filter((p:any)=>{
       const productId=String(p.product_id||'').toUpperCase()
       const quote=String(p.quote_currency_id||p.quote_currency||'').toUpperCase()
@@ -287,6 +330,13 @@ export const listSpotUsdProducts=async(limit=250,priority=0)=>{
       quoteCurrency:String(p.quote_currency_id||p.quote_currency||'USD').toUpperCase()
     }))
     .filter((p:any)=>p.productId&&Number.isFinite(p.price)&&p.price>0)
+  spotProductsCache={value:result,expiresAt:Date.now()+30000}
+  return result
+  })()
+
+  spotProductsInFlight=work
+  try{return (await work).slice(0,bounded)}
+  finally{if(spotProductsInFlight===work)spotProductsInFlight=null}
 }
 
 
