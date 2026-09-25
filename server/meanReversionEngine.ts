@@ -306,7 +306,9 @@ const handleTicker=async(productId:string,price:number)=>{
       decision:'SELL_CANDIDATE',
       confidence:1,
       triggerPrice:price,
-      baseSizeOverride:position.qty
+      baseSizeOverride:position.qty,
+      exitReason:reason,
+      avgEntryPrice:position.avgEntryPrice
     })
     publish('mean_reversion_exit_result',{productId,reason,result},'execution')
     if(result?.executed){
