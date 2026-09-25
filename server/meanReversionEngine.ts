@@ -1,8 +1,8 @@
 import { config, coinbaseConfigured } from './config.js'
-import { getCandles } from './coinbase.js'
+import { getCandles, getProduct, listAccounts } from './coinbase.js'
 import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
-import { tryLimitedLiveExecution, checkRollingEquityKillSwitch } from './risk.js'
+import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, getRuntimeRiskLimits } from './risk.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { getBotManagedPosition, smallAccountEntryDecision } from './bollingerStrategy.js'
 import { getPipelineStatus, runFullAgentPipeline } from './pipeline.js'
@@ -99,6 +99,36 @@ const refreshPosition=(productId:string,state:ProductState,force=false)=>{
   return state.position
 }
 
+const smallAccountBuyIsExecutable=async(productId:string)=>{
+  if(!config.smallAccountMode)return {ok:true}
+  try{
+    const [product,accounts,snapshot]=await Promise.all([
+      getProduct(productId),
+      listAccounts(),
+      getChallengeSnapshot()
+    ])
+    const limits=getRuntimeRiskLimits()
+    const totalPortfolioUsd=Number(snapshot.currentPortfolioUsd||0)
+    const usdAccount=(accounts as any[]).find((a:any)=>String(a.currency||'').toUpperCase()==='USD')
+    const availableUsd=Number(usdAccount?.availableBalance?.value??usdAccount?.availableBalance??0)||0
+    const quoteMin=Math.max(config.minLiveOrderUsd,Number((product as any)?.quote_min_size||0))
+    const safeMaxBuyUsd=Math.min(
+      availableUsd,
+      config.maxLiveOrderUsd,
+      totalPortfolioUsd>0?totalPortfolioUsd*(limits.maxPositionPercent/100):0
+    )
+    return {
+      ok:safeMaxBuyUsd+1e-8>=quoteMin,
+      quoteMin,
+      safeMaxBuyUsd,
+      availableUsd,
+      totalPortfolioUsd
+    }
+  }catch(error){
+    return {ok:false,error:error instanceof Error?error.message:String(error)}
+  }
+}
+
 const runAgentsForSignal=(productId:string)=>{
   const status=getPipelineStatus()
   if(status.status==='running')return
@@ -157,6 +187,16 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
   },'strategy')
 
   if(position.qty>0||!entryDecision.ready)return
+
+  const executable=await smallAccountBuyIsExecutable(productId)
+  if(!executable.ok){
+    publish('mean_reversion_buy_skipped',{
+      productId,
+      reason:'SMALL_ACCOUNT_MINIMUM_DOES_NOT_FIT',
+      ...executable
+    },'strategy')
+    return
+  }
 
   publish('mean_reversion_buy_signal',{
     productId,
