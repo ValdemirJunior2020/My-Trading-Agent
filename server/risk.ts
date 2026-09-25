@@ -297,7 +297,11 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
     productId, side, notionalUsd, totalPortfolioUsd, availableUsd, currentAssetUsd
   } = input
   const availableAssetUsd = Number(input.availableAssetUsd ?? currentAssetUsd)
-  const maxPositionUsd = totalPortfolioUsd * (limits.maxPositionPercent / 100)
+  const normalMaxPositionUsd = totalPortfolioUsd * (limits.maxPositionPercent / 100)
+  const smallAccountOverrideUsd = config.smallAccountMode
+    ? Math.min(config.smallAccountMaxBuyUsd, totalPortfolioUsd * 0.10)
+    : 0
+  const maxPositionUsd = Math.max(normalMaxPositionUsd, smallAccountOverrideUsd)
   const maxExposureUsd = totalPortfolioUsd * (limits.maxTotalExposurePercent / 100)
   const daily = getDailyEquityGuard(totalPortfolioUsd)
 
@@ -464,8 +468,15 @@ export const tryLimitedLiveExecution = async (opts: {
 
     // Market BUYs use quote_size in USD, so an expensive coin such as ETH/BTC
     // is purchased fractionally. Never require the price of one whole coin.
+    const smallAccountRiskCapUsd = config.smallAccountMode
+      ? Math.max(
+          maxFromPercent,
+          Math.min(config.smallAccountMaxBuyUsd, totalPortfolioUsd * 0.10)
+        )
+      : maxFromPercent
+
     const safeMaxBuyUsd = Math.min(
-      maxFromPercent,
+      smallAccountRiskCapUsd,
       hardCap,
       remainingExposure,
       availableUsd,
