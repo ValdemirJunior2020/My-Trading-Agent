@@ -134,10 +134,14 @@ const chooseAutoProduct = async () => {
       try {
         const product:any = await getProduct(row.productId)
         const quoteMin = Math.max(config.minLiveOrderUsd, Number(product?.quote_min_size || 0))
+        const quoteIncrement = Number(product?.quote_increment || 0.01)
+        const minExecutableQuoteUsd = quoteIncrement > 0
+          ? Math.ceil((quoteMin - Number.EPSILON) / quoteIncrement) * quoteIncrement
+          : quoteMin
         const quoteMax = Number(product?.quote_max_size || Infinity)
         if (
-          maxRiskSizedBuyUsd >= quoteMin &&
-          quoteMin <= quoteMax &&
+          maxRiskSizedBuyUsd + 1e-8 >= minExecutableQuoteUsd &&
+          minExecutableQuoteUsd <= quoteMax + 1e-8 &&
           product?.trading_disabled !== true &&
           product?.is_disabled !== true &&
           product?.cancel_only !== true &&
