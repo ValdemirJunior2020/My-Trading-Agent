@@ -89,21 +89,23 @@ export const openPaperNotional=():number=>{
 
 export const liveTradeHistory=(limit=200)=>{
   const bounded=Math.max(1,Math.min(1000,Math.floor(limit)))
+  const hiddenBeforeId=Math.max(0,Number(getSetting('live_history_hidden_before_id','0'))||0)
   const rows=db.prepare(`
     SELECT * FROM agent_events
-    WHERE type IN (
-      'live_order_placed',
-      'live_order_failed',
-      'live_order_rejected',
-      'live_order_preview_rejected',
-      'live_order_preview_approved',
-      'live_execution_cycle',
-      'capital_rotation_plan',
-      'capital_rotation_plan_failed'
-    )
+    WHERE id > ?
+      AND type IN (
+        'live_order_placed',
+        'live_order_failed',
+        'live_order_rejected',
+        'live_order_preview_rejected',
+        'live_order_preview_approved',
+        'live_execution_cycle',
+        'capital_rotation_plan',
+        'capital_rotation_plan_failed'
+      )
     ORDER BY id DESC
     LIMIT ?
-  `).all(bounded) as Array<any>
+  `).all(hiddenBeforeId,bounded) as Array<any>
   return rows.map(row=>({
     id:row.id,
     type:row.type,
@@ -115,18 +117,26 @@ export const liveTradeHistory=(limit=200)=>{
 
 
 export const clearLiveTradeHistory=()=>{
-  const result=db.prepare(`
-    DELETE FROM agent_events
+  // Clear only the journal VIEW. Do not delete execution events because
+  // live_order_placed events are also used to reconstruct bot-managed positions.
+  const row=db.prepare(`
+    SELECT COALESCE(MAX(id),0) AS max_id, COUNT(*) AS count
+    FROM agent_events
     WHERE type IN (
       'live_order_placed',
       'live_order_failed',
       'live_order_rejected',
       'live_order_preview_rejected',
       'live_order_preview_approved',
-      'live_execution_cycle'
+      'live_execution_cycle',
+      'capital_rotation_plan',
+      'capital_rotation_plan_failed'
     )
-  `).run()
-  return {deleted:Number(result.changes||0)}
+  `).get() as {max_id:number;count:number}
+
+  const maxId=Math.max(0,Number(row?.max_id||0))
+  setSetting('live_history_hidden_before_id',String(maxId))
+  return {deleted:0,hidden:Number(row?.count||0)}
 }
 
 
