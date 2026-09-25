@@ -46,6 +46,7 @@ export const config = {
   smallAccountNormalProximityPercent: Math.max(0.1, Math.min(1.5, num(process.env.SMALL_ACCOUNT_NORMAL_PROXIMITY_PERCENT, 0.4))),
   smallAccountMinDollarVolume24h: Math.max(1_000_000, num(process.env.SMALL_ACCOUNT_MIN_DOLLAR_VOLUME_24H, 10_000_000)),
   smallAccountMaxBuyUsd: Math.max(1, Math.min(25, num(process.env.SMALL_ACCOUNT_MAX_BUY_USD, 10))),
+  smallAccountMinNetProfitUsd: Math.max(0, Math.min(5, num(process.env.SMALL_ACCOUNT_MIN_NET_PROFIT_USD, 0.10))),
   takeProfitPercent: Math.max(0.2, Math.min(10, num(process.env.TAKE_PROFIT_PERCENT, 1.5))),
   fixedStopLossPercent: 0.8,
   rollingKillSwitchPercent: 3,
