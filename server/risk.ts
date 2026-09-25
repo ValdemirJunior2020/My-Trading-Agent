@@ -627,6 +627,7 @@ export const tryLimitedLiveExecution = async (opts: {
       const sellCommission = Number(preview.commission_total || 0)
       const avgEntryPrice = Number(opts.avgEntryPrice || 0)
       const sellQty = Number(baseSize || 0)
+
       if (avgEntryPrice > 0 && sellQty > 0 && estimatedFillPrice > 0) {
         const costBasisUsd = avgEntryPrice * sellQty
         const estimatedNetProceedsUsd = (estimatedFillPrice * sellQty) - sellCommission
@@ -634,7 +635,7 @@ export const tryLimitedLiveExecution = async (opts: {
 
         if (estimatedNetProfitUsd + 1e-8 < config.smallAccountMinNetProfitUsd) {
           return {
-            executed:false,
+            executed: false,
             reason:
               'Take-profit preview net profit 
       estimatedFillPrice > 0 && slippageReferencePrice > 0
@@ -730,7 +731,8 @@ export const tryLimitedLiveExecution = async (opts: {
     return { executed: false, reason: message, preflight }
   }
 }
- + estimatedNetProfitUsd.toFixed(2) +
+ +
+              estimatedNetProfitUsd.toFixed(2) +
               ' is below the small-account minimum 
       estimatedFillPrice > 0 && slippageReferencePrice > 0
         ? side === 'BUY'
@@ -825,11 +827,12 @@ export const tryLimitedLiveExecution = async (opts: {
     return { executed: false, reason: message, preflight }
   }
 }
- + config.smallAccountMinNetProfitUsd.toFixed(2),
+ +
+              config.smallAccountMinNetProfitUsd.toFixed(2),
             preflight,
             preview,
             estimatedNetProfitUsd,
-            requiredNetProfitUsd:config.smallAccountMinNetProfitUsd,
+            requiredNetProfitUsd: config.smallAccountMinNetProfitUsd,
             costBasisUsd,
             estimatedNetProceedsUsd
           }
