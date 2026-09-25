@@ -309,7 +309,9 @@ const tick = async () => {
 
 export const startAutoRun = () => {
   if (timer) return
-  void tick()
+  // Give the dashboard/readiness endpoints a short head start after boot
+  // before the first heavy scan/pipeline cycle begins.
+  setTimeout(() => void tick(), 10000)
   timer = setInterval(() => void tick(), 5000)
 }
 
