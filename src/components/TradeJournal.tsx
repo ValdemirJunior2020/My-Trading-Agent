@@ -30,6 +30,7 @@ const journalStatus=(event:any)=>{
   if(type==='capital_rotation_plan_failed')return 'ROTATION CHECK FAILED'
 
   if(type==='live_execution_cycle'){
+    if(p.attempted===false)return 'WAIT'
     if(decision==='REJECT')return 'REJECTED BY AGENTS'
     if(decision==='WAIT'||decision==='HOLD'||!decision)return 'WAIT'
     if(p.attempted===true&&!p.executed){
