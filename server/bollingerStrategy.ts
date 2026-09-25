@@ -80,7 +80,11 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
     previous.close>=prevBands.lower &&
     latest.close<latestBands.lower
 
-  const oversold=latestRsi<config.rsiOversold
+  const oversold=latestRsi<=config.rsiOversold
+  const closeVsLowerPct=latestBands.lower>0
+    ? ((latest.close-latestBands.lower)/latestBands.lower)*100
+    : Infinity
+  const nearLowerBand=closeVsLowerPct<=config.entryProximityPercent
 
   let stopPrice:number|null=null
   let takeProfitPrice:number|null=null
@@ -88,22 +92,24 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
 
   if(position.qty>0&&position.avgEntryPrice>0){
     stopPrice=position.avgEntryPrice*(1-config.fixedStopLossPercent/100)
-    takeProfitPrice=latestBands.middle
+    takeProfitPrice=position.avgEntryPrice*(1+config.takeProfitPercent/100)
 
-    if(livePrice>=takeProfitPrice)exitReason='MIDDLE_BAND_TAKE_PROFIT'
+    if(livePrice>=takeProfitPrice)exitReason='FIXED_TAKE_PROFIT'
     else if(livePrice<=stopPrice)exitReason='STOP_LOSS'
   }
 
+  const entryReady=position.qty<=0 && oversold && (crossedBelowLower || nearLowerBand)
+
   const action=
     position.qty>0 && exitReason ? 'SELL' :
-    position.qty<=0 && crossedBelowLower && oversold ? 'BUY' :
+    entryReady ? 'BUY' :
     'NONE'
 
   return {
     productId,
     action,
     reason:action==='BUY'
-      ? 'Close crossed below lower Bollinger Band and RSI is oversold'
+      ? 'RSI is oversold and price is at or near the lower Bollinger Band'
       : action==='SELL'
         ? exitReason
         : 'No deterministic entry/exit trigger',
@@ -119,10 +125,17 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
       previousLower:prevBands.lower
     },
     rsi:{period:config.rsiPeriod,value:latestRsi,threshold:config.rsiOversold},
-    entry:{crossedBelowLower,oversold},
+    entry:{
+      crossedBelowLower,
+      nearLowerBand,
+      closeVsLowerPct,
+      proximityThresholdPercent:config.entryProximityPercent,
+      oversold
+    },
     position,
     exits:{
       takeProfitPrice,
+      takeProfitPercent:config.takeProfitPercent,
       stopLossPercent:config.fixedStopLossPercent,
       stopPrice,
       exitReason
