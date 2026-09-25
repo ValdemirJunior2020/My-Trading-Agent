@@ -89,7 +89,9 @@ export const getBotManagedLots=(productId:string):BotManagedLot[]=>{
     if(!(price>0)||!(base>0))continue
 
     if(side==='BUY'){
-      const costUsd=notional+Number(preview.commission_total||0)
+      const filledValue=Number(fill.filledValue||notional||0)
+      const buyFees=Number(fill.totalFees||preview.commission_total||0)
+      const costUsd=filledValue+buyFees
       lots.push({
         orderId:String(p.orderId||event.id),
         openedAt:String(p.placedAt||event.createdAt||''),
