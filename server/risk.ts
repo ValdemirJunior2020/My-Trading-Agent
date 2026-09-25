@@ -512,15 +512,31 @@ export const tryLimitedLiveExecution = async (opts: {
       }
     }
 
-    quoteSizeUsd = floorToIncrement(safeMaxBuyUsd, productInfo?.quote_increment || 0.01)
-    if (quoteSizeUsd > quoteMax) quoteSizeUsd = floorToIncrement(quoteMax, productInfo?.quote_increment || 0.01)
+    const quoteIncrement = productInfo?.quote_increment || 0.01
+    const minExecutableQuoteUsd = ceilToIncrement(quoteMin, quoteIncrement)
 
-    if (!(quoteSizeUsd > 0) || quoteSizeUsd + 1e-8 < quoteMin) {
+    quoteSizeUsd = floorToIncrement(safeMaxBuyUsd, quoteIncrement)
+
+    // If flooring an exactly-$10 style cap produces $9.99 because of the
+    // exchange increment, snap up to the smallest valid Coinbase amount,
+    // but only when that amount still fits every safety cap.
+    if (
+      quoteSizeUsd + 1e-8 < minExecutableQuoteUsd &&
+      minExecutableQuoteUsd <= safeMaxBuyUsd + 1e-8 &&
+      minExecutableQuoteUsd <= quoteMax + 1e-8
+    ) {
+      quoteSizeUsd = minExecutableQuoteUsd
+    }
+
+    if (quoteSizeUsd > quoteMax) quoteSizeUsd = floorToIncrement(quoteMax, quoteIncrement)
+
+    if (!(quoteSizeUsd > 0) || quoteSizeUsd + 1e-8 < minExecutableQuoteUsd) {
       return {
         executed:false,
         reason:'Rounded fractional BUY amount fell below Coinbase minimum',
         quoteSizeUsd,
         coinbaseMinimumUsd:quoteMin,
+        minimumExecutableUsd:minExecutableQuoteUsd,
         availableUsd,
         safeMaxBuyUsd
       }
