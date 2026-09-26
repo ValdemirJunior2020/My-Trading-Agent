@@ -207,72 +207,66 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/coinbase/portfolio-allocation'&&req.method==='GET'){
     if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'})
 
-    // Read the user's real Coinbase balances first. Only then fetch prices
-    // for assets that are actually held. This avoids a large market-product
-    // scan blocking or emptying the portfolio screen.
-    const accounts=await listAccounts(50)
+    // Portfolio gets priority over scanner work and uses only two Coinbase calls:
+    // one account snapshot + one USD spot-product snapshot.
+    const [accounts,products]=await Promise.all([
+      listAccounts(50),
+      listSpotUsdProducts(500,50)
+    ])
+
     const balanceValue=(balance:any)=>Number(balance?.value??balance??0)||0
     const cashCurrencies=new Set(['USD','USDC'])
-    const positiveAccounts=accounts
-      .map((account:any)=>{
-        const currency=String(account.currency||'').toUpperCase()
-        const available=balanceValue(account.availableBalance)
-        const hold=balanceValue(account.hold)
-        return {currency,available,hold,units:available+hold}
-      })
-      .filter((row:any)=>row.currency&&row.units>0)
-
     const priceByCurrency=new Map<string,number>()
-    await Promise.all(positiveAccounts
-      .filter((row:any)=>!cashCurrencies.has(row.currency))
-      .map(async(row:any)=>{
-        try{
-          const product:any=await getProduct(row.currency+'-USD',50)
-          const price=Number(product?.price||0)
-          if(price>0)priceByCurrency.set(row.currency,price)
-        }catch{
-          // Keep the balance visible even if a USD market price is unavailable.
-        }
-      }))
+    for(const product of products as any[]){
+      const baseCurrency=String(product.baseCurrency||'').toUpperCase()
+      const price=Number(product.price||0)
+      if(baseCurrency&&price>0)priceByCurrency.set(baseCurrency,price)
+    }
 
     const rows:any[]=[]
-    for(const row of positiveAccounts){
-      if(cashCurrencies.has(row.currency)){
+    for(const account of accounts as any[]){
+      const currency=String(account.currency||'').toUpperCase()
+      const available=balanceValue(account.availableBalance)
+      const hold=balanceValue(account.hold)
+      const units=available+hold
+      if(!currency||!(units>0))continue
+
+      if(cashCurrencies.has(currency)){
         rows.push({
-          currency:row.currency,
+          currency,
           productId:null,
-          units:row.units,
-          available:row.available,
-          hold:row.hold,
+          units,
+          available,
+          hold,
           priceUsd:1,
-          valueUsd:row.units,
+          valueUsd:units,
           type:'cash'
         })
         continue
       }
 
-      const productId=row.currency+'-USD'
-      const priceUsd=Number(priceByCurrency.get(row.currency)||0)
+      const priceUsd=Number(priceByCurrency.get(currency)||0)
       rows.push({
-        currency:row.currency,
-        productId,
-        units:row.units,
-        available:row.available,
-        hold:row.hold,
-        priceUsd:priceUsd||null,
-        valueUsd:priceUsd>0?row.units*priceUsd:null,
+        currency,
+        productId:currency+'-USD',
+        units,
+        available,
+        hold,
+        priceUsd:priceUsd>0?priceUsd:null,
+        valueUsd:priceUsd>0?units*priceUsd:null,
         type:'crypto'
       })
     }
 
-    const pricedRows=rows.filter(row=>Number.isFinite(Number(row.valueUsd)))
-    const totalUsd=pricedRows.reduce((sum,row)=>sum+Number(row.valueUsd||0),0)
+    const totalUsd=rows.reduce((sum,row)=>sum+(Number.isFinite(Number(row.valueUsd))?Number(row.valueUsd):0),0)
+    const cashUsd=rows.filter(r=>r.type==='cash').reduce((sum,r)=>sum+Number(r.valueUsd||0),0)
+    const cryptoUsd=rows.filter(r=>r.type==='crypto').reduce((sum,r)=>sum+(Number.isFinite(Number(r.valueUsd))?Number(r.valueUsd):0),0)
     rows.sort((a,b)=>Number(b.valueUsd||0)-Number(a.valueUsd||0))
 
     return json(res,200,{
       totalUsd:Number(totalUsd.toFixed(2)),
-      cashUsd:Number(rows.filter(r=>r.type==='cash').reduce((sum,r)=>sum+Number(r.valueUsd||0),0).toFixed(2)),
-      cryptoUsd:Number(rows.filter(r=>r.type==='crypto').reduce((sum,r)=>sum+Number(r.valueUsd||0),0).toFixed(2)),
+      cashUsd:Number(cashUsd.toFixed(2)),
+      cryptoUsd:Number(cryptoUsd.toFixed(2)),
       holdings:rows.map(row=>({
         ...row,
         valueUsd:Number.isFinite(Number(row.valueUsd))?Number(Number(row.valueUsd).toFixed(2)):null,
