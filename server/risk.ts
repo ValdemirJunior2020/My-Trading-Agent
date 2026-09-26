@@ -1,5 +1,5 @@
 import { config } from './config.js'
-import { assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,calculateRealizedSellMetrics } from './riskCore.js'
+import { assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessMarketEntryEconomics,calculateRealizedSellMetrics } from './riskCore.js'
 import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
@@ -707,6 +707,41 @@ export const tryLimitedLiveExecution = async (opts: {
     }
 
     const estimatedFillPrice = Number(preview.est_average_filled_price || 0)
+
+    if(side==='BUY'){
+      const buyCommissionUsd=Number(preview.commission_total||0)
+      const buyNotionalForFee=Math.max(
+        Number(preview.quote_size||0),
+        Number(notionalUsd||0)
+      )
+      const entryEconomics=assessMarketEntryEconomics({
+        buyNotionalUsd:buyNotionalForFee,
+        buyCommissionUsd,
+        stopLossPercent:config.fixedStopLossPercent,
+        maxNetStopLossPercent:config.fixedStopLossPercent,
+        maxSlippagePercent:config.maxSlippagePercent
+      })
+
+      if(!entryEconomics.approved){
+        const reason=
+          'BUY blocked: current market-order fees make the configured stop-loss exceed the allowed net loss'
+        publish('live_order_preview_rejected',{
+          productId,
+          side,
+          notionalUsd,
+          preview,
+          reason,
+          entryEconomics
+        },'risk')
+        return {
+          executed:false,
+          reason,
+          preflight,
+          preview,
+          entryEconomics
+        }
+      }
+    }
 
     if (
       side === 'SELL' &&
