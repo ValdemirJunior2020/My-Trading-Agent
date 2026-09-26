@@ -13,38 +13,89 @@ const money=(n:number,digits=2)=>Number(n).toLocaleString(undefined,{minimumFrac
 const pctText=(n:number|null)=>n==null?'—':`${n>=0?'+':''}${n.toFixed(2)}%`
 const avg=(values:number[])=>values.length?values.reduce((a,b)=>a+b,0)/values.length:0
 
+const TERMINAL_CACHE_KEY='mta-terminal-last-good-v1'
+const readTerminalCache=()=>{
+ try{
+  const raw=localStorage.getItem(TERMINAL_CACHE_KEY)
+  return raw?JSON.parse(raw):null
+ }catch{return null}
+}
+
 export function TradingTerminal({t,system}:Props){
- const [live,setLive]=useState<any|null>(null)
- const [candles,setCandles]=useState<Candle[]>([])
- const [book,setBook]=useState<{bids:BookLevel[];asks:BookLevel[]}|null>(null)
- const [trades,setTrades]=useState<MarketTrade[]>([])
- const [watch,setWatch]=useState<WatchRow[]>([])
+ const cached=readTerminalCache()
+ const [live,setLive]=useState<any|null>(cached?.live||null)
+ const [candles,setCandles]=useState<Candle[]>(Array.isArray(cached?.candles)?cached.candles:[])
+ const [book,setBook]=useState<{bids:BookLevel[];asks:BookLevel[]}|null>(cached?.book||null)
+ const [trades,setTrades]=useState<MarketTrade[]>(Array.isArray(cached?.trades)?cached.trades:[])
+ const [watch,setWatch]=useState<WatchRow[]>(Array.isArray(cached?.watch)?cached.watch:[])
  const [pipeline,setPipeline]=useState<PipelineStatus|null>(null)
 
  useEffect(()=>{
-  if(!system?.coinbase.configured){setLive(null);setCandles([]);setBook(null);setTrades([]);setWatch([]);return}
+  if(!system?.coinbase.configured)return
   let active=true
-  const load=async()=>{
-   const [productResult,candleResult,bookResult,tradeResult,pipelineResult,watchResults]=await Promise.all([
-    api.getProduct('BTC-USD').catch(()=>null),
-    api.getCandles('BTC-USD',60).catch(()=>null),
-    api.getOrderBook('BTC-USD').catch(()=>null),
-    api.getMarketTrades('BTC-USD').catch(()=>null),
-    api.getPipelineStatus().catch(()=>null),
-    Promise.all(WATCHLIST.map(symbol=>api.getProduct(symbol).then(r=>({symbol,product:r.product})).catch(()=>({symbol,product:null}))))
-   ])
-   if(!active)return
-   if(productResult)setLive(productResult.product)
-   if(candleResult)setCandles(candleResult.candles)
-   if(bookResult)setBook(bookResult.book)
-   if(tradeResult)setTrades(tradeResult.trades)
-   if(pipelineResult)setPipeline(pipelineResult)
-   setWatch(watchResults.map(({symbol,product})=>({
-    symbol,
-    price:product?.price!=null?Number(product.price):null,
-    change:product?.price_percentage_change_24h!=null?Number(product.price_percentage_change_24h):null
-   })))
+  let watchTick=0
+
+  const persist=(next:any)=>{
+   try{localStorage.setItem(TERMINAL_CACHE_KEY,JSON.stringify(next))}catch{}
   }
+
+  const load=async()=>{
+   const snapshot:any={
+    live,
+    candles,
+    book,
+    trades,
+    watch
+   }
+
+   // Load the important BTC widgets first, one at a time, so the dashboard
+   // does not burst Coinbase with many simultaneous requests.
+   try{
+    const result=await api.getProduct('BTC-USD')
+    if(active&&result?.product){snapshot.live=result.product;setLive(result.product)}
+   }catch{}
+   try{
+    const result=await api.getCandles('BTC-USD',60)
+    if(active&&Array.isArray(result?.candles)){snapshot.candles=result.candles;setCandles(result.candles)}
+   }catch{}
+   try{
+    const result=await api.getOrderBook('BTC-USD')
+    if(active&&result?.book){snapshot.book=result.book;setBook(result.book)}
+   }catch{}
+   try{
+    const result=await api.getMarketTrades('BTC-USD')
+    if(active&&Array.isArray(result?.trades)){snapshot.trades=result.trades;setTrades(result.trades)}
+   }catch{}
+   try{
+    const result=await api.getPipelineStatus()
+    if(active)setPipeline(result)
+   }catch{}
+
+   // Watchlist is lower priority. Refresh it only once per minute and
+   // sequentially so it cannot starve live-trading/risk requests.
+   watchTick+=1
+   if(watchTick===1||watchTick%4===0){
+    const nextWatch:WatchRow[]=[]
+    for(const symbol of WATCHLIST){
+      try{
+        const result=await api.getProduct(symbol)
+        const product=result?.product
+        nextWatch.push({
+          symbol,
+          price:product?.price!=null?Number(product.price):null,
+          change:product?.price_percentage_change_24h!=null?Number(product.price_percentage_change_24h):null
+        })
+      }catch{
+        const previous=snapshot.watch?.find?.((row:WatchRow)=>row.symbol===symbol)
+        if(previous)nextWatch.push(previous)
+      }
+    }
+    if(active&&nextWatch.length){snapshot.watch=nextWatch;setWatch(nextWatch)}
+   }
+
+   if(active)persist(snapshot)
+  }
+
   void load()
   const id=setInterval(()=>void load(),15000)
   return()=>{active=false;clearInterval(id)}
