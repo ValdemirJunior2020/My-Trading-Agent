@@ -23,16 +23,9 @@ if errorlevel 1 goto :install
 call npm ls --depth=0 >nul 2>&1
 if errorlevel 1 goto :install
 
-if not exist "dist\index.html" (
- echo [BUILD] Client build missing. Building now...
- call npm run build
- if errorlevel 1 goto :failed
-)
-if not exist "server-dist\index.js" (
- echo [BUILD] Server build missing. Building now...
- call npm run build
- if errorlevel 1 goto :failed
-)
+echo [BUILD] Rebuilding latest server + client...
+call npm run build
+if errorlevel 1 goto :failed
 
 where ollama >nul 2>&1
 if not errorlevel 1 (
@@ -40,7 +33,14 @@ if not errorlevel 1 (
  if errorlevel 1 (
   echo [START] Starting Ollama...
   start "Ollama - My Trading Agent" /min ollama serve
-  timeout /t 3 /nobreak >nul
+  echo [WAIT] Waiting for Ollama...
+  for /L %%O in (1,1,20) do (
+   powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:11434/api/tags' -TimeoutSec 1 | Out-Null; exit 0 } catch { exit 1 }"
+   if not errorlevel 1 goto :ollama_ready
+   timeout /t 1 /nobreak >nul
+  )
+  echo [WARN] Ollama did not answer yet. Server will still start safely.
+  :ollama_ready
  ) else (
   echo [OK] Ollama already running.
  )
