@@ -2,7 +2,7 @@ import { createServer,type IncomingMessage,type ServerResponse } from 'node:http
 import { existsSync,readFileSync,rmSync,statSync,writeFileSync } from 'node:fs'
 import { extname,join,normalize,resolve,sep } from 'node:path'
 import { config,coinbaseConfigured,coinbaseCredentialShape } from './config.js'
-import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liveTradeHistory,clearLiveTradeHistory } from './db.js'
+import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liveTradeHistory,clearLiveTradeHistory,restoreLiveTradeHistory } from './db.js'
 import { attachEventStream,publish } from './events.js'
 import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner,type CopilotActionPlan } from './ollama.js'
 import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts,listSpotUsdProducts } from './coinbase.js'
@@ -56,6 +56,7 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/events/recent'&&req.method==='GET')return json(res,200,{events:recentEvents(30)})
   if(path==='/api/live/history'&&req.method==='GET'){const limit=Math.max(1,Math.min(1000,Number(url.searchParams.get('limit'))||200));return json(res,200,{events:liveTradeHistory(limit)})}
   if(path==='/api/live/history'&&req.method==='DELETE'){const result=clearLiveTradeHistory();return json(res,200,{ok:true,...result})}
+  if(path==='/api/live/history/restore'&&req.method==='POST'){const result=restoreLiveTradeHistory();return json(res,200,{ok:true,...result})}
   if(path==='/api/paper/orders'&&req.method==='GET')return json(res,200,{orders:listPaperTrades()})
   if(path==='/api/emergency-stop'&&req.method==='POST'){const body=await readJson(req) as {active?:boolean};const active=Boolean(body.active);setSetting('emergency_stop',String(active));const event=publish(active?'emergency_stop_activated':'emergency_stop_cleared',{active},'manager');return json(res,200,{ok:true,active,event})}
   if(path==='/api/paper/orders'&&req.method==='POST'){const body=await readJson(req) as PaperOrderRequest;const order:PaperOrderRequest={productId:String(body.productId||'').toUpperCase(),side:String(body.side||'').toUpperCase() as 'BUY'|'SELL',size:Number(body.size),price:Number(body.price)};const risk=evaluatePaperOrder(order);if(!risk.approved){publish('paper_order_rejected',{order,risk},'risk');return json(res,422,{ok:false,risk})}const trade=openPaperTrade(order.productId,order.side,order.size,order.price);publish('paper_order_opened',{trade,risk},'paper');return json(res,201,{ok:true,trade,risk})}
@@ -206,48 +207,80 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/coinbase/portfolio-allocation'&&req.method==='GET'){
     if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'})
 
-    // Fetch balances plus one Coinbase SPOT product snapshot instead of making
-    // one price request per holding. This keeps the portfolio page responsive
-    // and avoids flooding the shared Coinbase request queue.
-    const [accounts,products]=await Promise.all([
-      listAccounts(20),
-      listSpotUsdProducts(500,20)
-    ])
-
-    const priceByProduct=new Map(
-      products.map((product:any)=>[String(product.productId||'').toUpperCase(),Number(product.price||0)])
-    )
+    // Read the user's real Coinbase balances first. Only then fetch prices
+    // for assets that are actually held. This avoids a large market-product
+    // scan blocking or emptying the portfolio screen.
+    const accounts=await listAccounts(50)
     const balanceValue=(balance:any)=>Number(balance?.value??balance??0)||0
     const cashCurrencies=new Set(['USD','USDC'])
+    const positiveAccounts=accounts
+      .map((account:any)=>{
+        const currency=String(account.currency||'').toUpperCase()
+        const available=balanceValue(account.availableBalance)
+        const hold=balanceValue(account.hold)
+        return {currency,available,hold,units:available+hold}
+      })
+      .filter((row:any)=>row.currency&&row.units>0)
+
+    const priceByCurrency=new Map<string,number>()
+    await Promise.all(positiveAccounts
+      .filter((row:any)=>!cashCurrencies.has(row.currency))
+      .map(async(row:any)=>{
+        try{
+          const product:any=await getProduct(row.currency+'-USD',50)
+          const price=Number(product?.price||0)
+          if(price>0)priceByCurrency.set(row.currency,price)
+        }catch{
+          // Keep the balance visible even if a USD market price is unavailable.
+        }
+      }))
+
     const rows:any[]=[]
-
-    for(const account of accounts){
-      const currency=String(account.currency||'').toUpperCase()
-      const available=balanceValue(account.availableBalance)
-      const hold=balanceValue(account.hold)
-      const units=available+hold
-      if(!currency||!(units>0))continue
-
-      if(cashCurrencies.has(currency)){
-        rows.push({currency,productId:null,units,available,hold,priceUsd:1,valueUsd:units,type:'cash'})
+    for(const row of positiveAccounts){
+      if(cashCurrencies.has(row.currency)){
+        rows.push({
+          currency:row.currency,
+          productId:null,
+          units:row.units,
+          available:row.available,
+          hold:row.hold,
+          priceUsd:1,
+          valueUsd:row.units,
+          type:'cash'
+        })
         continue
       }
 
-      const productId=currency+'-USD'
-      const priceUsd=Number(priceByProduct.get(productId)||0)
-      if(priceUsd>0){
-        rows.push({currency,productId,units,available,hold,priceUsd,valueUsd:units*priceUsd,type:'crypto'})
-      }
+      const productId=row.currency+'-USD'
+      const priceUsd=Number(priceByCurrency.get(row.currency)||0)
+      rows.push({
+        currency:row.currency,
+        productId,
+        units:row.units,
+        available:row.available,
+        hold:row.hold,
+        priceUsd:priceUsd||null,
+        valueUsd:priceUsd>0?row.units*priceUsd:null,
+        type:'crypto'
+      })
     }
 
-    const totalUsd=rows.reduce((sum,row)=>sum+Number(row.valueUsd||0),0)
-    rows.sort((a,b)=>b.valueUsd-a.valueUsd)
+    const pricedRows=rows.filter(row=>Number.isFinite(Number(row.valueUsd)))
+    const totalUsd=pricedRows.reduce((sum,row)=>sum+Number(row.valueUsd||0),0)
+    rows.sort((a,b)=>Number(b.valueUsd||0)-Number(a.valueUsd||0))
 
     return json(res,200,{
       totalUsd:Number(totalUsd.toFixed(2)),
-      cashUsd:Number(rows.filter(r=>r.type==='cash').reduce((sum,r)=>sum+r.valueUsd,0).toFixed(2)),
-      cryptoUsd:Number(rows.filter(r=>r.type==='crypto').reduce((sum,r)=>sum+r.valueUsd,0).toFixed(2)),
-      holdings:rows.map(row=>({...row,valueUsd:Number(row.valueUsd.toFixed(2)),allocationPercent:totalUsd>0?Number(((row.valueUsd/totalUsd)*100).toFixed(2)):0})),
+      cashUsd:Number(rows.filter(r=>r.type==='cash').reduce((sum,r)=>sum+Number(r.valueUsd||0),0).toFixed(2)),
+      cryptoUsd:Number(rows.filter(r=>r.type==='crypto').reduce((sum,r)=>sum+Number(r.valueUsd||0),0).toFixed(2)),
+      holdings:rows.map(row=>({
+        ...row,
+        valueUsd:Number.isFinite(Number(row.valueUsd))?Number(Number(row.valueUsd).toFixed(2)):null,
+        allocationPercent:totalUsd>0&&Number.isFinite(Number(row.valueUsd))
+          ?Number(((Number(row.valueUsd)/totalUsd)*100).toFixed(2))
+          :0
+      })),
+      accountCount:accounts.length,
       updatedAt:new Date().toISOString()
     })
   }
