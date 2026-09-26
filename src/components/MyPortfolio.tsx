@@ -85,7 +85,7 @@ export function MyPortfolio({language}:Props){
             {Number(h.hold||0)>0?<span>{pt?'Em hold':'On hold'}: <b>{units(h.hold)}</b></span>:null}
           </div>
         </div>)}
-        {!loading&&holdings.length===0?<div className="portfolio-empty">{pt?'Nenhum saldo Coinbase encontrado.':'No Coinbase balances found.'}</div>:null}
+        {!loading&&!error&&holdings.length===0?<div className="portfolio-empty">{pt?'Nenhum saldo positivo foi retornado pela Coinbase.':'Coinbase returned no positive balances.'}</div>:null}
       </div>
 
       <div className="portfolio-note">
