@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,calculateRealizedSellMetrics } from '../server/riskCore.js'
+import { assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessSellMinimum,calculateRealizedSellMetrics } from '../server/riskCore.js'
 
 test('blocks a BUY that would exceed total bot exposure',()=>{
   const result=assessExposureLimits({
@@ -141,4 +141,23 @@ test('manual approval blocks automatic live execution',()=>{
   })
   assert.equal(result.approved,false)
   assert.match(result.reasons.join(' '),/manual approval/i)
+})
+
+
+test('protective SELL can be below the bot BUY dollar minimum when Coinbase base size is valid',()=>{
+  const result=assessSellMinimum({
+    baseSize:6.379658,
+    baseMin:0.000001,
+    baseMax:1000000
+  })
+  assert.equal(result.approved,true)
+})
+
+test('SELL still blocks when Coinbase base minimum is not met',()=>{
+  const result=assessSellMinimum({
+    baseSize:0.05,
+    baseMin:0.1,
+    baseMax:1000000
+  })
+  assert.equal(result.approved,false)
 })
