@@ -9,6 +9,9 @@ set "APP_URL=http://127.0.0.1:8787/"
 where node >nul 2>&1 || exit /b 1
 where npm >nul 2>&1 || exit /b 1
 
+call npm run build >nul 2>&1
+if errorlevel 1 exit /b 1
+
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing '%APP_URL%api/health' -TimeoutSec 2 | Out-Null; exit 0 } catch { exit 1 }"
 if not errorlevel 1 exit /b 0
 
