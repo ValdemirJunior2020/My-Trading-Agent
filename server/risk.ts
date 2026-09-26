@@ -1,5 +1,5 @@
 import { config } from './config.js'
-import { assessExposureLimits } from './riskCore.js'
+import { assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,calculateRealizedSellMetrics } from './riskCore.js'
 import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
@@ -317,8 +317,11 @@ export const getDailyEquityGuard = (currentPortfolioUsd: number) => {
     }
   }
 
-  const botLossPercent =
-    startEquity > 0 ? (realizedLossTodayUsd / startEquity) * 100 : 0
+  const dailyLoss=assessDailyRealizedLoss({
+    startEquityUsd:startEquity,
+    realizedLossUsd:realizedLossTodayUsd,
+    maxDailyLossPercent:limits.maxDailyLossPercent
+  })
 
   return {
     date: today,
@@ -327,11 +330,11 @@ export const getDailyEquityGuard = (currentPortfolioUsd: number) => {
     marketDrawdownPercent: Number(marketDrawdownPercent.toFixed(4)),
     realizedBotPnlUsd: Number(realizedPnlTodayUsd.toFixed(4)),
     realizedBotLossUsd: Number(realizedLossTodayUsd.toFixed(4)),
-    botLossPercent: Number(botLossPercent.toFixed(4)),
-    lossPercent: Number(botLossPercent.toFixed(4)),
+    botLossPercent: Number(dailyLoss.botLossPercent.toFixed(4)),
+    lossPercent: Number(dailyLoss.botLossPercent.toFixed(4)),
     closedBotTradesToday,
-    limitPercent: limits.maxDailyLossPercent,
-    blocked: botLossPercent >= limits.maxDailyLossPercent,
+    limitPercent: dailyLoss.limitPercent,
+    blocked: dailyLoss.blocked,
     mode: 'BOT_REALIZED_LOSS',
     marketDrawdownBlocksTrading: false,
     basisNote: 'Bot PnL uses Coinbase preview fill estimates until fill reconciliation is added.'
@@ -451,14 +454,14 @@ export const tryLimitedLiveExecution = async (opts: {
   sourceLotOrderId?: string
   requiredNetProfitPercent?: number
 }) => {
-  if (String(config.tradingMode).toLowerCase() !== 'live') {
-    return { executed: false, reason: 'TRADING_MODE is not live' }
-  }
-  if (!config.liveTradingEnabled || !config.autoTradingEnabled) {
-    return { executed: false, reason: 'Live or auto trading is disabled in .env' }
-  }
-  if (emergencyStopActive()) {
-    return { executed: false, reason: 'Emergency stop is active' }
+  const executionGate=assessEmergencyExecutionGate({
+    emergencyStop:emergencyStopActive(),
+    tradingMode:config.tradingMode,
+    liveTradingEnabled:config.liveTradingEnabled,
+    autoTradingEnabled:config.autoTradingEnabled
+  })
+  if(!executionGate.approved){
+    return {executed:false,reason:executionGate.reasons[0],reasons:executionGate.reasons}
   }
   if (!['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(opts.decision)) {
     return { executed: false, reason: 'Decision is not BUY_CANDIDATE or SELL_CANDIDATE' }
@@ -804,22 +807,16 @@ export const tryLimitedLiveExecution = async (opts: {
 
     const executedQty=Number(fill.executedQty||baseSize||0)
     const sellCommission=side==='SELL'?Number(preview.commission_total||0):0
-    const sellCostBasisUsd=
-      side==='SELL' && Number(opts.avgEntryPrice||0)>0 && executedQty>0
-        ? Number(opts.avgEntryPrice||0)*executedQty
-        : 0
-    const realizedNetProceedsUsd=
-      side==='SELL' && actualFillPrice>0 && executedQty>0
-        ? (actualFillPrice*executedQty)-sellCommission
-        : 0
-    const realizedNetProfitUsd=
-      sellCostBasisUsd>0
-        ? realizedNetProceedsUsd-sellCostBasisUsd
-        : null
-    const realizedNetProfitPercent=
-      realizedNetProfitUsd!=null && sellCostBasisUsd>0
-        ? (realizedNetProfitUsd/sellCostBasisUsd)*100
-        : null
+    const realizedSell=calculateRealizedSellMetrics({
+      avgEntryPrice:side==='SELL'?Number(opts.avgEntryPrice||0):0,
+      executedQty,
+      actualFillPrice:side==='SELL'?actualFillPrice:0,
+      sellCommission
+    })
+    const sellCostBasisUsd=realizedSell.sellCostBasisUsd
+    const realizedNetProceedsUsd=realizedSell.realizedNetProceedsUsd
+    const realizedNetProfitUsd=realizedSell.realizedNetProfitUsd
+    const realizedNetProfitPercent=realizedSell.realizedNetProfitPercent
 
     setSetting('live_last_order_at_' + productId, placedAt)
     setSetting('live_last_order_id_' + productId, orderId)
