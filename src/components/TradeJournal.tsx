@@ -73,6 +73,8 @@ export function TradeJournal({language}:Props){
   const [refreshNotice,setRefreshNotice]=useState('')
   const [clearing,setClearing]=useState(false)
   const [lastUpdated,setLastUpdated]=useState<Date|null>(null)
+  const [loadError,setLoadError]=useState('')
+  const [restoring,setRestoring]=useState(false)
   const [filter,setFilter]=useState<JournalFilter>('ALL')
   const pt=language==='pt'
 
@@ -86,15 +88,31 @@ export function TradeJournal({language}:Props){
       const nextEvents=result.events||[]
       setEvents(nextEvents)
       setLastUpdated(new Date())
+      setLoadError('')
       if(manual){
         setRefreshNotice(pt
           ? `✓ Atualizado agora • ${nextEvents.length} registros`
           : `✓ Updated now • ${nextEvents.length} records`)
         window.setTimeout(()=>setRefreshNotice(''),2200)
       }
+    }catch(e){
+      setLoadError(e instanceof Error?e.message:String(e))
     }finally{
       setLoading(false)
       setRefreshing(false)
+    }
+  }
+
+  const restoreHistory=async()=>{
+    setRestoring(true)
+    setLoadError('')
+    try{
+      await api.restoreLiveHistory()
+      await load(true)
+    }catch(e){
+      setLoadError(e instanceof Error?e.message:String(e))
+    }finally{
+      setRestoring(false)
     }
   }
 
@@ -157,7 +175,8 @@ export function TradeJournal({language}:Props){
                 ? (pt?'✓ Atualizado':'✓ Updated')
                 : (pt?'↻ Atualizar agora':'↻ Refresh now')}
           </button>
-          <button className="journal-clear" disabled={refreshing||clearing} onClick={()=>void clearHistory()}>{clearing?(pt?'Limpando...':'Clearing...'):(pt?'Limpar histórico':'Clear History')}</button>
+          <button className="journal-refresh" disabled={refreshing||clearing||restoring} onClick={()=>void restoreHistory()}>{restoring?(pt?'Restaurando...':'Restoring...'):(pt?'Restaurar histórico':'Restore History')}</button>
+          <button className="journal-clear" disabled={refreshing||clearing||restoring} onClick={()=>void clearHistory()}>{clearing?(pt?'Limpando...':'Clearing...'):(pt?'Limpar histórico':'Clear History')}</button>
         </div>
       </div>
 
@@ -171,6 +190,8 @@ export function TradeJournal({language}:Props){
       <div className="journal-filters">
         {filters.map(x=><button key={x} className={filter===x?'active':''} onClick={()=>setFilter(x)}>{x}</button>)}
       </div>
+
+      {loadError?<div className="portfolio-error">{pt?'Erro ao carregar histórico: ':'History load error: '}{loadError}</div>:null}
 
       <div className="journal-table-wrap">
         <div className="journal-table journal-header">
