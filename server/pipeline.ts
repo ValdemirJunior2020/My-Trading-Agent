@@ -473,7 +473,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
           ? 'Near lower BB YES'
           : 'Near lower BB NO',
         strategyEntry?.oversold === true ? 'RSI oversold YES' : 'RSI oversold NO',
-        'No deterministic entry trigger'
+        String((deterministicStrategy as any)?.reason || 'No deterministic entry trigger')
       ].filter(Boolean).join(' • ')
     : ''
 
@@ -500,6 +500,10 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
       nearLowerBand: Boolean(strategyEntry?.nearLowerBand),
       proximityThresholdPercent: Number(strategyEntry?.proximityThresholdPercent ?? 0.25),
       oversold: Boolean(strategyEntry?.oversold),
+      rawEntrySignal: Boolean(strategyEntry?.rawEntrySignal),
+      positionAlreadyOpen: Boolean(strategyEntry?.positionAlreadyOpen),
+      entryReady: Boolean(strategyEntry?.entryReady),
+      reason: String((deterministicStrategy as any)?.reason || ''),
       closeVsLowerPct
     },
     orderId: executionResult?.orderId || null,
