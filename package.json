@@ -12,7 +12,8 @@
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node server-dist/index.js",
     "start:local": "npm run build && npm start",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "latest",
