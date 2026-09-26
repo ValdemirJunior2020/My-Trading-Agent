@@ -199,7 +199,11 @@ export function TradeJournal({language}:Props){
                 ds.crossedBelowLower===true?'BB cross YES':'BB cross NO',
                 ds.nearLowerBand===true?'Near lower BB YES':'Near lower BB NO',
                 ds.oversold===true?'RSI oversold YES':'RSI oversold NO',
-                'No deterministic entry trigger'
+                ds.positionAlreadyOpen===true&&ds.rawEntrySignal===true
+                  ? 'VALID BUY SETUP • existing bot lot already open'
+                  : ds.positionAlreadyOpen===true
+                    ? 'Existing bot lot open • monitoring for exit'
+                    : String(ds.reason||'No deterministic entry trigger')
               ].filter(Boolean).join(' • ')
             : ''
           const generatedDetail=[
