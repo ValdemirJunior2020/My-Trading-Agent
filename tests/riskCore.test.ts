@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessSellMinimum,calculateRealizedSellMetrics } from '../server/riskCore.js'
+import { assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessMarketEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics } from '../server/riskCore.js'
 
 test('blocks a BUY that would exceed total bot exposure',()=>{
   const result=assessExposureLimits({
@@ -160,4 +160,29 @@ test('SELL still blocks when Coinbase base minimum is not met',()=>{
     baseMax:1000000
   })
   assert.equal(result.approved,false)
+})
+
+
+test('blocks market BUY when fees make a 0.8% stop exceed 0.8% net loss',()=>{
+  const result=assessMarketEntryEconomics({
+    buyNotionalUsd:10,
+    buyCommissionUsd:0.08,
+    stopLossPercent:0.8,
+    maxNetStopLossPercent:0.8,
+    maxSlippagePercent:0.1
+  })
+  assert.equal(result.approved,false)
+  assert.ok(result.estimatedNetLossAtStopPercent>0.8)
+})
+
+test('allows market BUY only when total fee plus stop risk fits the net loss cap',()=>{
+  const result=assessMarketEntryEconomics({
+    buyNotionalUsd:10,
+    buyCommissionUsd:0,
+    stopLossPercent:0.7,
+    maxNetStopLossPercent:0.8,
+    maxSlippagePercent:0.1
+  })
+  assert.equal(result.approved,true)
+  assert.equal(Number(result.estimatedNetLossAtStopPercent.toFixed(2)),0.8)
 })
