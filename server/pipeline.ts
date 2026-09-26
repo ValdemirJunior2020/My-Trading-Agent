@@ -455,6 +455,8 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   const strategyMiddle = Number(strategyBands?.middle || 0)
   const strategyRsiValue = Number(strategyRsi?.value)
   const strategyRsiThreshold = Number(strategyRsi?.threshold || 35)
+  const strategyLotProfit:any = (deterministicStrategy as any)?.lotProfitability || {}
+  const strategyBestLot:any = strategyLotProfit?.bestOpenLot || null
   const closeVsLowerPct =
     strategyClose > 0 && strategyLower > 0
       ? ((strategyClose - strategyLower) / strategyLower) * 100
@@ -503,7 +505,19 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
       rawEntrySignal: Boolean(strategyEntry?.rawEntrySignal),
       positionAlreadyOpen: Boolean(strategyEntry?.positionAlreadyOpen),
       entryReady: Boolean(strategyEntry?.entryReady),
-      closeVsLowerPct
+      closeVsLowerPct,
+      lotProfitability: strategyBestLot ? {
+        openLotCount:Number(strategyLotProfit?.openLotCount||0),
+        orderId:String(strategyBestLot.orderId||''),
+        entryPrice:Number(strategyBestLot.entryPrice||0),
+        livePrice:Number(strategyBestLot.livePrice||0),
+        grossPnlPercent:Number(strategyBestLot.grossPnlPercent||0),
+        sellTriggerPercent:Number(strategyBestLot.sellTriggerPercent||config.takeProfitPercent),
+        sellTriggerPrice:Number(strategyBestLot.sellTriggerPrice||0),
+        triggerReached:Boolean(strategyBestLot.triggerReached),
+        requiredNetProfitPercent:Number(strategyLotProfit?.requiredNetProfitPercent||config.takeProfitPercent),
+        finalNetAfterFeesCheck:String(strategyLotProfit?.finalNetAfterFeesCheck||'COINBASE_PREVIEW_AT_SELL_TRIGGER')
+      } : null
     },
     orderId: executionResult?.orderId || null,
     notionalUsd: executionResult?.notionalUsd || null
