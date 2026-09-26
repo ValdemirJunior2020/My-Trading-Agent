@@ -399,7 +399,12 @@ export function TradeJournal({language}:Props){
           const detail=String(executionDetail||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
           const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
           const displayCoin=String(p.productId||p.buyProductId||'—')
-          const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
+          const rawSide=String(p.side||'—').toUpperCase()
+          const displaySide=event.type==='capital_rotation_plan'
+            ? 'ROTATE'
+            : event.type==='live_order_placed'&&rawSide==='SELL'
+              ? 'SOLD'
+              : rawSide
           const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
           return <div className="journal-table journal-row" key={event.id}>
             <span className="journal-time">
@@ -408,7 +413,7 @@ export function TradeJournal({language}:Props){
             </span>
             <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
             <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
-            <span><b className={'journal-side-pill '+(displaySide==='SELL'?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span><b className={'journal-side-pill '+((displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
             <span className="journal-amount">{displayAmount}</span>
             <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
             <span className="journal-detail journal-context" title={detail}>{detail}</span>
