@@ -53,6 +53,30 @@ const statusGroup=(status:string):JournalFilter=>{
   return 'ALL'
 }
 
+const JOURNAL_CACHE_KEY='mta-live-trade-history-v1'
+const JOURNAL_TYPES=new Set([
+  'live_order_placed',
+  'live_order_failed',
+  'live_order_rejected',
+  'live_order_preview_rejected',
+  'live_order_preview_approved',
+  'live_execution_cycle',
+  'capital_rotation_plan',
+  'capital_rotation_plan_failed'
+])
+
+const readCachedHistory=()=>{
+  try{
+    const raw=localStorage.getItem(JOURNAL_CACHE_KEY)
+    const parsed=raw?JSON.parse(raw):[]
+    return Array.isArray(parsed)?parsed.slice(0,300):[]
+  }catch{return []}
+}
+
+const writeCachedHistory=(events:any[])=>{
+  try{localStorage.setItem(JOURNAL_CACHE_KEY,JSON.stringify(events.slice(0,300)))}catch{}
+}
+
 const statusClass=(status:string)=>{
   if(status==='ORDER PLACED')return 'placed'
   if(status==='REJECTED BY AGENTS')return 'rejected'
@@ -67,8 +91,8 @@ const statusClass=(status:string)=>{
 }
 
 export function TradeJournal({language}:Props){
-  const [events,setEvents]=useState<any[]>([])
-  const [loading,setLoading]=useState(true)
+  const [events,setEvents]=useState<any[]>(()=>readCachedHistory())
+  const [loading,setLoading]=useState(()=>readCachedHistory().length===0)
   const [refreshing,setRefreshing]=useState(false)
   const [refreshNotice,setRefreshNotice]=useState('')
   const [clearing,setClearing]=useState(false)
@@ -78,6 +102,26 @@ export function TradeJournal({language}:Props){
   const [filter,setFilter]=useState<JournalFilter>('ALL')
   const loadInFlight=useRef(false)
   const pt=language==='pt'
+
+  const applyHistory=(nextEvents:any[])=>{
+    const clean=(nextEvents||[]).slice(0,300)
+    setEvents(clean)
+    writeCachedHistory(clean)
+    setLastUpdated(new Date())
+    setLoading(false)
+    setLoadError('')
+  }
+
+  const mergeLiveEvent=(row:any)=>{
+    if(!row||!JOURNAL_TYPES.has(String(row.type||'')))return
+    setEvents(previous=>{
+      const next=[row,...previous.filter(item=>Number(item?.id)!==Number(row?.id))].slice(0,300)
+      writeCachedHistory(next)
+      return next
+    })
+    setLastUpdated(new Date())
+    setLoading(false)
+  }
 
   const load=async(manual=false)=>{
     if(loadInFlight.current)return
@@ -89,9 +133,7 @@ export function TradeJournal({language}:Props){
     try{
       const result=await api.getLiveHistory(300)
       const nextEvents=result.events||[]
-      setEvents(nextEvents)
-      setLastUpdated(new Date())
-      setLoadError('')
+      applyHistory(nextEvents)
       if(manual){
         setRefreshNotice(pt
           ? `✓ Atualizado agora • ${nextEvents.length} registros`
@@ -99,7 +141,8 @@ export function TradeJournal({language}:Props){
         window.setTimeout(()=>setRefreshNotice(''),2200)
       }
     }catch(e){
-      setLoadError(e instanceof Error?e.message:String(e))
+      const message=e instanceof Error?e.message:String(e)
+      if(events.length===0)setLoadError(message)
     }finally{
       loadInFlight.current=false
       setLoading(false)
@@ -129,6 +172,7 @@ export function TradeJournal({language}:Props){
     try{
       await api.clearLiveHistory()
       setEvents([])
+      writeCachedHistory([])
       setLastUpdated(new Date())
     }finally{
       setClearing(false)
@@ -136,22 +180,34 @@ export function TradeJournal({language}:Props){
   }
 
   useEffect(()=>{
+    // Backup HTTP load. The live stream below is the primary source.
     void load()
 
-    // Live push: every server event immediately refreshes the journal.
     const stream=new EventSource(api.eventUrl)
-    const onAgentEvent=()=>void load()
-    const onReady=()=>void load()
-    stream.addEventListener('agent',onAgentEvent)
-    stream.addEventListener('ready',onReady)
 
-    // Backup poll in case the browser temporarily loses the event stream.
-    const id=setInterval(()=>void load(),3000)
+    const onReady=(event:any)=>{
+      try{
+        const data=JSON.parse(event.data||'{}')
+        if(Array.isArray(data.history))applyHistory(data.history)
+      }catch{}
+    }
+
+    const onAgentEvent=(event:any)=>{
+      try{
+        mergeLiveEvent(JSON.parse(event.data))
+      }catch{}
+    }
+
+    stream.addEventListener('ready',onReady)
+    stream.addEventListener('agent',onAgentEvent)
+
+    // Slow backup only; no more constant full-history refetches.
+    const id=setInterval(()=>void load(),15000)
 
     return()=>{
       clearInterval(id)
-      stream.removeEventListener('agent',onAgentEvent)
       stream.removeEventListener('ready',onReady)
+      stream.removeEventListener('agent',onAgentEvent)
       stream.close()
     }
   },[])
