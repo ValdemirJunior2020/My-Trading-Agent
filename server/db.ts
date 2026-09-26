@@ -116,6 +116,25 @@ export const liveTradeHistory=(limit=200)=>{
 }
 
 
+export const restoreLiveTradeHistory=()=>{
+  setSetting('live_history_hidden_before_id','0')
+  const row=db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM agent_events
+    WHERE type IN (
+      'live_order_placed',
+      'live_order_failed',
+      'live_order_rejected',
+      'live_order_preview_rejected',
+      'live_order_preview_approved',
+      'live_execution_cycle',
+      'capital_rotation_plan',
+      'capital_rotation_plan_failed'
+    )
+  `).get() as {count:number}
+  return {restored:Number(row?.count||0)}
+}
+
 export const clearLiveTradeHistory=()=>{
   // Clear only the journal VIEW. Do not delete execution events because
   // live_order_placed events are also used to reconstruct bot-managed positions.
