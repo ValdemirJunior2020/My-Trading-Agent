@@ -35,6 +35,7 @@ export const config = {
   autoTradeCooldownSeconds: Math.max(60, num(process.env.AUTO_TRADE_COOLDOWN_SECONDS, 900)),
   autoTradeMinConfidencePercent: Math.max(0, Math.min(100, num(process.env.AUTO_TRADE_MIN_CONFIDENCE_PERCENT, 70))),
   scannerCacheMs: Math.max(5000, num(process.env.SCANNER_CACHE_MS, 15000)),
+  backtestMarketFeeRate: Math.max(0, Math.min(0.05, num(process.env.BACKTEST_MARKET_FEE_RATE, 0.006))),
   strategyGranularity: process.env.STRATEGY_GRANULARITY || 'FIVE_MINUTE',
   bbPeriod: Math.max(5, Math.floor(num(process.env.BB_PERIOD, 20))),
   bbStdDev: Math.max(0.5, num(process.env.BB_STD_DEV, 2)),
