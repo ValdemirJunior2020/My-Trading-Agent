@@ -121,3 +121,19 @@ export const assessEmergencyExecutionGate=(input:{
   if(input.manualApprovalRequired)reasons.push('Manual approval is required; automatic live execution is blocked')
   return {approved:reasons.length===0,reasons}
 }
+
+
+export const assessSellMinimum=(input:{
+  baseSize:number
+  baseMin:number
+  baseMax:number
+})=>{
+  const baseSize=Number(input.baseSize)
+  const baseMin=Math.max(0,Number(input.baseMin)||0)
+  const baseMax=Number(input.baseMax)
+  const approved=
+    baseSize>0 &&
+    baseSize+1e-12>=baseMin &&
+    (!Number.isFinite(baseMax)||baseSize<=baseMax+1e-12)
+  return {approved,baseSize,baseMin,baseMax}
+}
