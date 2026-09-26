@@ -29,6 +29,7 @@ export const config = {
   maxPositionPercent: num(process.env.MAX_POSITION_PERCENT, 5),
   maxDailyLossPercent: num(process.env.MAX_DAILY_LOSS_PERCENT, 2),
   maxTotalExposurePercent: num(process.env.MAX_TOTAL_EXPOSURE_PERCENT, 25),
+  maxOpenBotPositions: Math.max(1, Math.min(50, Math.floor(num(process.env.MAX_OPEN_BOT_POSITIONS, 8)))),
   maxLiveOrderUsd: num(process.env.MAX_LIVE_ORDER_USD, 25),
   minLiveOrderUsd: num(process.env.MIN_LIVE_ORDER_USD, 1),
   autoTradeCooldownSeconds: Math.max(60, num(process.env.AUTO_TRADE_COOLDOWN_SECONDS, 900)),
