@@ -304,3 +304,13 @@ body{font-size:14px;line-height:1.45}
 .profits-row:last-child{border-bottom:0}
 .profits-row small{display:block;font-size:9px;margin-top:2px}
 @media(max-width:760px){.profits-summary{grid-template-columns:1fr}.profits-table-wrap{overflow-x:auto}.profits-table{min-width:720px}.profits-heading{display:block}.profits-heading .portfolio-refresh{margin-top:10px}}
+
+
+.money-breakdown-grid{grid-template-columns:repeat(5,1fr)}
+.money-breakdown-grid .money-profit{border-color:#1d715f;background:#0c3028}
+.money-breakdown-grid .money-profit strong{color:#7af0ce}
+.money-breakdown-grid .money-loss{border-color:#7b3038;background:#32131a}
+.money-breakdown-grid .money-loss strong{color:#ff9ca4}
+@media(max-width:1100px){.money-breakdown-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.money-breakdown-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:500px){.money-breakdown-grid{grid-template-columns:1fr}}
