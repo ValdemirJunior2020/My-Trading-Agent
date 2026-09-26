@@ -48,7 +48,7 @@ export const api={
   getOrderBook:(productId:string)=>request<{book:any}>(`/api/coinbase/order-book/${encodeURIComponent(productId)}`),
   getMarketTrades:(productId:string)=>request<{trades:any[]}>(`/api/coinbase/trades/${encodeURIComponent(productId)}`),
   getRecentEvents:()=>request<{events:any[]}>('/api/events/recent'),
-  getLiveHistory:(limit=200)=>request<{events:any[]}>(`/api/live/history?limit=${limit}&_=${Date.now()}`,{signal:AbortSignal.timeout(5000)}),
+  getLiveHistory:(limit=200)=>request<{events:any[]}>(`/api/live/history?limit=${limit}&_=${Date.now()}`),
   clearLiveHistory:()=>request<{ok:boolean;deleted:number}>('/api/live/history',{method:'DELETE'}),
   restoreLiveHistory:()=>request<{ok:boolean;restored:number}>('/api/live/history/restore',{method:'POST',body:'{}',signal:AbortSignal.timeout(5000)}),
   getPortfolioAllocation:()=>request<any>('/api/coinbase/portfolio-allocation',{signal:AbortSignal.timeout(12000)}),
