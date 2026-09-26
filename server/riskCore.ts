@@ -137,3 +137,38 @@ export const assessSellMinimum=(input:{
     (!Number.isFinite(baseMax)||baseSize<=baseMax+1e-12)
   return {approved,baseSize,baseMin,baseMax}
 }
+
+
+export const assessMarketEntryEconomics=(input:{
+  buyNotionalUsd:number
+  buyCommissionUsd:number
+  stopLossPercent:number
+  maxNetStopLossPercent:number
+  maxSlippagePercent:number
+})=>{
+  const buyNotionalUsd=Math.max(0,Number(input.buyNotionalUsd)||0)
+  const buyCommissionUsd=Math.max(0,Number(input.buyCommissionUsd)||0)
+  const stopLossPercent=Math.max(0,Number(input.stopLossPercent)||0)
+  const maxNetStopLossPercent=Math.max(0,Number(input.maxNetStopLossPercent)||0)
+  const maxSlippagePercent=Math.max(0,Number(input.maxSlippagePercent)||0)
+
+  const buyFeePercent=buyNotionalUsd>0?(buyCommissionUsd/buyNotionalUsd)*100:0
+  const assumedSellFeePercent=buyFeePercent
+  const estimatedNetLossAtStopPercent=
+    buyFeePercent+
+    assumedSellFeePercent+
+    stopLossPercent+
+    maxSlippagePercent
+
+  return {
+    approved:
+      buyNotionalUsd>0 &&
+      estimatedNetLossAtStopPercent<=maxNetStopLossPercent+1e-8,
+    buyFeePercent,
+    assumedSellFeePercent,
+    stopLossPercent,
+    maxSlippagePercent,
+    estimatedNetLossAtStopPercent,
+    maxNetStopLossPercent
+  }
+}
