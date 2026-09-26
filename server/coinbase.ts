@@ -324,7 +324,10 @@ export const createMarketOrder = async (params: {
 export const listSpotUsdProducts=async(limit=250,priority=0)=>{
   const bounded=Math.max(20,Math.min(500,Math.floor(limit)))
   if(spotProductsCache&&spotProductsCache.expiresAt>Date.now())return spotProductsCache.value.slice(0,bounded)
-  if(spotProductsInFlight)return (await spotProductsInFlight).slice(0,bounded)
+
+  // Dashboard/portfolio requests must not inherit a low-priority scanner wait.
+  // For normal scanner traffic, keep the existing in-flight de-dupe.
+  if(spotProductsInFlight&&priority<20)return (await spotProductsInFlight).slice(0,bounded)
 
   const work=(async()=>{
   const data=await request('GET',`/api/v3/brokerage/products?limit=500&product_type=SPOT`,undefined,priority) as {
@@ -355,9 +358,9 @@ export const listSpotUsdProducts=async(limit=250,priority=0)=>{
   return result
   })()
 
-  spotProductsInFlight=work
+  if(priority<20)spotProductsInFlight=work
   try{return (await work).slice(0,bounded)}
-  finally{if(spotProductsInFlight===work)spotProductsInFlight=null}
+  finally{if(priority<20&&spotProductsInFlight===work)spotProductsInFlight=null}
 }
 
 
