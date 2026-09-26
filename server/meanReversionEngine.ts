@@ -270,7 +270,8 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
       productId,
       decision:'BUY_CANDIDATE',
       confidence:approval.confidence,
-      triggerPrice:candle.close
+      triggerPrice:candle.close,
+      executionSource:'MEAN_REVERSION'
     })
     publish('mean_reversion_entry_result',{productId,result},'execution')
     if(result?.executed){
@@ -358,7 +359,8 @@ const handleTicker=async(productId:string,price:number)=>{
       exitReason:reason,
       avgEntryPrice:targetLot.avgEntryPrice,
       sourceLotOrderId:targetLot.orderId,
-      requiredNetProfitPercent:stopLoss?0:config.takeProfitPercent
+      requiredNetProfitPercent:stopLoss?0:config.takeProfitPercent,
+      executionSource:'MEAN_REVERSION'
     })
     publish('mean_reversion_exit_result',{
       productId,
