@@ -2,7 +2,7 @@ import { createServer,type IncomingMessage,type ServerResponse } from 'node:http
 import { existsSync,readFileSync,rmSync,statSync,writeFileSync } from 'node:fs'
 import { extname,join,normalize,resolve,sep } from 'node:path'
 import { config,coinbaseConfigured,coinbaseCredentialShape } from './config.js'
-import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liveTradeHistory,clearLiveTradeHistory,restoreLiveTradeHistory } from './db.js'
+import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liveTradeHistory,clearLiveTradeHistory,restoreLiveTradeHistory,latestLiveOrderEvent } from './db.js'
 import { attachEventStream,publish } from './events.js'
 import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner,type CopilotActionPlan } from './ollama.js'
 import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts,listSpotUsdProducts } from './coinbase.js'
@@ -55,6 +55,7 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/events'&&req.method==='GET')return attachEventStream(res)
   if(path==='/api/events/recent'&&req.method==='GET')return json(res,200,{events:recentEvents(30)})
   if(path==='/api/live/history'&&req.method==='GET'){const limit=Math.max(1,Math.min(1000,Number(url.searchParams.get('limit'))||200));return json(res,200,{events:liveTradeHistory(limit)})}
+  if(path==='/api/live/latest-order'&&req.method==='GET')return json(res,200,{event:latestLiveOrderEvent()})
   if(path==='/api/live/history'&&req.method==='DELETE'){const result=clearLiveTradeHistory();return json(res,200,{ok:true,...result})}
   if(path==='/api/live/history/restore'&&req.method==='POST'){const result=restoreLiveTradeHistory();return json(res,200,{ok:true,...result})}
   if(path==='/api/paper/orders'&&req.method==='GET')return json(res,200,{orders:listPaperTrades()})
