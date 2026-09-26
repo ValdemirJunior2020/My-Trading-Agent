@@ -68,15 +68,22 @@ const server=createServer(async(req,res)=>{
   res.setHeader('X-Request-Id',requestId)
 
   res.once('finish',()=>{
-    if(rawUrl.startsWith('/api/')){
-      log.info('http_request',{
-        requestId,
-        method,
-        path:rawUrl.split('?')[0],
-        statusCode:res.statusCode,
-        durationMs:Date.now()-requestStarted
-      })
+    if(!rawUrl.startsWith('/api/'))return
+    const path=rawUrl.split('?')[0]
+    const durationMs=Date.now()-requestStarted
+    const shouldLog=method!=='GET'||res.statusCode>=400||durationMs>=2000
+    if(!shouldLog)return
+
+    const details={
+      requestId,
+      method,
+      path,
+      statusCode:res.statusCode,
+      durationMs
     }
+
+    if(res.statusCode>=400)log.warn('http_request',details)
+    else log.info('http_request',details)
   })
 
   try{
