@@ -398,7 +398,7 @@ export function TradeJournal({language}:Props){
 
       <div className="journal-table-wrap">
         <div className="journal-table journal-header">
-          <span>{pt?'Hora':'Time'}</span><span>{pt?'Status':'Status'}</span><span>{pt?'Ativo':'Asset'}</span><span>{pt?'Lado':'Side'}</span><span>{pt?'Valor':'Amount'}</span><span>Transaction ID</span><span>{pt?'Contexto da estratégia':'Strategy Context'}</span>
+          <span>{pt?'Hora':'Time'}</span><span>{pt?'Status':'Status'}</span><span>{pt?'Ativo':'Asset'}</span><span>{pt?'Lado':'Side'}</span><span>{pt?'Valor':'Amount'}</span><span>Transaction ID</span><span>NET P/L</span><span>{pt?'Contexto da estratégia':'Strategy Context'}</span>
         </div>
         {loading?<div className="journal-empty">{pt?'Carregando...':'Loading...'}</div>:rows.length===0?<div className="journal-empty">{pt?'Nenhum evento nesta categoria ainda.':'No events in this category yet.'}</div>:pagedRows.map(event=>{
           const p=event.payload||{}
@@ -461,6 +461,14 @@ export function TradeJournal({language}:Props){
             <span><b className={'journal-side-pill '+((displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
             <span className="journal-amount">{displayAmount}</span>
             <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className={'journal-net-pnl '+(profit?(profit.netProfit>=0?'positive':'negative'):'')}>
+              {profit
+                ? <>
+                    <b>{profit.netProfit>=0?'+':'-'}{'$'}{Math.abs(profit.netProfit).toFixed(2)}</b>
+                    <small>{profit.netProfitPercent>=0?'+':''}{profit.netProfitPercent.toFixed(2)}%</small>
+                  </>
+                : '—'}
+            </span>
             <span className="journal-detail journal-context" title={detail}>{detail}</span>
           </div>
         })}
