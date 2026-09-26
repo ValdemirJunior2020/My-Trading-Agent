@@ -364,12 +364,167 @@ export function TradeJournal({language}:Props){
                     : String(ds.reason||'No deterministic entry trigger')
               ].filter(Boolean).join(' • ')
             : ''
+          const executionDetail=event.type==='live_order_placed'
+            ? [
+                p.side?('EXECUTED '+String(p.side).toUpperCase()):'ORDER EXECUTED',
+                p.actualFillPrice?('Fill 
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          return <div className="journal-table journal-row" key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(displaySide==='SELL'?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className="journal-detail journal-context" title={detail}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.actualFillPrice).toFixed(6)):'',
+                p.executedQty?('Qty '+Number(p.executedQty).toFixed(8)):'',
+                p.preview?.commission_total!=null?('Fee 
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          return <div className="journal-table journal-row" key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(displaySide==='SELL'?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className="journal-detail journal-context" title={detail}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.preview.commission_total||0).toFixed(4)):'',
+                p.actualSlippagePercent!=null?('Slippage '+Number(p.actualSlippagePercent||0).toFixed(3)+'%'):'',
+                p.exitReason?('Exit '+String(p.exitReason).replace(/_/g,' ')):'',
+                p.sourceLotOrderId?('Lot '+String(p.sourceLotOrderId).slice(0,8)+'…'):'',
+                p.side==='SELL'&&String(p.exitReason||'').includes('TAKE_PROFIT')
+                  ? 'Profit exit executed after Coinbase net-profit check'
+                  : ''
+              ].filter(Boolean).join(' • ')
+            : ''
+          const previewDetail=event.type==='live_order_preview_approved'
+            ? [
+                'COINBASE PREVIEW APPROVED',
+                p.side?String(p.side).toUpperCase():'',
+                p.estimatedFillPrice?('Est. fill 
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          return <div className="journal-table journal-row" key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(displaySide==='SELL'?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className="journal-detail journal-context" title={detail}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.estimatedFillPrice).toFixed(6)):'',
+                p.commissionTotal!=null?('Fee 
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          return <div className="journal-table journal-row" key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(displaySide==='SELL'?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className="journal-detail journal-context" title={detail}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.commissionTotal||0).toFixed(4)):'',
+                p.adverseSlippagePercent!=null?('Slippage '+Number(p.adverseSlippagePercent||0).toFixed(3)+'%'):''
+              ].filter(Boolean).join(' • ')
+            : ''
           const generatedDetail=[
             decision?('Decision: '+decision):'',
             confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
             p.attempted===false?'No execution attempted':''
           ].filter(Boolean).join(' • ')
-          const detail=String(rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const detail=String(executionDetail||previewDetail||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
           const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
           const displayCoin=String(p.productId||p.buyProductId||'—')
           const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
