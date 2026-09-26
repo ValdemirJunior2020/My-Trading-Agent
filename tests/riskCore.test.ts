@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessMarketEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics } from '../server/riskCore.js'
+import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessMarketEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics } from '../server/riskCore.js'
 
 test('blocks a BUY that would exceed total bot exposure',()=>{
   const result=assessExposureLimits({
@@ -185,4 +185,33 @@ test('allows market BUY only when total fee plus stop risk fits the net loss cap
   })
   assert.equal(result.approved,true)
   assert.equal(Number(result.estimatedNetLossAtStopPercent.toFixed(2)),0.8)
+})
+
+
+test('capital preservation blocks another BUY after any realized loss',()=>{
+  const result=assessCapitalPreservationBuy({
+    enabled:true,
+    realizedPnlTodayUsd:-0.01,
+    realizedLossTodayUsd:0.01,
+    openBotPositions:0
+  })
+  assert.equal(result.approved,false)
+  assert.match(result.reasons.join(' '),/realized bot loss/i)
+})
+
+test('capital preservation allows BUY only with no loss and no open bot position',()=>{
+  const clear=assessCapitalPreservationBuy({
+    enabled:true,
+    realizedPnlTodayUsd:0,
+    realizedLossTodayUsd:0,
+    openBotPositions:0
+  })
+  const openPosition=assessCapitalPreservationBuy({
+    enabled:true,
+    realizedPnlTodayUsd:0,
+    realizedLossTodayUsd:0,
+    openBotPositions:1
+  })
+  assert.equal(clear.approved,true)
+  assert.equal(openPosition.approved,false)
 })
