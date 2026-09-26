@@ -1,4 +1,4 @@
-import { getSetting,setSetting } from './db.js'
+import { getSetting,setSetting,realizedProfitHistory } from './db.js'
 import { listAccounts,listSpotUsdProducts } from './coinbase.js'
 
 export interface TradingChallenge {
@@ -167,12 +167,28 @@ export const getChallengeSnapshot=async()=>{
     }
   }
 
+  const fallbackSnapshot=portfolioSource==='last_confirmed_coinbase'?readLastGoodPortfolio():null
+  const currentSnapshot=portfolioCache?.value||fallbackSnapshot
+  const details=Array.isArray(currentSnapshot?.details)?currentSnapshot.details:[]
+  const cashUsd=details
+    .filter((row:any)=>['USD','USDC'].includes(String(row.currency||'').toUpperCase()))
+    .reduce((sum:number,row:any)=>sum+Number(row.usdValue||0),0)
+  const openCoinsUsd=details
+    .filter((row:any)=>!['USD','USDC'].includes(String(row.currency||'').toUpperCase()))
+    .reduce((sum:number,row:any)=>sum+(Number.isFinite(Number(row.usdValue))?Number(row.usdValue):0),0)
+  const profits=realizedProfitHistory()
+
   const progressPercent=portfolioUsd==null?null:Math.max(0,Math.min(100,((portfolioUsd-challenge.startingBalanceUsd)/(challenge.targetBalanceUsd-challenge.startingBalanceUsd))*100))
   return {
     ...challenge,
     deadline:deadline.toISOString(),
     daysRemaining,
     currentPortfolioUsd:portfolioUsd,
+    cashAvailableUsd:Number(cashUsd.toFixed(2)),
+    openCoinsUsd:Number(openCoinsUsd.toFixed(2)),
+    soldProfitUsd:Number(Number(profits.totalNetProfitUsd||0).toFixed(2)),
+    profitableSales:Number(profits.profitableTrades||0),
+    completedSales:Number(profits.completedTrades||0),
     accountCount,
     portfolioSource,
     portfolioStale,
