@@ -34,13 +34,86 @@ if not errorlevel 1 (
   echo [START] Starting Ollama...
   start "Ollama - My Trading Agent" /min ollama serve
   echo [WAIT] Waiting for Ollama...
+  set "OLLAMA_READY=0"
   for /L %%O in (1,1,20) do (
-   powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:11434/api/tags' -TimeoutSec 1 | Out-Null; exit 0 } catch { exit 1 }"
-   if not errorlevel 1 goto :ollama_ready
-   timeout /t 1 /nobreak >nul
+   if "!OLLAMA_READY!"=="0" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:11434/api/tags' -TimeoutSec 1 | Out-Null; exit 0 } catch { exit 1 }"
+    if not errorlevel 1 (
+     set "OLLAMA_READY=1"
+    ) else (
+     timeout /t 1 /nobreak >nul
+    )
+   )
   )
-  echo [WARN] Ollama did not answer yet. Server will still start safely.
-  :ollama_ready
+  if "!OLLAMA_READY!"=="0" echo [WARN] Ollama did not answer yet. Server will still start safely.
+ ) else (
+  echo [OK] Ollama already running.
+ )
+)
+
+echo [CHECK] Testing %APP_URL%api/health ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r=Invoke-WebRequest -UseBasicParsing '%APP_URL%api/health' -TimeoutSec 2; if ($r.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }"
+if not errorlevel 1 goto :open
+echo.
+echo [OK] Server confirmed at %APP_URL%
+echo [OPEN] Opening My Trading Agent in your browser...
+timeout /t 1 /nobreak >nul
+
+rem Primary: Windows default browser / URL handler
+start "" "%APP_URL%"
+if not errorlevel 1 exit /b 0
+
+rem Fallback: PowerShell URL handler
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process '%APP_URL%'" >nul 2>&1
+if not errorlevel 1 exit /b 0
+
+rem Last fallback: Microsoft Edge if available
+set "EDGE1=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+set "EDGE2=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
+if exist "%EDGE1%" (
+ start "" "%EDGE1%" --new-window "%APP_URL%"
+ exit /b 0
+)
+if exist "%EDGE2%" (
+ start "" "%EDGE2%" --new-window "%APP_URL%"
+ exit /b 0
+)
+
+echo [WARN] Server is running, but Windows could not open the browser automatically.
+echo [OPEN MANUALLY] %APP_URL%
+pause
+exit /b 0
+
+:install
+where npm >nul 2>&1
+if errorlevel 1 goto :install
+
+call npm ls --depth=0 >nul 2>&1
+if errorlevel 1 goto :install
+
+echo [BUILD] Rebuilding latest server + client...
+call npm run build
+if errorlevel 1 goto :failed
+
+where ollama >nul 2>&1
+if not errorlevel 1 (
+ powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2 | Out-Null; exit 0 } catch { exit 1 }"
+ if errorlevel 1 (
+  echo [START] Starting Ollama...
+  start "Ollama - My Trading Agent" /min ollama serve
+  echo [WAIT] Waiting for Ollama...
+  set "OLLAMA_READY=0"
+  for /L %%O in (1,1,20) do (
+   if "!OLLAMA_READY!"=="0" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:11434/api/tags' -TimeoutSec 1 | Out-Null; exit 0 } catch { exit 1 }"
+    if not errorlevel 1 (
+     set "OLLAMA_READY=1"
+    ) else (
+     timeout /t 1 /nobreak >nul
+    )
+   )
+  )
+  if "!OLLAMA_READY!"=="0" echo [WARN] Ollama did not answer yet. Server will still start safely.
  ) else (
   echo [OK] Ollama already running.
  )
