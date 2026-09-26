@@ -1,5 +1,5 @@
 import { config } from './config.js'
-import { assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessMarketEntryEconomics,calculateRealizedSellMetrics } from './riskCore.js'
+import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessMarketEntryEconomics,calculateRealizedSellMetrics } from './riskCore.js'
 import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
@@ -379,6 +379,17 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   if (side === 'BUY' && notionalUsd > availableUsd + 1e-8) reasons.push('Insufficient available USD for this buy.')
   if (side === 'SELL' && notionalUsd > availableAssetUsd + 1e-8) reasons.push('Insufficient available asset balance for this sell.')
   reasons.push(...exposure.reasons)
+
+  if(side==='BUY'){
+    const capitalGuard=assessCapitalPreservationBuy({
+      enabled:config.capitalPreservationMode,
+      realizedPnlTodayUsd:Number(daily.realizedBotPnlUsd||0),
+      realizedLossTodayUsd:Number(daily.realizedBotLossUsd||0),
+      openBotPositions:botExposure.openBotPositions
+    })
+    reasons.push(...capitalGuard.reasons)
+  }
+
   if (daily.blocked) reasons.push('Bot realized-loss guard is active at ' + daily.botLossPercent.toFixed(2) + '% loss.')
 
   return {
