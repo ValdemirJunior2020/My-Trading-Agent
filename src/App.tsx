@@ -15,6 +15,7 @@ import { TradingChallenge } from './components/TradingChallenge'
 import { LiveTrading } from './components/LiveTrading'
 import { TradeJournal } from './components/TradeJournal'
 import { MyPortfolio } from './components/MyPortfolio'
+import { Profits } from './components/Profits'
 import { WorkspacePage } from './components/WorkspacePage'
 
 export default function App(){
@@ -28,7 +29,7 @@ export default function App(){
  return <div className={`app ${emergency?'emergency-mode':''}`}>
   <Sidebar t={t} page={page} setPage={setPage}/>
   <div className="workspace"><TopBar t={t} emergency={emergency} onEmergency={toggleEmergency} onLanguage={()=>setLanguage(v=>v==='en'?'pt':'en')} system={system}/>
-   {page==='agentOffice'||page==='dashboard'?<main className="dashboard-shell"><div className="hero-grid"><PixelOffice t={t} selected={selected} onSelect={setSelected}/><TradingTerminal t={t} system={system}/></div><TradingChallenge language={language}/><div className="detail-row"><AgentDetails agent={selected} t={t}/><BottomPanels t={t} backendOnline={Boolean(system?.server.online)}/></div><div className="mobile-hint">{t('mobileHint')}</div></main>:page==='liveTrading'?<LiveTrading language={language}/>:page==='tradeJournal'?<TradeJournal language={language}/>:page==='portfolio'?<MyPortfolio language={language}/>:<WorkspacePage page={page} language={language} system={system}/>}
+   {page==='agentOffice'||page==='dashboard'?<main className="dashboard-shell"><div className="hero-grid"><PixelOffice t={t} selected={selected} onSelect={setSelected}/><TradingTerminal t={t} system={system}/></div><TradingChallenge language={language}/><div className="detail-row"><AgentDetails agent={selected} t={t}/><BottomPanels t={t} backendOnline={Boolean(system?.server.online)}/></div><div className="mobile-hint">{t('mobileHint')}</div></main>:page==='liveTrading'?<LiveTrading language={language}/>:page==='tradeJournal'?<TradeJournal language={language}/>:page==='portfolio'?<MyPortfolio language={language}/>:page==='profits'?<Profits language={language}/>:<WorkspacePage page={page} language={language} system={system}/>}
    <ToolCopilot language={language}/>
    <footer className="footer"><span><i className={system?'live-dot':'status-dot idle'}/>{system?t('systemsOperational'):t('serverOffline')}</span><span>Local AI • Local Data • Risk First</span></footer>
   </div>
