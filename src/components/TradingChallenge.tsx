@@ -3,6 +3,11 @@ import { api } from '../lib/api'
 
 interface Props {language:'en'|'pt'}
 
+const usd=(value:unknown)=>{
+  const n=Number(value)
+  return Number.isFinite(n)?'$'+n.toFixed(2):'—'
+}
+
 export function TradingChallenge({language}:Props){
   const [challenge,setChallenge]=useState<any|null>(null)
   useEffect(()=>{
@@ -14,23 +19,47 @@ export function TradingChallenge({language}:Props){
   },[])
 
   if(!challenge)return null
-  const current=challenge.currentPortfolioUsd==null?'—':('$'+Number(challenge.currentPortfolioUsd).toFixed(2))
   const progress=challenge.progressPercent==null?0:Number(challenge.progressPercent)
-  const title=language==='pt'?'Desafio de Trading':'Trading Challenge'
-  const goal=language==='pt'?'Meta':'Goal'
-  const balance=language==='pt'?'Saldo atual':'Current balance'
-  const days=language==='pt'?'Dias restantes':'Days remaining'
-  const note=language==='pt'?'A meta nunca substitui os limites de risco.':'The goal never overrides risk limits.'
+  const soldProfit=Number(challenge.soldProfitUsd||0)
+  const pt=language==='pt'
 
   return <section className="panel challenge-panel">
-    <header className="mini-heading"><h3>{title}</h3><span>{challenge.enabled?'ACTIVE':'PAUSED'}</span></header>
-    <div className="challenge-grid">
-      <div><small>{goal}</small><strong>${Number(challenge.startingBalanceUsd).toFixed(0)} → ${Number(challenge.targetBalanceUsd).toFixed(0)}</strong></div>
-      <div><small>{balance}</small><strong>{current}</strong></div>
-      <div><small>{days}</small><strong>{challenge.daysRemaining}</strong></div>
-      <div><small>Progress</small><strong>{progress.toFixed(1)}%</strong></div>
+    <header className="mini-heading">
+      <h3>{pt?'Seu Dinheiro Agora':'Your Money Now'}</h3>
+      <span>{challenge.enabled?'LIVE':'PAUSED'}</span>
+    </header>
+
+    <div className="challenge-grid money-breakdown-grid">
+      <div>
+        <small>{pt?'Total da carteira':'Total Portfolio'}</small>
+        <strong>{usd(challenge.currentPortfolioUsd)}</strong>
+      </div>
+      <div>
+        <small>{pt?'Dinheiro disponível':'Cash Available'}</small>
+        <strong>{usd(challenge.cashAvailableUsd)}</strong>
+      </div>
+      <div>
+        <small>{pt?'Dinheiro em moedas abertas':'Money in Open Coins'}</small>
+        <strong>{usd(challenge.openCoinsUsd)}</strong>
+      </div>
+      <div className={soldProfit>=0?'money-profit':'money-loss'}>
+        <small>{pt?'Lucro de vendas concluídas':'Sold Profit'}</small>
+        <strong>{soldProfit>=0?'+':''}{usd(soldProfit)}</strong>
+      </div>
+      <div>
+        <small>{pt?'Dias restantes':'Days Remaining'}</small>
+        <strong>{challenge.daysRemaining}</strong>
+      </div>
     </div>
+
     <div className="challenge-progress"><span style={{width:Math.max(0,Math.min(100,progress))+'%'}}/></div>
-    <p>{note} Required gain: {Number(challenge.requiredGainPercent).toFixed(1)}%.</p>
+    <p>
+      {pt
+        ?'Total = dinheiro disponível + valor atual das moedas abertas. O lucro vendido já está dentro do total; ele aparece separado só para mostrar de onde veio.'
+        :'Total = Cash Available + current value of Open Coins. Sold Profit is already included in the total after the sale; it is shown separately so you can see where it came from.'}
+    </p>
+    <p>
+      {pt?'Meta':'Goal'}: {'$'}{Number(challenge.startingBalanceUsd).toFixed(0)} → {'$'}{Number(challenge.targetBalanceUsd).toFixed(0)} • {pt?'Progresso':'Progress'}: {progress.toFixed(1)}%
+    </p>
   </section>
 }
