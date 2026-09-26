@@ -198,6 +198,198 @@ def vectorbt_validate(payload: dict) -> dict:
         "results": results,
     }
 
+
+def _mean_reversion_indicators(closes, bb_period: int, bb_std: float, rsi_period: int):
+    import numpy as np
+    import pandas as pd
+    series = pd.Series(np.asarray(closes, dtype=float))
+    middle = series.rolling(bb_period).mean()
+    std = series.rolling(bb_period).std(ddof=0)
+    lower = middle - (bb_std * std)
+    delta = series.diff()
+    gains = delta.clip(lower=0.0).rolling(rsi_period).mean()
+    losses = (-delta.clip(upper=0.0)).rolling(rsi_period).mean()
+    rs = gains / losses.replace(0.0, np.nan)
+    rsi_values = 100.0 - (100.0 / (1.0 + rs))
+    rsi_values = rsi_values.fillna(100.0)
+    return middle, lower, rsi_values
+
+def _run_mean_reversion(payload: dict, start_index: int = 0, end_index: int | None = None) -> dict:
+    closes = [float(x) for x in (payload.get("closes") or payload.get("prices") or [])]
+    highs = [float(x) for x in (payload.get("highs") or closes)]
+    lows = [float(x) for x in (payload.get("lows") or closes)]
+    if not (len(closes) == len(highs) == len(lows)):
+        raise ValueError("closes/highs/lows must have matching lengths.")
+
+    bb_period = int(payload.get("bbPeriod", 20))
+    bb_std = float(payload.get("bbStdDev", 2.0))
+    rsi_period = int(payload.get("rsiPeriod", 14))
+    rsi_oversold = float(payload.get("rsiOversold", 35.0))
+    strong_rsi = float(payload.get("strongRsi", 30.0))
+    normal_proximity = float(payload.get("normalProximityPercent", 0.40))
+    strong_proximity = float(payload.get("strongProximityPercent", 0.90))
+    take_profit_percent = float(payload.get("takeProfitPercent", 1.5))
+    stop_loss_percent = float(payload.get("stopLossPercent", 0.8))
+    fee_rate = max(0.0, float(payload.get("feeRate", 0.006)))
+    cash = float(payload.get("initialCash", 100.0))
+
+    if len(closes) < max(bb_period + 2, rsi_period + 2, 40):
+        raise ValueError("Not enough candles for mean-reversion validation.")
+
+    middle, lower, rsi_values = _mean_reversion_indicators(closes, bb_period, bb_std, rsi_period)
+    start_index = max(max(bb_period, rsi_period) + 1, int(start_index))
+    end_index = len(closes) if end_index is None else min(len(closes), int(end_index))
+
+    realized = 0.0
+    wins = 0
+    losses_count = 0
+    trades = 0
+    position = None
+    equity_curve = [cash]
+
+    for i in range(start_index, end_index):
+        close = closes[i]
+        high = highs[i]
+        low = lows[i]
+
+        if position is not None:
+            stop_price = position["entryPrice"] * (1.0 - stop_loss_percent / 100.0)
+            # Net-profit target after both entry and exit fees.
+            target_price = position["entryPrice"] * (1.0 + fee_rate) * (1.0 + take_profit_percent / 100.0) / max(1e-12, 1.0 - fee_rate)
+
+            hit_stop = low <= stop_price
+            hit_target = high >= target_price
+
+            exit_price = None
+            exit_reason = None
+            if hit_stop and hit_target:
+                # Conservative intrabar assumption when order is unknowable.
+                exit_price = stop_price
+                exit_reason = "STOP_LOSS"
+            elif hit_stop:
+                exit_price = stop_price
+                exit_reason = "STOP_LOSS"
+            elif hit_target:
+                exit_price = target_price
+                exit_reason = "NET_TAKE_PROFIT"
+
+            if exit_price is not None:
+                qty = position["qty"]
+                proceeds = exit_price * qty * (1.0 - fee_rate)
+                pnl = proceeds - position["costBasis"]
+                realized += pnl
+                trades += 1
+                if pnl > 0:
+                    wins += 1
+                elif pnl < 0:
+                    losses_count += 1
+                position = None
+
+        if position is None and i > 0:
+            lower_now = _finite(lower.iloc[i], float("nan"))
+            lower_prev = _finite(lower.iloc[i - 1], float("nan"))
+            rsi_now = _finite(rsi_values.iloc[i], 100.0)
+            if math.isfinite(lower_now) and math.isfinite(lower_prev) and lower_now > 0:
+                crossed_below = closes[i - 1] >= lower_prev and close < lower_now
+                close_vs_lower = ((close - lower_now) / lower_now) * 100.0
+                proximity = strong_proximity if rsi_now <= strong_rsi else normal_proximity
+                entry_ready = rsi_now <= rsi_oversold and (crossed_below or close_vs_lower <= proximity)
+                if entry_ready:
+                    notional = min(10.0, max(1.0, cash * 0.10))
+                    qty = notional / close
+                    position = {
+                        "entryPrice": close,
+                        "qty": qty,
+                        "costBasis": (close * qty) * (1.0 + fee_rate),
+                        "entryIndex": i,
+                    }
+
+        mark = 0.0
+        if position is not None:
+            mark = (close * position["qty"] * (1.0 - fee_rate)) - position["costBasis"]
+        equity_curve.append(cash + realized + mark)
+
+    open_pnl = 0.0
+    if position is not None:
+        final_price = closes[end_index - 1]
+        open_pnl = (final_price * position["qty"] * (1.0 - fee_rate)) - position["costBasis"]
+
+    net_pnl = realized + open_pnl
+    peak = equity_curve[0] if equity_curve else cash
+    max_drawdown = 0.0
+    for value in equity_curve:
+        peak = max(peak, value)
+        if peak > 0:
+            max_drawdown = max(max_drawdown, ((peak - value) / peak) * 100.0)
+
+    return {
+        "strategy": "BOLLINGER_RSI_MEAN_REVERSION",
+        "candleCount": max(0, end_index - start_index),
+        "initialCash": cash,
+        "feeRate": fee_rate,
+        "bbPeriod": bb_period,
+        "bbStdDev": bb_std,
+        "rsiPeriod": rsi_period,
+        "rsiOversold": rsi_oversold,
+        "takeProfitPercentNet": take_profit_percent,
+        "stopLossPercentGross": stop_loss_percent,
+        "realizedPnl": realized,
+        "openPnl": open_pnl,
+        "netPnl": net_pnl,
+        "totalReturnPercent": (net_pnl / cash * 100.0) if cash else 0.0,
+        "maxDrawdownPercent": max_drawdown,
+        "totalTrades": trades,
+        "winningTrades": wins,
+        "losingTrades": losses_count,
+        "winRatePercent": (wins / trades * 100.0) if trades else 0.0,
+        "openPosition": position is not None,
+    }
+
+def mean_reversion_validate(payload: dict) -> dict:
+    closes = payload.get("closes") or payload.get("prices") or []
+    if len(closes) < 300:
+        raise ValueError("At least 300 five-minute candles are required for mean-reversion validation.")
+
+    n = len(closes)
+    split = max(200, int(n * 0.70))
+    split = min(split, n - 100)
+
+    full = _run_mean_reversion(payload, 0, n)
+    train = _run_mean_reversion(payload, 0, split)
+    out_of_sample = _run_mean_reversion(payload, split, n)
+
+    walk_forward = []
+    positive_folds = 0
+    for fold_no, ratio in enumerate([0.40, 0.55, 0.70, 0.85], start=1):
+        start = int(n * ratio)
+        end = min(n, start + max(60, int(n * 0.15)))
+        if end - start < 40:
+            continue
+        fold = _run_mean_reversion(payload, start, end)
+        fold["fold"] = fold_no
+        walk_forward.append(fold)
+        if fold["totalReturnPercent"] > 0:
+            positive_folds += 1
+
+    return {
+        "engine": "vectorbt-compatible",
+        "validation": "BOLLINGER_RSI_LIVE_STRATEGY",
+        "granularity": payload.get("granularity", "FIVE_MINUTE"),
+        "candleCount": n,
+        "trainCandles": split,
+        "outOfSampleCandles": n - split,
+        "feeRate": float(payload.get("feeRate", 0.006)),
+        "full": full,
+        "train": train,
+        "outOfSample": out_of_sample,
+        "walkForward": walk_forward,
+        "walkForwardPositiveFolds": positive_folds,
+        "walkForwardFoldCount": len(walk_forward),
+        "validationFlag": "PASSING_EVIDENCE"
+            if out_of_sample["totalReturnPercent"] > 0 and positive_folds >= max(1, len(walk_forward) // 2 + 1)
+            else "NEEDS_MORE_EVIDENCE",
+    }
+
 def nautilus_smoke() -> dict:
     from nautilus_trader.backtest import BacktestEngine
     from nautilus_trader.config import BacktestEngineConfig
@@ -228,6 +420,9 @@ def main() -> None:
     elif command == "vectorbt-validate":
         payload = json.loads(sys.stdin.read() or "{}")
         result = vectorbt_validate(payload)
+    elif command == "mean-reversion-validate":
+        payload = json.loads(sys.stdin.read() or "{}")
+        result = mean_reversion_validate(payload)
     elif command == "nautilus-smoke":
         result = nautilus_smoke()
     else:
