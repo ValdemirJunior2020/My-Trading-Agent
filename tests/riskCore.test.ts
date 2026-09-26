@@ -129,3 +129,16 @@ test('execution gate also rejects disabled live or auto trading',()=>{
   assert.equal(result.approved,false)
   assert.match(result.reasons.join(' '),/disabled/i)
 })
+
+
+test('manual approval blocks automatic live execution',()=>{
+  const result=assessEmergencyExecutionGate({
+    emergencyStop:false,
+    tradingMode:'live',
+    liveTradingEnabled:true,
+    autoTradingEnabled:true,
+    manualApprovalRequired:true
+  })
+  assert.equal(result.approved,false)
+  assert.match(result.reasons.join(' '),/manual approval/i)
+})
