@@ -640,10 +640,9 @@ export const tryLimitedLiveExecution = async (opts: {
     const baseIncrement = productInfo?.base_increment || 0.00000001
     const baseMin = Number(productInfo?.base_min_size || 0)
     const baseMax = Number(productInfo?.base_max_size || Infinity)
-    const minBaseRequired = Math.max(
-      baseMin,
-      config.minLiveOrderUsd > 0 ? config.minLiveOrderUsd / price : 0
-    )
+    // SELL exits must not inherit our BUY-side dollar minimum.
+    // Use Coinbase's base minimum and let the live preview be the final exchange gate.
+    const minBaseRequired = baseMin
     const minExecutableBase = ceilToIncrement(minBaseRequired, baseIncrement)
     const requestedBase = Number(opts.baseSizeOverride || 0)
     const targetNotional = Math.min(hardCap, availableAssetUsd)
@@ -667,12 +666,11 @@ export const tryLimitedLiveExecution = async (opts: {
     if (
       !(baseSize > 0) ||
       baseSize < minExecutableBase ||
-      baseSize > baseMax ||
-      notionalUsd < config.minLiveOrderUsd
+      baseSize > baseMax
     ) {
       return {
         executed: false,
-        reason: 'Available holding cannot meet the configured/Coinbase SELL minimum',
+        reason: 'Available holding cannot meet Coinbase SELL size minimum',
         baseSize,
         baseMin,
         minExecutableBase,
