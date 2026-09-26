@@ -210,8 +210,8 @@ const server=createServer(async(req,res)=>{
     // one price request per holding. This keeps the portfolio page responsive
     // and avoids flooding the shared Coinbase request queue.
     const [accounts,products]=await Promise.all([
-      listAccounts(),
-      listSpotUsdProducts(500)
+      listAccounts(20),
+      listSpotUsdProducts(500,20)
     ])
 
     const priceByProduct=new Map(
