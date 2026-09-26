@@ -50,6 +50,7 @@ export const api={
   getRecentEvents:()=>request<{events:any[]}>('/api/events/recent'),
   getLiveHistory:(limit=200)=>request<{events:any[]}>(`/api/live/history?limit=${limit}&_=${Date.now()}`,{signal:AbortSignal.timeout(4000)}),
   getLatestLiveOrder:()=>request<{event:any|null}>('/api/live/latest-order'),
+  getProfits:()=>request<any>('/api/live/profits',{signal:AbortSignal.timeout(5000)}),
   clearLiveHistory:()=>request<{ok:boolean;deleted:number}>('/api/live/history',{method:'DELETE'}),
   restoreLiveHistory:()=>request<{ok:boolean;restored:number}>('/api/live/history/restore',{method:'POST',body:'{}',signal:AbortSignal.timeout(5000)}),
   getPortfolioAllocation:()=>request<any>('/api/coinbase/portfolio-allocation',{signal:AbortSignal.timeout(12000)}),
