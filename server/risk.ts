@@ -458,7 +458,8 @@ export const tryLimitedLiveExecution = async (opts: {
     emergencyStop:emergencyStopActive(),
     tradingMode:config.tradingMode,
     liveTradingEnabled:config.liveTradingEnabled,
-    autoTradingEnabled:config.autoTradingEnabled
+    autoTradingEnabled:config.autoTradingEnabled,
+    manualApprovalRequired:config.manualApprovalRequired
   })
   if(!executionGate.approved){
     return {executed:false,reason:executionGate.reasons[0],reasons:executionGate.reasons}
