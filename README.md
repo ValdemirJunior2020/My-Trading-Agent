@@ -2,7 +2,7 @@
 
 Local-first crypto AI research and trading workspace with a responsive bilingual Pixel Agent Office, local Node server, SQLite persistence, Ollama agent runtime, Coinbase Advanced Trade server adapter, paper-trading risk engine, live backend events, and Windows one-click launchers.
 
-> Live automatic trading remains OFF by default. The current execution endpoint is paper-only. Coinbase account/product access is server-side and real secrets never enter React.
+> Live automatic trading is OFF in the repository defaults. Live execution is available only when explicitly enabled in the local .env. Coinbase access and order placement stay server-side; real secrets never enter React.
 
 ## Windows - easiest way
 
@@ -80,4 +80,4 @@ AUTO_TRADING_ENABLED=false
 MANUAL_APPROVAL_REQUIRED=true
 ```
 
-The server currently does not expose a live Coinbase order-placement route. Paper orders must pass deterministic risk checks outside Ollama, and the emergency-stop state is persisted locally.
+Automatic live execution is gated by local .env settings, persistent emergency stop, manual-approval mode, daily/rolling loss protection, position/exposure limits, Coinbase preview checks, and fee-aware sell validation. The repository defaults remain paper-safe.
