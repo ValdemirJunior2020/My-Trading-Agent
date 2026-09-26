@@ -107,6 +107,12 @@ const netProfitFor=(event:any,allEvents:any[])=>{
   const p=event?.payload||{}
   if(event?.type!=='live_order_placed'||String(p.side||'').toUpperCase()!=='SELL')return null
 
+  const persistedProfit=Number(p.realizedNetProfitUsd)
+  const persistedPercent=Number(p.realizedNetProfitPercent)
+  if(Number.isFinite(persistedProfit)&&Number.isFinite(persistedPercent)){
+    return {netProfit:persistedProfit,netProfitPercent:persistedPercent}
+  }
+
   const sourceLotOrderId=String(p.sourceLotOrderId||'')
   if(!sourceLotOrderId)return null
 
