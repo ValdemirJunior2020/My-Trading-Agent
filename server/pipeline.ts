@@ -16,6 +16,7 @@ type PipelineOptions = {
   deepResearch?: boolean
   executeLive?: boolean
   signalIntent?: 'BUY' | 'SELL' | 'NONE'
+  signalSource?: 'MEAN_REVERSION' | 'MOMENTUM_SCANNER' | 'MANUAL' | 'UNKNOWN'
   signalReason?: string
 }
 type PipelineState = {
@@ -271,18 +272,29 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   const riskReject = String(risk.output?.decision||'').toUpperCase()==='REJECT'
   const criticReject = String(critic.output?.decision||'').toUpperCase()==='REJECT'
 
+  const requestedSignalAction=String(options.signalIntent||'NONE').toUpperCase()
+  const meanReversionSignal=String(options.signalSource||'UNKNOWN').toUpperCase()==='MEAN_REVERSION'
+  const deterministicBuySignal=meanReversionSignal
+    ? requestedSignalAction==='BUY'
+    : Boolean(technicalSignal?.buyCandidate)
+  const deterministicSellSignal=meanReversionSignal
+    ? requestedSignalAction==='SELL'
+    : Boolean(technicalSignal?.sellCandidate)
+
   const deterministicConsensus = {
+    signalSource:options.signalSource||'UNKNOWN',
     scannerBuyCandidate:Boolean(technicalSignal?.buyCandidate),
     scannerSellCandidate:Boolean(technicalSignal?.sellCandidate),
     scannerBuyScore:Number(technicalSignal?.buyScore||0),
     scannerSellScore:Number(technicalSignal?.sellScore||0),
+    meanReversionAction:String((deterministicStrategy as any)?.action||'NONE'),
     buyVotes,
     sellVotes,
     rejectVotes,
     riskReject,
     criticReject,
-    buyEligible:Boolean(technicalSignal?.buyCandidate && !riskReject && !criticReject),
-    sellEligible:Boolean(technicalSignal?.sellCandidate && !riskReject && !criticReject)
+    buyEligible:Boolean(deterministicBuySignal && !riskReject && !criticReject),
+    sellEligible:Boolean(deterministicSellSignal && !riskReject && !criticReject)
   }
 
   const decision = await agentStep('decision', productId, {
