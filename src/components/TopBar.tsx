@@ -33,10 +33,8 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
   let active=true
   const load=()=>{
    api.getPipelineStatus().then(value=>{if(active)setPipeline(value)}).catch(()=>{})
-   api.getRecentEvents().then(({events})=>{
-    if(!active)return
-    const live=events.find((event:any)=>['live_order_placed','live_order_failed','live_order_rejected','live_order_preview_rejected'].includes(String(event.type)))
-    setLastLiveEvent(live||null)
+   api.getLatestLiveOrder().then(({event})=>{
+    if(active)setLastLiveEvent(event||null)
    }).catch(()=>{})
   }
   load()
