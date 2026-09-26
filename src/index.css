@@ -193,3 +193,66 @@ body{font-size:14px;line-height:1.45}
 .market-drawdown-warning strong{color:#f2c75d;font-size:10px}
 .market-drawdown-warning span{color:#e5d7a6;font-size:10px}
 .market-drawdown-warning small{grid-column:1/-1;color:#a99763;font-size:9px}
+
+
+/* Trade Journal v2 — real-time execution console */
+.journal-title-line{display:flex;align-items:center;gap:9px}
+.journal-live-badge{display:inline-flex;align-items:center;gap:5px;border:1px solid #176e5a;background:#0a2d25;color:#7df1cf;border-radius:999px;padding:4px 7px;font-size:8px;font-weight:900;letter-spacing:.08em}
+.journal-live-badge i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green)}
+.journal-title-muted{color:#7692a6;font-weight:500;font-size:.72em}
+
+.journal-toolbar{display:grid;grid-template-columns:minmax(250px,1fr) 150px 160px auto;gap:8px;align-items:center;margin:13px 0 8px}
+.journal-search{display:flex;align-items:center;gap:8px;border:1px solid #24485f;background:#07151f;border-radius:7px;padding:0 10px;height:38px}
+.journal-search span{color:#6f8da2;font-size:16px}
+.journal-search input{border:0;outline:0;background:transparent;color:#e7f3fb;width:100%;font-size:10px}
+.journal-search input::placeholder{color:#607b90}
+.journal-toolbar select{height:38px;border:1px solid #24485f;background:#091822;color:#d9e8f2;border-radius:7px;padding:0 10px;font-size:10px;outline:0}
+.journal-result-count{justify-self:end;color:#7890a5;font-size:9px;white-space:nowrap}
+
+.journal-table-wrap{box-shadow:0 12px 30px #00000020}
+.journal-header{position:sticky;top:0;z-index:1;text-transform:uppercase;letter-spacing:.05em}
+.journal-row{min-height:52px;transition:background .15s ease,border-color .15s ease}
+.journal-row:hover{background:#0c1d29;border-bottom-color:#24465d}
+.journal-time{display:grid;gap:2px}
+.journal-time b{font-size:9px;color:#dcebf5}
+.journal-time small{font-size:9px;color:#7890a5}
+.journal-asset{display:grid;gap:1px}
+.journal-asset b{font-size:11px;color:#eff8ff}
+.journal-asset small{font-size:8px;color:#6e8aa0}
+.journal-amount{font-weight:800;color:#dcebf5}
+
+.journal-status{display:inline-flex;align-items:center;gap:5px;font-weight:900;letter-spacing:.03em;border:1px solid transparent}
+.journal-status i{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 7px currentColor}
+.journal-status.placed{border-color:#1c6d5a}
+.journal-status.wait{border-color:#6a5520}
+.journal-status.blocked,.journal-status.preview-failed{border-color:#7b3c28}
+.journal-status.failed,.journal-status.rejected{border-color:#7b3038}
+
+.journal-side-pill{display:inline-flex;align-items:center;justify-content:center;min-width:48px;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:900;letter-spacing:.05em}
+.journal-side-pill.buy{background:#123f55;color:#86d7ff;border:1px solid #2e7597}
+.journal-side-pill.sell{background:#4a1b22;color:#ffabb3;border:1px solid #93404b}
+.journal-side-pill.neutral{background:#172532;color:#98adbd;border:1px solid #30485a}
+
+.journal-order-id{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#70aee4!important}
+.journal-context{position:relative;cursor:help}
+.journal-context:hover{color:#d9eefb}
+.journal-context:hover::after{content:attr(title);position:absolute;right:0;bottom:calc(100% + 8px);z-index:20;width:min(420px,65vw);white-space:normal;line-height:1.45;background:#0b1721;border:1px solid #31536a;border-radius:8px;padding:10px 11px;color:#dceaf3;box-shadow:0 16px 36px #0009;font-size:10px}
+
+.journal-pagination{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;color:#7890a5;font-size:9px}
+.journal-pagination>div{display:flex;gap:5px;align-items:center}
+.journal-pagination button,.journal-pagination b{width:30px;height:30px;display:grid;place-items:center;border:1px solid #28495d;background:#0a1822;color:#a9c0d0;border-radius:6px;font-size:10px}
+.journal-pagination button{cursor:pointer}
+.journal-pagination button:hover:not(:disabled){border-color:#4c8fb4;color:#fff}
+.journal-pagination button:disabled{opacity:.35;cursor:default}
+.journal-pagination b{background:#12364d;color:#fff;border-color:#3a718f}
+
+@media(max-width:900px){
+  .journal-toolbar{grid-template-columns:1fr 1fr}
+  .journal-search{grid-column:1/-1}
+  .journal-result-count{justify-self:start}
+}
+@media(max-width:560px){
+  .journal-toolbar{grid-template-columns:1fr}
+  .journal-search{grid-column:auto}
+  .journal-pagination{align-items:flex-start;flex-direction:column}
+}
