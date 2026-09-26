@@ -106,13 +106,61 @@ export const liveTradeHistory=(limit=200)=>{
     ORDER BY id DESC
     LIMIT ?
   `).all(hiddenBeforeId,bounded) as Array<any>
-  return rows.map(row=>({
-    id:row.id,
-    type:row.type,
-    agentId:row.agent_id,
-    payload:JSON.parse(row.payload),
-    createdAt:row.created_at
-  }))
+
+  const placedRows=db.prepare(`
+    SELECT payload
+    FROM agent_events
+    WHERE type='live_order_placed'
+    ORDER BY id ASC
+  `).all() as Array<any>
+
+  const buysByOrderId=new Map<string,any>()
+  for(const placedRow of placedRows){
+    try{
+      const payload=JSON.parse(placedRow.payload)
+      if(String(payload?.side||'').toUpperCase()!=='BUY')continue
+      const orderId=String(payload?.orderId||'')
+      if(orderId)buysByOrderId.set(orderId,payload)
+    }catch{}
+  }
+
+  return rows.map(row=>{
+    const payload=JSON.parse(row.payload)
+
+    if(
+      row.type==='live_order_placed' &&
+      String(payload?.side||'').toUpperCase()==='SELL' &&
+      payload?.realizedNetProfitUsd==null &&
+      payload?.sourceLotOrderId
+    ){
+      const buy=buysByOrderId.get(String(payload.sourceLotOrderId))
+      const sellPrice=Number(payload.actualFillPrice||payload.preview?.est_average_filled_price||0)
+      const sellQty=Number(payload.executedQty||payload.preview?.base_size||0)
+      const sellFee=Number(payload.preview?.commission_total||0)
+      const buyPrice=Number(buy?.actualFillPrice||buy?.preview?.est_average_filled_price||0)
+      const buyQty=Number(buy?.executedQty||buy?.preview?.base_size||0)
+      const buyFee=Number(buy?.preview?.commission_total||0)
+
+      if(buy && sellPrice>0 && sellQty>0 && buyPrice>0 && buyQty>0){
+        const buyUnitCost=((buyPrice*buyQty)+buyFee)/buyQty
+        const costBasis=buyUnitCost*sellQty
+        const netProceeds=(sellPrice*sellQty)-sellFee
+        const netProfit=netProceeds-costBasis
+        payload.realizedNetProfitUsd=netProfit
+        payload.realizedNetProfitPercent=costBasis>0?(netProfit/costBasis)*100:0
+        payload.realizedNetProceedsUsd=netProceeds
+        payload.sellCostBasisUsd=costBasis
+      }
+    }
+
+    return {
+      id:row.id,
+      type:row.type,
+      agentId:row.agent_id,
+      payload,
+      createdAt:row.created_at
+    }
+  })
 }
 
 
