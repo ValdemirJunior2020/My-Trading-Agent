@@ -52,6 +52,26 @@ export const saveTradingChallenge=(input:Partial<TradingChallenge>)=>{
 }
 
 const balanceValue=(balance:any)=>Number(balance?.value??balance??0)||0
+const LAST_GOOD_PORTFOLIO_KEY='last_good_coinbase_portfolio_snapshot'
+const LAST_GOOD_MAX_AGE_MS=10*60*1000
+
+const readLastGoodPortfolio=()=>{
+  try{
+    const raw=getSetting(LAST_GOOD_PORTFOLIO_KEY,'')
+    if(!raw)return null
+    const parsed=JSON.parse(raw)
+    const savedAt=Number(parsed?.savedAt||0)
+    const totalUsd=Number(parsed?.totalUsd)
+    if(!(totalUsd>0)||!(savedAt>0)||Date.now()-savedAt>LAST_GOOD_MAX_AGE_MS)return null
+    return parsed
+  }catch{return null}
+}
+
+const saveLastGoodPortfolio=(snapshot:any)=>{
+  if(Number(snapshot?.totalUsd)>0){
+    setSetting(LAST_GOOD_PORTFOLIO_KEY,JSON.stringify({...snapshot,savedAt:Date.now()}))
+  }
+}
 
 let portfolioCache:{value:any;expiresAt:number}|null=null
 let portfolioInFlight:Promise<any>|null=null
@@ -98,9 +118,13 @@ export const getEstimatedPortfolioUsd=async(forceFresh=false)=>{
   const result={
     totalUsd:Number(total.toFixed(2)),
     details,
-    accountCount:accounts.length
+    accountCount:accounts.length,
+    source:'coinbase_live',
+    stale:false,
+    updatedAt:new Date().toISOString()
   }
   portfolioCache={value:result,expiresAt:Date.now()+15000}
+  saveLastGoodPortfolio(result)
   return result
   })()
 
@@ -119,11 +143,30 @@ export const getChallengeSnapshot=async()=>{
   const daysRemaining=Math.max(0,Math.ceil((deadline.getTime()-now.getTime())/86400000))
   let portfolioUsd:number|null=null
   let accountCount=0
+  let portfolioSource='unavailable'
+  let portfolioStale=false
+  let portfolioUpdatedAt:string|null=null
+  let portfolioError:string|null=null
+
   try{
     const estimated=await getEstimatedPortfolioUsd()
-    portfolioUsd=estimated.totalUsd
-    accountCount=estimated.accountCount
-  }catch{}
+    portfolioUsd=Number(estimated.totalUsd)
+    accountCount=Number(estimated.accountCount||0)
+    portfolioSource=String(estimated.source||'coinbase_live')
+    portfolioStale=Boolean(estimated.stale)
+    portfolioUpdatedAt=String(estimated.updatedAt||new Date().toISOString())
+  }catch(error){
+    portfolioError=error instanceof Error?error.message:String(error)
+    const fallback=readLastGoodPortfolio()
+    if(fallback){
+      portfolioUsd=Number(fallback.totalUsd)
+      accountCount=Number(fallback.accountCount||0)
+      portfolioSource='last_confirmed_coinbase'
+      portfolioStale=true
+      portfolioUpdatedAt=fallback.updatedAt||new Date(Number(fallback.savedAt||Date.now())).toISOString()
+    }
+  }
+
   const progressPercent=portfolioUsd==null?null:Math.max(0,Math.min(100,((portfolioUsd-challenge.startingBalanceUsd)/(challenge.targetBalanceUsd-challenge.startingBalanceUsd))*100))
   return {
     ...challenge,
@@ -131,6 +174,10 @@ export const getChallengeSnapshot=async()=>{
     daysRemaining,
     currentPortfolioUsd:portfolioUsd,
     accountCount,
+    portfolioSource,
+    portfolioStale,
+    portfolioUpdatedAt,
+    portfolioError,
     progressPercent:progressPercent==null?null:Number(progressPercent.toFixed(1)),
     requiredGainPercent:Number((((challenge.targetBalanceUsd/challenge.startingBalanceUsd)-1)*100).toFixed(1)),
     riskNote:'This is a goal, not a mandate. Hard risk limits override the target.'
