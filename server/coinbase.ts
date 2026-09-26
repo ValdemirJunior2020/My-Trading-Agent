@@ -144,7 +144,7 @@ export const listAccounts=async(priority=0)=>{
     active:account.active
   }))
 }
-export const getProduct=async(productId:string)=>{
+export const getProduct=async(productId:string,priority=0)=>{
   const key=productId.toUpperCase()
   const cached=productCache.get(key)
   if(cached&&cached.expiresAt>Date.now())return cached.value
@@ -152,7 +152,7 @@ export const getProduct=async(productId:string)=>{
   if(existing)return existing
 
   const work=(async()=>{
-    const value=await request('GET',`/api/v3/brokerage/products/${encodeURIComponent(key)}`)
+    const value=await request('GET',`/api/v3/brokerage/products/${encodeURIComponent(key)}`,undefined,priority)
     productCache.set(key,{value,expiresAt:Date.now()+3000})
     return value
   })()
