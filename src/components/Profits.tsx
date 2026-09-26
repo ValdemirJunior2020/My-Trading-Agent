@@ -23,7 +23,12 @@ export function Profits({language}:Props){
       setData(await api.getProfits())
       setError('')
     }catch(e){
-      setError(e instanceof Error?e.message:String(e))
+      const message=e instanceof Error?e.message:String(e)
+      setError(
+        /timed out|timeout/i.test(message)
+          ?(pt?'O histórico de lucros demorou para responder. Tente atualizar novamente.':'Profit history took too long to respond. Please refresh again.')
+          :message
+      )
     }finally{
       loadInFlight.current=false
       setLoading(false)
