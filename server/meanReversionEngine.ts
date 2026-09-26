@@ -153,6 +153,7 @@ const getAgentApproval=async(productId:string,intent:'BUY'|'SELL',reason:string)
       productId,
       deepResearch:false,
       executeLive:false,
+      signalSource:'MEAN_REVERSION',
       signalIntent:intent,
       signalReason:reason
     })
