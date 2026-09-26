@@ -77,6 +77,32 @@ const writeCachedHistory=(events:any[])=>{
   try{localStorage.setItem(JOURNAL_CACHE_KEY,JSON.stringify(events.slice(0,300)))}catch{}
 }
 
+const executionDetailFor=(event:any)=>{
+  const p=event?.payload||{}
+  if(event?.type==='live_order_placed'){
+    const parts:string[]=[]
+    parts.push('EXECUTED '+String(p.side||'ORDER').toUpperCase())
+    if(Number(p.actualFillPrice)>0)parts.push('Fill USD '+Number(p.actualFillPrice).toFixed(6))
+    if(Number(p.executedQty)>0)parts.push('Qty '+Number(p.executedQty).toFixed(8))
+    if(p.preview?.commission_total!=null)parts.push('Fee USD '+Number(p.preview.commission_total||0).toFixed(4))
+    if(p.actualSlippagePercent!=null)parts.push('Slippage '+Number(p.actualSlippagePercent||0).toFixed(3)+'%')
+    if(p.exitReason)parts.push('Reason '+String(p.exitReason).replace(/_/g,' '))
+    if(p.sourceLotOrderId)parts.push('Source lot '+String(p.sourceLotOrderId).slice(0,8)+'…')
+    return parts.join(' • ')
+  }
+
+  if(event?.type==='live_order_preview_approved'){
+    const parts:string[]=['COINBASE PREVIEW APPROVED']
+    if(p.side)parts.push(String(p.side).toUpperCase())
+    if(Number(p.estimatedFillPrice)>0)parts.push('Est. fill USD '+Number(p.estimatedFillPrice).toFixed(6))
+    if(p.commissionTotal!=null)parts.push('Fee USD '+Number(p.commissionTotal||0).toFixed(4))
+    if(p.adverseSlippagePercent!=null)parts.push('Slippage '+Number(p.adverseSlippagePercent||0).toFixed(3)+'%')
+    return parts.join(' • ')
+  }
+
+  return ''
+}
+
 const statusClass=(status:string)=>{
   if(status==='ORDER PLACED')return 'placed'
   if(status==='REJECTED BY AGENTS')return 'rejected'
@@ -369,7 +395,8 @@ export function TradeJournal({language}:Props){
             confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
             p.attempted===false?'No execution attempted':''
           ].filter(Boolean).join(' • ')
-          const detail=String(rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const executionDetail=executionDetailFor(event)
+          const detail=String(executionDetail||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
           const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
           const displayCoin=String(p.productId||p.buyProductId||'—')
           const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
