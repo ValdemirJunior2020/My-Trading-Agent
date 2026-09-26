@@ -503,7 +503,6 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
       rawEntrySignal: Boolean(strategyEntry?.rawEntrySignal),
       positionAlreadyOpen: Boolean(strategyEntry?.positionAlreadyOpen),
       entryReady: Boolean(strategyEntry?.entryReady),
-      reason: String((deterministicStrategy as any)?.reason || ''),
       closeVsLowerPct
     },
     orderId: executionResult?.orderId || null,
