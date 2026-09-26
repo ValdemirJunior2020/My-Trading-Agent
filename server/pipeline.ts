@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { config, coinbaseConfigured } from './config.js'
 import { getCandles, getProduct, listAccounts } from './coinbase.js'
 import { publish } from './events.js'
@@ -27,6 +28,7 @@ type PipelineState = {
   error: string | null
   startedAt: string | null
   finishedAt: string | null
+  runId: string | null
 }
 
 const MAIN_AGENTS = ['market', 'strategy', 'sentiment', 'portfolio', 'risk', 'critic', 'decision']
@@ -39,31 +41,33 @@ let pipelineState: PipelineState = {
   decision: null,
   error: null,
   startedAt: null,
-  finishedAt: null
+  finishedAt: null,
+  runId: null
 }
 
 export const getPipelineStatus = () => ({ ...pipelineState, completedAgents: [...pipelineState.completedAgents] })
+let activePipelinePromise: Promise<any> | null = null
 
 const pct = (a: number, b: number) => (b === 0 ? 0 : ((a - b) / b) * 100)
 const safe = (value: unknown) => JSON.stringify(value).slice(0, 12000)
 
 const agentStep = async (agentId: string, asset: string, evidence: unknown) => {
   pipelineState = { ...pipelineState, currentAgent: agentId }
-  publish('agent_started', { asset }, agentId)
+  publish('agent_started', { asset, runId:pipelineState.runId }, agentId)
 
   let lastError=''
   for(let attempt=1;attempt<=2;attempt++){
     try {
       const result = (await runAgent(agentId, asset, safe(evidence))) as AgentResult
       saveAnalysis(agentId, asset, safe(evidence), result.output, result.model)
-      publish('agent_completed', { asset, output: result.output, attempt }, agentId)
+      publish('agent_completed', { asset, output: result.output, attempt, runId:pipelineState.runId }, agentId)
       if (MAIN_AGENTS.includes(agentId) && !pipelineState.completedAgents.includes(agentId)) {
         pipelineState = { ...pipelineState, completedAgents: [...pipelineState.completedAgents, agentId] }
       }
       return result
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error)
-      publish('agent_retry', { asset, error:lastError, attempt }, agentId)
+      publish('agent_retry', { asset, error:lastError, attempt, runId:pipelineState.runId }, agentId)
       if(attempt<2) await new Promise(resolve=>setTimeout(resolve,1200))
     }
   }
@@ -93,7 +97,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     throw new Error('Coinbase is not configured. Add your CDP key to .env before running the real agent pipeline.')
   }
 
-  publish('pipeline_started', { productId, deepResearch }, 'manager')
+  publish('pipeline_started', { productId, deepResearch, runId:pipelineState.runId }, 'manager')
 
   const [product, candles, backtestCandles, accounts, engineStatus, challenge] = await Promise.all([
     getProduct(productId),
@@ -544,13 +548,23 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     quantitative: { vectorbt, nautilus, rdAgent }
   }
 
-  publish('pipeline_completed', { productId, decision: candidateDecision }, 'manager')
+  publish('pipeline_completed', { productId, decision: candidateDecision, runId:pipelineState.runId }, 'manager')
   return result
 }
 
-export const runFullAgentPipeline = async (options: PipelineOptions = {}) => {
-  if (pipelineState.status === 'running') throw new Error('Agent pipeline is already running.')
+export const runFullAgentPipeline = (options: PipelineOptions = {}) => {
+  if (activePipelinePromise) {
+    const error = new Error('Agent pipeline is already running.')
+    publish('pipeline_busy', {
+      requestedProductId:(options.productId||'BTC-USD').toUpperCase(),
+      activeProductId:pipelineState.productId,
+      activeRunId:pipelineState.runId
+    }, 'manager')
+    return Promise.reject(error)
+  }
+
   const productId = (options.productId || 'BTC-USD').toUpperCase()
+  const runId = randomUUID()
   pipelineState = {
     status: 'running',
     productId,
@@ -560,30 +574,39 @@ export const runFullAgentPipeline = async (options: PipelineOptions = {}) => {
     decision: null,
     error: null,
     startedAt: new Date().toISOString(),
-    finishedAt: null
+    finishedAt: null,
+    runId
   }
-  try {
-    const result = await runFullAgentPipelineInternal(options)
-    const decision = String(result?.decision?.decision || 'WAIT')
-    pipelineState = {
-      ...pipelineState,
-      status: 'completed',
-      currentAgent: null,
-      decision,
-      error: null,
-      finishedAt: new Date().toISOString()
+
+  const task=(async()=>{
+    try {
+      const result = await runFullAgentPipelineInternal(options)
+      const decision = String(result?.decision?.decision || 'WAIT')
+      pipelineState = {
+        ...pipelineState,
+        status: 'completed',
+        currentAgent: null,
+        decision,
+        error: null,
+        finishedAt: new Date().toISOString()
+      }
+      return result
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      pipelineState = {
+        ...pipelineState,
+        status: 'failed',
+        currentAgent: null,
+        error: message,
+        finishedAt: new Date().toISOString()
+      }
+      publish('pipeline_failed', { productId, error: message, runId }, 'manager')
+      throw error
     }
-    return result
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    pipelineState = {
-      ...pipelineState,
-      status: 'failed',
-      currentAgent: null,
-      error: message,
-      finishedAt: new Date().toISOString()
-    }
-    publish('pipeline_failed', { productId, error: message }, 'manager')
-    throw error
-  }
+  })()
+
+  activePipelinePromise=task
+  return task.finally(()=>{
+    if(activePipelinePromise===task) activePipelinePromise=null
+  })
 }
