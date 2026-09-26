@@ -103,6 +103,40 @@ const executionDetailFor=(event:any)=>{
   return ''
 }
 
+const netProfitFor=(event:any,allEvents:any[])=>{
+  const p=event?.payload||{}
+  if(event?.type!=='live_order_placed'||String(p.side||'').toUpperCase()!=='SELL')return null
+
+  const sourceLotOrderId=String(p.sourceLotOrderId||'')
+  if(!sourceLotOrderId)return null
+
+  const buyEvent=allEvents.find(item=>{
+    const bp=item?.payload||{}
+    return item?.type==='live_order_placed'
+      && String(bp.side||'').toUpperCase()==='BUY'
+      && String(bp.orderId||'')===sourceLotOrderId
+  })
+  if(!buyEvent)return null
+
+  const bp=buyEvent.payload||{}
+  const sellPrice=Number(p.actualFillPrice||p.preview?.est_average_filled_price||0)
+  const sellQty=Number(p.executedQty||p.preview?.base_size||0)
+  const sellFee=Number(p.preview?.commission_total||0)
+  const buyPrice=Number(bp.actualFillPrice||bp.preview?.est_average_filled_price||0)
+  const buyQty=Number(bp.executedQty||bp.preview?.base_size||0)
+  const buyFee=Number(bp.preview?.commission_total||0)
+
+  if(!(sellPrice>0)||!(sellQty>0)||!(buyPrice>0)||!(buyQty>0))return null
+
+  const buyUnitCost=((buyPrice*buyQty)+buyFee)/buyQty
+  const costBasis=buyUnitCost*sellQty
+  const netProceeds=(sellPrice*sellQty)-sellFee
+  const netProfit=netProceeds-costBasis
+  const netProfitPercent=costBasis>0?(netProfit/costBasis)*100:0
+
+  return {netProfit,netProfitPercent}
+}
+
 const statusClass=(status:string)=>{
   if(status==='ORDER PLACED')return 'placed'
   if(status==='REJECTED BY AGENTS')return 'rejected'
@@ -396,7 +430,12 @@ export function TradeJournal({language}:Props){
             p.attempted===false?'No execution attempted':''
           ].filter(Boolean).join(' • ')
           const executionDetail=executionDetailFor(event)
-          const detail=String(executionDetail||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const profit=netProfitFor(event,events)
+          const profitDetail=profit
+            ? 'NET PROFIT '+(profit.netProfit>=0?'+':'-')+'USD '+Math.abs(profit.netProfit).toFixed(4)
+              +' ('+(profit.netProfitPercent>=0?'+':'')+profit.netProfitPercent.toFixed(2)+'%) after buy + sell fees'
+            : ''
+          const detail=String([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
           const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
           const displayCoin=String(p.productId||p.buyProductId||'—')
           const rawSide=String(p.side||'—').toUpperCase()
