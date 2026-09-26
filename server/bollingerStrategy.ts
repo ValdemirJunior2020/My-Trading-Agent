@@ -179,12 +179,23 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
     else if(livePrice<=stopPrice)exitReason='STOP_LOSS'
   }
 
-  const entryReady=position.qty<=0 && entryDecision.ready
+  const rawEntrySignal=Boolean(entryDecision.ready)
+  const positionAlreadyOpen=position.qty>0
+  const entryReady=!positionAlreadyOpen && rawEntrySignal
 
   const action=
-    position.qty>0 && exitReason ? 'SELL' :
+    positionAlreadyOpen && exitReason ? 'SELL' :
     entryReady ? 'BUY' :
     'NONE'
+
+  const waitReason=
+    positionAlreadyOpen && rawEntrySignal
+      ? 'Valid BUY setup detected, but this coin already has an open bot-managed lot being monitored for exit.'
+      : positionAlreadyOpen
+        ? 'Bot-managed position is already open; monitoring this lot for take-profit or stop-loss.'
+        : rawEntrySignal
+          ? 'Valid BUY setup detected.'
+          : 'No deterministic entry/exit trigger'
 
   return {
     productId,
@@ -195,7 +206,7 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
           : 'RSI is oversold and price is at or near the lower Bollinger Band')
       : action==='SELL'
         ? exitReason
-        : 'No deterministic entry/exit trigger',
+        : waitReason,
     granularity:config.strategyGranularity,
     close:latest.close,
     livePrice,
@@ -215,7 +226,10 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
       proximityThresholdPercent:entryDecision.proximityThresholdPercent,
       oversold,
       strongOversold:Boolean((entryDecision as any).strongOversold),
-      mode:entryDecision.mode
+      mode:entryDecision.mode,
+      rawEntrySignal,
+      positionAlreadyOpen,
+      entryReady
     },
     position,
     exits:{
