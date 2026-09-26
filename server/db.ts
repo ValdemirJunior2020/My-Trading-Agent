@@ -159,6 +159,28 @@ export const clearLiveTradeHistory=()=>{
 }
 
 
+export const latestLiveOrderEvent=()=>{
+  const row=db.prepare(`
+    SELECT * FROM agent_events
+    WHERE type IN (
+      'live_order_placed',
+      'live_order_failed',
+      'live_order_rejected',
+      'live_order_preview_rejected'
+    )
+    ORDER BY id DESC
+    LIMIT 1
+  `).get() as any
+  if(!row)return null
+  return {
+    id:row.id,
+    type:row.type,
+    agentId:row.agent_id,
+    payload:JSON.parse(row.payload),
+    createdAt:row.created_at
+  }
+}
+
 export const livePlacedOrders=(limit=2000)=>{
   const bounded=Math.max(1,Math.min(5000,Math.floor(limit)))
   const rows=db.prepare(`
