@@ -453,6 +453,7 @@ export const tryLimitedLiveExecution = async (opts: {
   avgEntryPrice?: number
   sourceLotOrderId?: string
   requiredNetProfitPercent?: number
+  executionSource?: string
 }) => {
   const executionGate=assessEmergencyExecutionGate({
     emergencyStop:emergencyStopActive(),
@@ -835,6 +836,7 @@ export const tryLimitedLiveExecution = async (opts: {
       actualSlippagePercent,
       sourceLotOrderId:opts.sourceLotOrderId||null,
       exitReason:opts.exitReason||null,
+      executionSource:opts.executionSource||'UNKNOWN',
       realizedNetProfitUsd,
       realizedNetProfitPercent,
       realizedNetProceedsUsd:side==='SELL'?realizedNetProceedsUsd:null,
