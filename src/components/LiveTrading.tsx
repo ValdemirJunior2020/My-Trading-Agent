@@ -82,7 +82,8 @@ export function LiveTrading({ language }: Props) {
   const side: CandidateSide = candidate === 'BUY_CANDIDATE' ? 'BUY' : candidate === 'SELL_CANDIDATE' ? 'SELL' : null
 
   const readinessLoaded = readiness?.readyForLive !== undefined
-  const syncingReadiness = !readinessLoaded
+  const serverOffline = Boolean(readiness?.transientError) && !readinessLoaded
+  const syncingReadiness = !readinessLoaded && !serverOffline
   const hardBlocked = readinessLoaded && readiness?.readyForLive === false
   const autoSafePause = Boolean(readiness?.autoSafePause)
   const rollingGuard = readiness?.rollingRiskGuard || null
@@ -90,7 +91,9 @@ export function LiveTrading({ language }: Props) {
   const botLossPercent = Number(dailyGuard?.botLossPercent ?? dailyGuard?.lossPercent ?? 0)
   const marketDrawdownPercent = Number(dailyGuard?.marketDrawdownPercent ?? 0)
 
-  const plainSignal = syncingReadiness
+  const plainSignal = serverOffline
+    ? 'SERVER OFFLINE'
+    : syncingReadiness
     ? 'SYNCING'
     : hardBlocked
       ? 'BLOCKED'
@@ -161,7 +164,9 @@ export function LiveTrading({ language }: Props) {
             <p>{pt ? 'Você acompanha; o sistema monitora entradas, saídas e segurança.' : 'You monitor; the system handles entries, exits, and safety.'}</p>
           </div>
           <span className={readiness?.readyForLive && !autoSafePause ? 'live-ready-badge ok' : 'live-ready-badge'}>
-            {syncingReadiness
+            {serverOffline
+              ? (pt ? 'SERVIDOR OFFLINE' : 'SERVER OFFLINE')
+              : syncingReadiness
               ? (pt ? 'SINCRONIZANDO' : 'SYNCING')
               : hardBlocked
                 ? (pt ? 'BLOQUEADO' : 'LOCKED')
@@ -243,7 +248,9 @@ export function LiveTrading({ language }: Props) {
           <small>{pt ? 'Status agora' : 'Status now'}</small>
           <strong>{plainSignal}</strong>
           <p>
-            {syncingReadiness
+            {serverOffline
+              ? (pt ? 'O servidor local está offline. Execute START.bat.' : 'The local server is offline. Run START.bat.')
+              : syncingReadiness
               ? (pt ? 'Sincronizando os dados da Coinbase e os checks de segurança.' : 'Syncing Coinbase data and safety checks.')
               : hardBlocked
                 ? readiness?.emergencyStop
