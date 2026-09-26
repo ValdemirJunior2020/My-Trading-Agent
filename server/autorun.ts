@@ -363,6 +363,8 @@ const tick = async () => {
   void runFullAgentPipeline({
     productId: selection.productId,
     deepResearch: settings.deepResearch,
+    executeLive:false,
+    signalSource:'MOMENTUM_SCANNER',
     signalIntent:hasBuySignal?'BUY':'SELL',
     signalReason:hasBuySignal?'Scanner BUY candidate':'Scanner SELL candidate on held asset'
   }).catch((error) => {
