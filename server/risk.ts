@@ -718,6 +718,25 @@ export const tryLimitedLiveExecution = async (opts: {
           : Math.max(0,((slippageReferencePrice-actualFillPrice)/slippageReferencePrice)*100)
         : 0
 
+    const executedQty=Number(fill.executedQty||baseSize||0)
+    const sellCommission=side==='SELL'?Number(preview.commission_total||0):0
+    const sellCostBasisUsd=
+      side==='SELL' && Number(opts.avgEntryPrice||0)>0 && executedQty>0
+        ? Number(opts.avgEntryPrice||0)*executedQty
+        : 0
+    const realizedNetProceedsUsd=
+      side==='SELL' && actualFillPrice>0 && executedQty>0
+        ? (actualFillPrice*executedQty)-sellCommission
+        : 0
+    const realizedNetProfitUsd=
+      sellCostBasisUsd>0
+        ? realizedNetProceedsUsd-sellCostBasisUsd
+        : null
+    const realizedNetProfitPercent=
+      realizedNetProfitUsd!=null && sellCostBasisUsd>0
+        ? (realizedNetProfitUsd/sellCostBasisUsd)*100
+        : null
+
     setSetting('live_last_order_at_' + productId, placedAt)
     setSetting('live_last_order_id_' + productId, orderId)
 
@@ -733,7 +752,11 @@ export const tryLimitedLiveExecution = async (opts: {
       executedQty:fill.executedQty,
       actualSlippagePercent,
       sourceLotOrderId:opts.sourceLotOrderId||null,
-      exitReason:opts.exitReason||null
+      exitReason:opts.exitReason||null,
+      realizedNetProfitUsd,
+      realizedNetProfitPercent,
+      realizedNetProceedsUsd:side==='SELL'?realizedNetProceedsUsd:null,
+      sellCostBasisUsd:side==='SELL'?sellCostBasisUsd:null
     }, 'execution')
 
     return {
