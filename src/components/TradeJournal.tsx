@@ -1,4 +1,4 @@
-import { useEffect,useMemo,useState } from 'react'
+import { useEffect,useMemo,useRef,useState } from 'react'
 import { api } from '../lib/api'
 
 interface Props {language:'en'|'pt'}
@@ -76,9 +76,12 @@ export function TradeJournal({language}:Props){
   const [loadError,setLoadError]=useState('')
   const [restoring,setRestoring]=useState(false)
   const [filter,setFilter]=useState<JournalFilter>('ALL')
+  const loadInFlight=useRef(false)
   const pt=language==='pt'
 
   const load=async(manual=false)=>{
+    if(loadInFlight.current)return
+    loadInFlight.current=true
     if(manual){
       setRefreshing(true)
       setRefreshNotice('')
@@ -98,6 +101,7 @@ export function TradeJournal({language}:Props){
     }catch(e){
       setLoadError(e instanceof Error?e.message:String(e))
     }finally{
+      loadInFlight.current=false
       setLoading(false)
       setRefreshing(false)
     }
@@ -133,8 +137,23 @@ export function TradeJournal({language}:Props){
 
   useEffect(()=>{
     void load()
-    const id=setInterval(()=>void load(),5000)
-    return()=>clearInterval(id)
+
+    // Live push: every server event immediately refreshes the journal.
+    const stream=new EventSource(api.eventUrl)
+    const onAgentEvent=()=>void load()
+    const onReady=()=>void load()
+    stream.addEventListener('agent',onAgentEvent)
+    stream.addEventListener('ready',onReady)
+
+    // Backup poll in case the browser temporarily loses the event stream.
+    const id=setInterval(()=>void load(),3000)
+
+    return()=>{
+      clearInterval(id)
+      stream.removeEventListener('agent',onAgentEvent)
+      stream.removeEventListener('ready',onReady)
+      stream.close()
+    }
   },[])
 
   const rows=useMemo(()=>events.filter(event=>{
