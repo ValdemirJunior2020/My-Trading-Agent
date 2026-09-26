@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS equity_snapshots (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_equity_snapshots_created_at ON equity_snapshots(created_at);
+CREATE INDEX IF NOT EXISTS idx_agent_events_type_id ON agent_events(type,id);
 `)
 
 export const setSetting = (key: string, value: string) => {
