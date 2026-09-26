@@ -183,6 +183,29 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
   const positionAlreadyOpen=position.qty>0
   const entryReady=!positionAlreadyOpen && rawEntrySignal
 
+  const lotProfitability=position.lots
+    .filter((lot:any)=>Number(lot.avgEntryPrice)>0)
+    .map((lot:any)=>{
+      const entryPrice=Number(lot.avgEntryPrice)
+      const grossPnlPercent=((livePrice-entryPrice)/entryPrice)*100
+      const sellTriggerPrice=entryPrice*(1+config.takeProfitPercent/100)
+      return {
+        orderId:String(lot.orderId||''),
+        openedAt:String(lot.openedAt||''),
+        qty:Number(lot.qty||0),
+        costUsd:Number(lot.costUsd||0),
+        entryPrice,
+        livePrice,
+        grossPnlPercent,
+        sellTriggerPercent:config.takeProfitPercent,
+        sellTriggerPrice,
+        triggerReached:livePrice>=sellTriggerPrice
+      }
+    })
+    .sort((a:any,b:any)=>b.grossPnlPercent-a.grossPnlPercent)
+
+  const bestOpenLot=lotProfitability[0]||null
+
   const action=
     positionAlreadyOpen && exitReason ? 'SELL' :
     entryReady ? 'BUY' :
@@ -232,6 +255,13 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
       entryReady
     },
     position,
+    lotProfitability:{
+      openLotCount:lotProfitability.length,
+      bestOpenLot,
+      lots:lotProfitability,
+      requiredNetProfitPercent:config.takeProfitPercent,
+      finalNetAfterFeesCheck:'COINBASE_PREVIEW_AT_SELL_TRIGGER'
+    },
     exits:{
       takeProfitPrice,
       takeProfitPercent:config.takeProfitPercent,
