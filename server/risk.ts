@@ -1,4 +1,5 @@
 import { config } from './config.js'
+import { assessExposureLimits } from './riskCore.js'
 import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
@@ -200,6 +201,53 @@ export interface LiveOrderPreflightInput {
   availableAssetUsd?: number
 }
 
+export const getOpenBotExposureSummary=()=>{
+  const inventory=new Map<string,{qty:number,costUsd:number}>()
+
+  for(const event of livePlacedOrders(5000)){
+    const p:any=event.payload||{}
+    const productId=String(p.productId||'').toUpperCase()
+    if(!productId)continue
+
+    const side=String(p.side||'').toUpperCase()
+    const preview:any=p.preview||{}
+    const fill:any=p.fill||{}
+    const price=Number(p.actualFillPrice||fill.filledPrice||preview.est_average_filled_price||0)
+    const notional=Number(p.notionalUsd||fill.filledValue||preview.order_total||0)
+    const fee=Number(fill.totalFees||preview.commission_total||0)
+    const qty=Number(p.executedQty||fill.executedQty||preview.base_size||(price>0&&notional>0?notional/price:0))
+    if(!(price>0)||!(qty>0))continue
+
+    const row=inventory.get(productId)||{qty:0,costUsd:0}
+    if(side==='BUY'){
+      row.qty+=qty
+      row.costUsd+=notional+fee
+      inventory.set(productId,row)
+      continue
+    }
+
+    if(side==='SELL'&&row.qty>0){
+      const sold=Math.min(qty,row.qty)
+      const avgCost=row.qty>0?row.costUsd/row.qty:0
+      const allocatedCost=avgCost*sold
+      row.qty=Math.max(0,row.qty-sold)
+      row.costUsd=Math.max(0,row.costUsd-allocatedCost)
+      inventory.set(productId,row)
+    }
+  }
+
+  const positions=[...inventory.entries()]
+    .filter(([,row])=>row.qty>1e-12&&row.costUsd>0)
+    .map(([productId,row])=>({productId,qty:row.qty,costUsd:row.costUsd}))
+
+  return {
+    positions,
+    openBotPositions:positions.length,
+    totalBotExposureUsd:positions.reduce((sum,row)=>sum+row.costUsd,0)
+  }
+}
+
+
 export const getDailyEquityGuard = (currentPortfolioUsd: number) => {
   const limits = getRuntimeRiskLimits()
   const today = new Date().toLocaleDateString('en-CA')
@@ -304,6 +352,19 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   const maxPositionUsd = Math.max(normalMaxPositionUsd, smallAccountOverrideUsd)
   const maxExposureUsd = totalPortfolioUsd * (limits.maxTotalExposurePercent / 100)
   const daily = getDailyEquityGuard(totalPortfolioUsd)
+  const botExposure=getOpenBotExposureSummary()
+  const productAlreadyOpen=botExposure.positions.some(row=>row.productId===productId.toUpperCase())
+  const exposure=assessExposureLimits({
+    side,
+    notionalUsd,
+    currentAssetUsd,
+    totalBotExposureUsd:botExposure.totalBotExposureUsd,
+    openBotPositions:botExposure.openBotPositions,
+    productAlreadyOpen,
+    maxPositionUsd,
+    maxTotalExposureUsd:maxExposureUsd,
+    maxOpenBotPositions:config.maxOpenBotPositions
+  })
 
   if (emergencyStopActive()) reasons.push('Emergency stop is active.')
   if (String(config.tradingMode).toLowerCase() !== 'live') reasons.push('TRADING_MODE is not live.')
@@ -312,11 +373,9 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   if (!['BUY', 'SELL'].includes(side)) reasons.push('Invalid side.')
   if (!(notionalUsd > 0)) reasons.push('Order notional must be positive.')
   if (!(totalPortfolioUsd > 0)) reasons.push('Live portfolio value is unavailable.')
-  if (side === 'BUY' && notionalUsd > maxPositionUsd + 1e-8) reasons.push('Order exceeds the hard ' + limits.maxPositionPercent + '% live position cap.')
   if (side === 'BUY' && notionalUsd > availableUsd + 1e-8) reasons.push('Insufficient available USD for this buy.')
   if (side === 'SELL' && notionalUsd > availableAssetUsd + 1e-8) reasons.push('Insufficient available asset balance for this sell.')
-  const projectedExposure = side === 'BUY' ? currentAssetUsd + notionalUsd : Math.max(0, currentAssetUsd - notionalUsd)
-  if (side === 'BUY' && projectedExposure > maxExposureUsd + 1e-8) reasons.push('Projected asset exposure exceeds ' + limits.maxTotalExposurePercent + '% of the live portfolio.')
+  reasons.push(...exposure.reasons)
   if (daily.blocked) reasons.push('Bot realized-loss guard is active at ' + daily.botLossPercent.toFixed(2) + '% loss.')
 
   return {
@@ -329,7 +388,12 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
     availableUsd,
     currentAssetUsd,
     availableAssetUsd,
-    projectedExposureUsd: projectedExposure,
+    projectedExposureUsd: exposure.projectedAssetExposureUsd,
+    projectedTotalBotExposureUsd: exposure.projectedTotalBotExposureUsd,
+    totalBotExposureUsd:botExposure.totalBotExposureUsd,
+    openBotPositions:botExposure.openBotPositions,
+    projectedOpenBotPositions:exposure.projectedOpenBotPositions,
+    maxOpenBotPositions:config.maxOpenBotPositions,
     maxPositionUsd,
     maxExposureUsd,
     daily,
@@ -460,13 +524,32 @@ export const tryLimitedLiveExecution = async (opts: {
   const maxFromPercent = totalPortfolioUsd * (limits.maxPositionPercent / 100)
   const hardCap = config.maxLiveOrderUsd
   const maxExposureUsd = totalPortfolioUsd * (limits.maxTotalExposurePercent / 100)
+  const botExposure=getOpenBotExposureSummary()
+  const productAlreadyOpen=botExposure.positions.some(row=>row.productId===productId)
+
+  if(side==='BUY'&&!productAlreadyOpen&&botExposure.openBotPositions>=config.maxOpenBotPositions){
+    return {
+      executed:false,
+      reason:'Maximum number of open bot positions has been reached',
+      openBotPositions:botExposure.openBotPositions,
+      maxOpenBotPositions:config.maxOpenBotPositions,
+      totalBotExposureUsd:botExposure.totalBotExposureUsd
+    }
+  }
 
   let notionalUsd = 0
   let baseSize: number | undefined
   let quoteSizeUsd: number | undefined
 
   if (side === 'BUY') {
-    const remainingExposure = Math.max(0, maxExposureUsd - currentAssetUsd)
+    const maxPositionUsd=Math.max(
+      maxFromPercent,
+      config.smallAccountMode
+        ? Math.min(config.smallAccountMaxBuyUsd,totalPortfolioUsd*0.10)
+        : 0
+    )
+    const remainingPositionUsd=Math.max(0,maxPositionUsd-currentAssetUsd)
+    const remainingTotalExposureUsd=Math.max(0,maxExposureUsd-botExposure.totalBotExposureUsd)
     const quoteMin = Math.max(config.minLiveOrderUsd, Number(productInfo?.quote_min_size || 0))
     const quoteMax = Number(productInfo?.quote_max_size || Infinity)
 
@@ -482,7 +565,8 @@ export const tryLimitedLiveExecution = async (opts: {
     const safeMaxBuyUsd = Math.min(
       smallAccountRiskCapUsd,
       hardCap,
-      remainingExposure,
+      remainingPositionUsd,
+      remainingTotalExposureUsd,
       availableUsd,
       quoteMax
     )
@@ -496,7 +580,7 @@ export const tryLimitedLiveExecution = async (opts: {
         availableUsd,
         maxFromPercent,
         hardCap,
-        remainingExposure
+        remainingTotalExposureUsd
       }
     }
 
@@ -511,7 +595,7 @@ export const tryLimitedLiveExecution = async (opts: {
         coinbaseMinimumUsd:quoteMin,
         maxFromPercent,
         hardCap,
-        remainingExposure,
+        remainingTotalExposureUsd,
         note:'Coin price is not the required order size; Coinbase market BUYs use fractional quote-size USD.'
       }
     }
