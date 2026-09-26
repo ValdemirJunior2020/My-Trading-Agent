@@ -280,3 +280,27 @@ body{font-size:14px;line-height:1.45}
 .journal-net-pnl small{font-size:9px}
 .journal-net-pnl.positive b,.journal-net-pnl.positive small{color:#72efc5}
 .journal-net-pnl.negative b,.journal-net-pnl.negative small{color:#ff9da4}
+
+
+/* Profits — plain-English realized results */
+.profits-page{padding:18px;display:grid;place-items:start center}
+.profits-panel{width:min(1100px,100%);padding:18px}
+.profits-heading{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;border-bottom:1px solid #183043;padding-bottom:13px}
+.profits-heading h1{margin:4px 0 5px;font-size:24px}
+.profits-heading p{margin:0;color:#8aa1b2;font-size:11px}
+.profits-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:13px}
+.profits-summary>div{border:1px solid #173448;background:#081620;border-radius:9px;padding:13px}
+.profits-summary>div.good{border-color:#1d6c58;background:#0b2d25}
+.profits-summary>div.bad{border-color:#7b3038;background:#32161b}
+.profits-summary small{display:block;color:#8099aa;font-size:9px}
+.profits-summary strong{display:block;margin-top:4px;font-size:22px}
+.profits-summary span{display:block;margin-top:4px;color:#8099aa;font-size:9px}
+.profit-good{color:#72efc5}
+.profit-bad{color:#ff9da4}
+.profits-table-wrap{margin-top:13px;border:1px solid #173448;border-radius:9px;overflow:hidden;background:#07131c}
+.profits-table{display:grid;grid-template-columns:1.35fr .7fr .9fr .9fr 1fr;gap:10px;align-items:center;padding:10px 12px}
+.profits-head{background:#0b1c28;color:#7894a7;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.04em}
+.profits-row{border-bottom:1px solid #13293a;font-size:11px}
+.profits-row:last-child{border-bottom:0}
+.profits-row small{display:block;font-size:9px;margin-top:2px}
+@media(max-width:760px){.profits-summary{grid-template-columns:1fr}.profits-table-wrap{overflow-x:auto}.profits-table{min-width:720px}.profits-heading{display:block}.profits-heading .portfolio-refresh{margin-top:10px}}
