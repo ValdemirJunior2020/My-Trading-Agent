@@ -85,8 +85,6 @@ export function LiveTrading({ language }: Props) {
   const serverOffline = Boolean(readiness?.transientError) && !readinessLoaded
   const syncingReadiness = !readinessLoaded && !serverOffline
   const hardBlocked = readinessLoaded && readiness?.readyForLive === false
-  const portfolioUnavailable = readinessLoaded && readiness?.portfolioAvailable === false
-  const portfolioStale = Boolean(readiness?.portfolioStale)
   const autoSafePause = Boolean(readiness?.autoSafePause)
   const rollingGuard = readiness?.rollingRiskGuard || null
   const dailyGuard = readiness?.dailyLossGuard || null
@@ -240,106 +238,7 @@ export function LiveTrading({ language }: Props) {
         ) : null}
 
         <div className="live-stats">
-          <div><small>{pt ? 'Portfólio atual' : 'Current portfolio'}</small><strong>{readiness?.currentPortfolioUsd != null ? '
-          <div><small>{pt ? 'Limite por posição' : 'Max position'}</small><strong>{readiness?.riskLimits?.maxPositionPercent != null ? readiness.riskLimits.maxPositionPercent + '%' : '—'}</strong></div>
-          <div><small>{pt ? 'Decisão dos agentes' : 'Agent decision'}</small><strong>{candidate}</strong></div>
-          <div><small>{pt ? 'Sinal simples' : 'Simple signal'}</small><strong>{plainSignal}</strong></div>
-        </div>
-
-        <div className={'simple-trade-signal ' + signalClass}>
-          <small>{pt ? 'Status agora' : 'Status now'}</small>
-          <strong>{plainSignal}</strong>
-          <p>
-            {serverOffline
-              ? (pt ? 'O servidor local está offline. Execute START.bat.' : 'The local server is offline. Run START.bat.')
-              : syncingReadiness
-              ? (pt ? 'Sincronizando os dados da Coinbase e os checks de segurança.' : 'Syncing Coinbase data and safety checks.')
-              : hardBlocked
-                ? readiness?.emergencyStop
-                  ? (pt ? 'O Emergency Stop manual está bloqueando ordens reais.' : 'The manual Emergency Stop is blocking real orders.')
-                  : portfolioUnavailable
-                    ? (pt ? 'O saldo Coinbase está sendo atualizado; o sistema não inventará um saldo de $0.' : 'Coinbase balance is refreshing; the system will not invent a $0 portfolio.')
-                    : (pt ? 'Um check de segurança ainda não está pronto para ordens reais.' : 'A safety check is not ready for real orders yet.')
-                : autoSafePause
-                ? (pt ? 'Compras pausadas; saídas de proteção continuam ativas.' : 'Buys paused; protective exits remain active.')
-                : pipelineRunning
-                  ? (pt ? 'Os agentes estão analisando ' + pipelineProduct + '.' : 'The agents are analyzing ' + pipelineProduct + '.')
-                  : (pt ? 'O sistema continua monitorando automaticamente.' : 'The system continues monitoring automatically.')}
-          </p>
-        </div>
-
-        <div className="scanner-panel">
-          <div className="scanner-head">
-            <div>
-              <span className="eyebrow">MULTI-CRYPTO SCANNER</span>
-              <h2>{pt ? 'Oportunidades de curto prazo com liquidez' : 'Short-term opportunities with liquidity checks'}</h2>
-            </div>
-            <strong>{scanner?.scanned != null ? scanner.scanned + ' scanned' : '—'}</strong>
-          </div>
-          <div className="scanner-sides">
-            <div className={scannerBuy ? 'scanner-best' : 'scanner-best wait'}>
-              <small>{pt ? 'Melhor compra' : 'Best buy'}</small>
-              <strong>{scannerBuy ? scannerBuy.productId + ' — BUY' : (pt ? 'NENHUMA COMPRA AGORA' : 'NO BUY RIGHT NOW')}</strong>
-              {scannerBuy ? <span>{'Opportunity ' + Number(scannerBuy.buyScore || 0).toFixed(0) + '/100'}</span> : null}
-            </div>
-            <div className={scannerSell ? 'scanner-best sell' : 'scanner-best wait'}>
-              <small>{pt ? 'Melhor venda' : 'Best sell'}</small>
-              <strong>{scannerSell ? scannerSell.productId + ' — SELL' : (pt ? 'NENHUMA VENDA AGORA' : 'NO SELL RIGHT NOW')}</strong>
-              {scannerSell ? <span>{'Opportunity ' + Number(scannerSell.sellScore || 0).toFixed(0) + '/100'}</span> : null}
-            </div>
-          </div>
-          <div className="scanner-table">
-            {(scanner?.results || []).slice(0, 6).map((row: any) => (
-              <div key={row.productId}>
-                <strong>{row.productId}</strong>
-                <span>{'Buy ' + Number(row.buyScore || 0).toFixed(0)}</span>
-                <span>{'Sell ' + Number(row.sellScore || 0).toFixed(0)}</span>
-                <em>{row.buyCandidate ? 'BUY' : row.sellCandidate ? 'SELL' : 'WAIT'}</em>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="guided-trade-card">
-          {pipelineRunning ? (
-            <div className="guided-wait"><strong>{pt ? 'Agentes analisando' : 'Agents analyzing'}</strong><p>{pipelineProduct}</p></div>
-          ) : side ? (
-            <>
-              <div>
-                <small>{pt ? 'Pré-checagem manual opcional' : 'Optional manual preflight'}</small>
-                <strong>{side + ' ' + pipelineProduct + ' • $' + guidedAmount.toFixed(2)}</strong>
-              </div>
-              <button className="preflight-btn" onClick={() => void runGuidedPreflight()} disabled={busy || loading || syncingReadiness || hardBlocked || autoSafePause}>
-                {busy ? (pt ? 'VALIDANDO...' : 'CHECKING...') : (pt ? 'VALIDAR ORDEM' : 'CHECK TRADE')}
-              </button>
-            </>
-          ) : (
-            <div className="guided-wait"><strong>{pt ? 'Nenhuma ordem manual necessária' : 'No manual order needed'}</strong><p>{pt ? 'O bot continua monitorando sozinho.' : 'The bot keeps monitoring automatically.'}</p></div>
-          )}
-        </div>
-
-        {preflight ? (
-          <div className={preflight?.preflight?.approved ? 'preflight-result ok' : 'preflight-result'}>
-            <strong>{preflight?.preflight?.approved ? (pt ? 'PREFLIGHT APROVADO' : 'PREFLIGHT APPROVED') : (pt ? 'PREFLIGHT BLOQUEADO' : 'PREFLIGHT BLOCKED')}</strong>
-            <p>{preflight?.error || preflight?.preflight?.reasons?.join('; ') || (pt ? 'Todos os checks passaram.' : 'All checks passed.')}</p>
-          </div>
-        ) : null}
-
-        <div className="live-warning">
-          <strong>{pt ? 'Automação' : 'Automation'}</strong>
-          <span>
-            {autoSafePause
-              ? (pt ? 'Proteção automática ativa: compras pausadas, saídas continuam.' : 'Automatic protection active: buys paused, exits continue.')
-              : readiness?.readyForAutoLive
-                ? (pt ? 'AUTO LIVE ativo. Você pode apenas acompanhar.' : 'AUTO LIVE active. You can simply monitor it.')
-                : (pt ? 'AUTO LIVE não está pronto.' : 'AUTO LIVE is not ready.')}
-          </span>
-        </div>
-      </section>
-    </main>
-  )
-}
- + Number(readiness.currentPortfolioUsd).toFixed(2) : 'SYNCING'}</strong>{portfolioStale?<small>{pt?'último valor confirmado':'last confirmed value'}</small>:null}</div>
+          <div><small>{pt ? 'Portfólio atual' : 'Current portfolio'}</small><strong>{readiness?.currentPortfolioUsd != null ? '$' + Number(readiness.currentPortfolioUsd).toFixed(2) : '—'}</strong></div>
           <div><small>{pt ? 'Limite por posição' : 'Max position'}</small><strong>{readiness?.riskLimits?.maxPositionPercent != null ? readiness.riskLimits.maxPositionPercent + '%' : '—'}</strong></div>
           <div><small>{pt ? 'Decisão dos agentes' : 'Agent decision'}</small><strong>{candidate}</strong></div>
           <div><small>{pt ? 'Sinal simples' : 'Simple signal'}</small><strong>{plainSignal}</strong></div>
