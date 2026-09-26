@@ -100,6 +100,11 @@ export function TradeJournal({language}:Props){
   const [loadError,setLoadError]=useState('')
   const [restoring,setRestoring]=useState(false)
   const [filter,setFilter]=useState<JournalFilter>('ALL')
+  const [search,setSearch]=useState('')
+  const [assetFilter,setAssetFilter]=useState('ALL')
+  const [sortOrder,setSortOrder]=useState<'newest'|'oldest'>('newest')
+  const [page,setPage]=useState(1)
+  const pageSize=25
   const loadInFlight=useRef(false)
   const pt=language==='pt'
 
@@ -212,10 +217,44 @@ export function TradeJournal({language}:Props){
     }
   },[])
 
-  const rows=useMemo(()=>events.filter(event=>{
-    if(filter==='ALL')return true
-    return statusGroup(journalStatus(event))===filter
-  }),[events,filter])
+  const assets=useMemo(()=>[...new Set(events
+    .map(event=>String(event?.payload?.productId||event?.payload?.buyProductId||'').toUpperCase())
+    .filter(Boolean)
+  )].sort(),[events])
+
+  const rows=useMemo(()=>{
+    const q=search.trim().toLowerCase()
+    const filtered=events.filter(event=>{
+      const status=journalStatus(event)
+      if(filter!=='ALL'&&statusGroup(status)!==filter)return false
+      const p=event?.payload||{}
+      const coin=String(p.productId||p.buyProductId||'').toUpperCase()
+      if(assetFilter!=='ALL'&&coin!==assetFilter)return false
+      if(q){
+        const haystack=[
+          coin,
+          status,
+          p.side,
+          p.orderId,
+          p.reason,
+          p.error,
+          event.type
+        ].map(value=>String(value||'').toLowerCase()).join(' ')
+        if(!haystack.includes(q))return false
+      }
+      return true
+    })
+    return filtered.sort((a,b)=>{
+      const delta=new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime()
+      return sortOrder==='oldest'?delta:-delta
+    })
+  },[events,filter,assetFilter,search,sortOrder])
+
+  useEffect(()=>{setPage(1)},[filter,assetFilter,search,sortOrder])
+
+  const totalPages=Math.max(1,Math.ceil(rows.length/pageSize))
+  const currentPage=Math.min(page,totalPages)
+  const pagedRows=rows.slice((currentPage-1)*pageSize,currentPage*pageSize)
 
   const placed=events.filter(e=>journalStatus(e)==='ORDER PLACED').length
   const blocked=events.filter(e=>statusGroup(journalStatus(e))==='BLOCKED').length
@@ -228,9 +267,12 @@ export function TradeJournal({language}:Props){
     <section className="panel journal-panel">
       <div className="journal-heading">
         <div>
-          <span className="eyebrow">REAL TRADE HISTORY</span>
-          <h1>{pt?'Histórico de Trading':'Trading History'}</h1>
-          <p>{pt?'Cada linha mostra claramente o que os agentes decidiram e se uma ordem real chegou ao Coinbase.':'Each row clearly shows what the agents decided and whether a real order reached Coinbase.'}</p>
+          <div className="journal-title-line">
+            <span className="eyebrow">REAL-TIME EXECUTION ANALYTICS</span>
+            <span className="journal-live-badge"><i/> LIVE</span>
+          </div>
+          <h1>{pt?'Fila de Execução':'Execution Queue'} <span className="journal-title-muted">• {pt?'Histórico em tempo real':'Real-time Analytics'}</span></h1>
+          <p>{pt?'Ordens reais, decisões, bloqueios e contexto da estratégia em uma única visão.':'Real orders, decisions, blocks, and strategy context in one live view.'}</p>
         </div>
         <div className="journal-actions">
           <div className="journal-updated">
@@ -262,6 +304,26 @@ export function TradeJournal({language}:Props){
         <div><small>{pt?'Ciclos analisados':'Agent cycles'}</small><strong>{cycles}</strong></div>
       </div>
 
+      <div className="journal-toolbar">
+        <label className="journal-search">
+          <span>⌕</span>
+          <input
+            value={search}
+            onChange={e=>setSearch(e.target.value)}
+            placeholder={pt?'Buscar ativo, status, ordem...':'Search asset, status, order...'}
+          />
+        </label>
+        <select value={sortOrder} onChange={e=>setSortOrder(e.target.value as 'newest'|'oldest')}>
+          <option value="newest">{pt?'Mais recentes':'Newest first'}</option>
+          <option value="oldest">{pt?'Mais antigos':'Oldest first'}</option>
+        </select>
+        <select value={assetFilter} onChange={e=>setAssetFilter(e.target.value)}>
+          <option value="ALL">{pt?'Todos os ativos':'All assets'}</option>
+          {assets.map(asset=><option key={asset} value={asset}>{asset}</option>)}
+        </select>
+        <div className="journal-result-count">{rows.length} {pt?'resultados':'results'}</div>
+      </div>
+
       <div className="journal-filters">
         {filters.map(x=><button key={x} className={filter===x?'active':''} onClick={()=>setFilter(x)}>{x}</button>)}
       </div>
@@ -270,9 +332,9 @@ export function TradeJournal({language}:Props){
 
       <div className="journal-table-wrap">
         <div className="journal-table journal-header">
-          <span>{pt?'Hora':'Time'}</span><span>{pt?'Resultado':'Result'}</span><span>{pt?'Moeda':'Coin'}</span><span>{pt?'Lado':'Side'}</span><span>{pt?'Valor':'Amount'}</span><span>Coinbase ID</span><span>{pt?'Detalhe':'Detail'}</span>
+          <span>{pt?'Hora':'Time'}</span><span>{pt?'Status':'Status'}</span><span>{pt?'Ativo':'Asset'}</span><span>{pt?'Lado':'Side'}</span><span>{pt?'Valor':'Amount'}</span><span>Transaction ID</span><span>{pt?'Contexto da estratégia':'Strategy Context'}</span>
         </div>
-        {loading?<div className="journal-empty">{pt?'Carregando...':'Loading...'}</div>:rows.length===0?<div className="journal-empty">{pt?'Nenhum evento nesta categoria ainda.':'No events in this category yet.'}</div>:rows.map(event=>{
+        {loading?<div className="journal-empty">{pt?'Carregando...':'Loading...'}</div>:rows.length===0?<div className="journal-empty">{pt?'Nenhum evento nesta categoria ainda.':'No events in this category yet.'}</div>:pagedRows.map(event=>{
           const p=event.payload||{}
           const status=journalStatus(event)
           const confidence=normalizeConfidence(p.confidence)
@@ -313,15 +375,29 @@ export function TradeJournal({language}:Props){
           const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
           const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
           return <div className="journal-table journal-row" key={event.id}>
-            <span>{new Date(event.createdAt).toLocaleString()}</span>
-            <span><b className={'journal-status '+statusClass(status)}>{status}</b></span>
-            <span>{displayCoin}</span>
-            <span className={displaySide==='SELL'?'sell-text':displaySide==='BUY'?'buy-text':''}>{displaySide}</span>
-            <span>{displayAmount}</span>
-            <span className="journal-order-id" title={orderId}>{orderId}</span>
-            <span className="journal-detail" title={detail}>{detail}</span>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(displaySide==='SELL'?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className="journal-detail journal-context" title={detail}>{detail}</span>
           </div>
         })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
       </div>
     </section>
   </main>
