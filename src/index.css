@@ -256,3 +256,21 @@ body{font-size:14px;line-height:1.45}
   .journal-search{grid-column:auto}
   .journal-pagination{align-items:flex-start;flex-direction:column}
 }
+
+
+/* Trade Journal readability pass */
+.journal-row{font-size:11px}
+.journal-header{font-size:10px}
+.journal-time b{font-size:11px}
+.journal-time small{font-size:10px}
+.journal-asset b{font-size:12px}
+.journal-asset small{font-size:10px}
+.journal-amount{font-size:11px}
+.journal-order-id{font-size:10px}
+.journal-detail{font-size:11px;line-height:1.35}
+.journal-status{font-size:9px;padding:5px 8px}
+.journal-side-pill{font-size:9px}
+.journal-toolbar input,.journal-toolbar select{font-size:11px}
+.journal-result-count{font-size:10px}
+.journal-filters button{font-size:10px}
+.journal-context:hover::after{font-size:11px;line-height:1.5}
