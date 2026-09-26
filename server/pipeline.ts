@@ -3,7 +3,7 @@ import { config, coinbaseConfigured } from './config.js'
 import { getCandles, getProduct, listAccounts } from './coinbase.js'
 import { publish } from './events.js'
 import { runAgent } from './ollama.js'
-import { quantStatus, runNautilusSmoke, runRdAgent, runVectorbtValidation } from './quant.js'
+import { quantStatus, runMeanReversionValidation, runNautilusSmoke, runRdAgent } from './quant.js'
 import { saveAnalysis } from './db.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { tryLimitedLiveExecution } from './risk.js'
@@ -103,7 +103,7 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   const [product, candles, backtestCandles, accounts, engineStatus, challenge] = await Promise.all([
     getProduct(productId),
     getCandles(productId, 'ONE_HOUR', 120),
-    getCandles(productId, 'ONE_HOUR', 3000),
+    getCandles(productId, config.strategyGranularity, 3000),
     listAccounts(),
     quantStatus(),
     getChallengeSnapshot()
@@ -116,6 +116,8 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
 
   const closes = candles.map((c) => c.close)
   const backtestCloses = backtestCandles.map((c) => c.close)
+  const backtestHighs = backtestCandles.map((c) => c.high)
+  const backtestLows = backtestCandles.map((c) => c.low)
   const backtestTimestamps = backtestCandles.map((c) => c.start)
   const latest = candles.at(-1)!
   const previous = candles.at(-2)!
@@ -157,24 +159,31 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
   if (engines.vectorbt?.installed) {
     try {
       const initialCash = Number(challenge.startingBalanceUsd) || 100
-      const parameterSets = [
-        { fast: 5, slow: 20 },
-        { fast: 10, slow: 30 },
-        { fast: 20, slow: 50 },
-        { fast: 30, slow: 100 }
-      ]
-      const validation = await runVectorbtValidation({
-        prices: backtestCloses,
-        timestamps: backtestTimestamps,
+      const validation = await runMeanReversionValidation({
+        closes:backtestCloses,
+        highs:backtestHighs,
+        lows:backtestLows,
+        timestamps:backtestTimestamps,
         initialCash,
-        parameterSets
+        granularity:config.strategyGranularity,
+        feeRate:config.backtestMarketFeeRate,
+        bbPeriod:config.bbPeriod,
+        bbStdDev:config.bbStdDev,
+        rsiPeriod:config.rsiPeriod,
+        rsiOversold:config.rsiOversold,
+        strongRsi:config.smallAccountStrongRsi,
+        normalProximityPercent:config.smallAccountNormalProximityPercent,
+        strongProximityPercent:config.smallAccountStrongProximityPercent,
+        takeProfitPercent:config.takeProfitPercent,
+        stopLossPercent:config.fixedStopLossPercent
       })
       vectorbt = {
-        available: true,
-        candleCount: backtestCandles.length,
-        granularity: 'ONE_HOUR',
+        available:true,
+        candleCount:backtestCandles.length,
+        granularity:config.strategyGranularity,
         initialCash,
-        parameterSets,
+        feeRate:config.backtestMarketFeeRate,
+        liveStrategy:true,
         ...validation
       }
       publish('agent_completed', { asset: productId, engine: 'vectorbt', result: vectorbt }, 'backtest')
