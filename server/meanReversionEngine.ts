@@ -333,25 +333,19 @@ const handleTicker=async(productId:string,price:number)=>{
   },'strategy')
 
   try{
-    let confidence=1
+    // SELL exits are deterministic and safety/risk controlled.
+    // Stop-loss exits protect capital immediately.
+    // Profit exits rely on Coinbase preview to confirm the required
+    // net profit after fees before an order is allowed through.
+    const confidence=1
 
-    // Protective stop-losses never wait for AI approval.
     if(!stopLoss){
-      const approval=await getAgentApproval(
+      publish('mean_reversion_profit_sell_preview_gate',{
         productId,
-        'SELL',
-        'Tracked bot BUY lot reached the configured take-profit threshold.'
-      )
-      if(!approval.approved){
-        publish('mean_reversion_sell_blocked_by_agents',{
-          productId,
-          sourceLotOrderId:targetLot.orderId,
-          decision:approval.decision,
-          confidence:approval.confidence
-        },'decision')
-        return
-      }
-      confidence=approval.confidence
+        sourceLotOrderId:targetLot.orderId,
+        requiredNetProfitPercent:config.takeProfitPercent,
+        note:'AI approval bypassed for take-profit exit; Coinbase preview and server risk checks are authoritative.'
+      },'decision')
     }
 
     const result=await tryLimitedLiveExecution({
