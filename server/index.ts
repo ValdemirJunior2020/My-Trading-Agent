@@ -149,8 +149,10 @@ const server=createServer(async(req,res)=>{
   if(path==='/api/live/readiness'&&req.method==='GET'){
     if(!coinbaseConfigured())return json(res,503,{error:'Coinbase credentials are not configured.'})
     const portfolio=await getChallengeSnapshot()
-    const totalPortfolioUsd=Number(portfolio.currentPortfolioUsd||0)
-    const daily=totalPortfolioUsd>0?getDailyEquityGuard(totalPortfolioUsd):null
+    const rawPortfolioUsd=portfolio.currentPortfolioUsd
+    const totalPortfolioUsd=Number(rawPortfolioUsd)
+    const portfolioAvailable=Number.isFinite(totalPortfolioUsd)&&totalPortfolioUsd>0
+    const daily=portfolioAvailable?getDailyEquityGuard(totalPortfolioUsd):null
     const rollingRisk=getRollingRiskState()
     const hardStopped=emergencyStopActive()
     const entryPaused=Boolean(rollingRisk?.paused)
@@ -163,15 +165,20 @@ const server=createServer(async(req,res)=>{
       emergencyStop:hardStopped,
       autoSafePause:entryPaused,
       rollingRiskGuard:rollingRisk,
-      currentPortfolioUsd:totalPortfolioUsd,
+      currentPortfolioUsd:portfolioAvailable?totalPortfolioUsd:null,
+      portfolioAvailable,
+      portfolioSource:portfolio.portfolioSource||'unavailable',
+      portfolioStale:Boolean(portfolio.portfolioStale),
+      portfolioUpdatedAt:portfolio.portfolioUpdatedAt||null,
+      portfolioError:portfolio.portfolioError||null,
       accountCount:Number(portfolio.accountCount||0),
       dailyLossGuard:daily,
       riskLimits:getRuntimeRiskLimits(),
       liveOrderLimits:{maxLiveOrderUsd:config.maxLiveOrderUsd,minLiveOrderUsd:config.minLiveOrderUsd,cooldownSeconds:config.autoTradeCooldownSeconds,minConfidencePercent:config.autoTradeMinConfidencePercent},
-      readyForLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!hardStopped&&totalPortfolioUsd>0&&!(daily?.blocked)),
-      readyForAutoLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&config.autoTradingEnabled&&!hardStopped&&!entryPaused&&totalPortfolioUsd>0&&!(daily?.blocked)),
-      readyForProtectiveExits:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!hardStopped&&totalPortfolioUsd>0),
-      readyForManualLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!config.autoTradingEnabled&&config.manualApprovalRequired&&!hardStopped&&totalPortfolioUsd>0&&!(daily?.blocked))
+      readyForLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!hardStopped&&portfolioAvailable&&!(daily?.blocked)),
+      readyForAutoLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&config.autoTradingEnabled&&!hardStopped&&!entryPaused&&portfolioAvailable&&!(daily?.blocked)),
+      readyForProtectiveExits:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!hardStopped&&portfolioAvailable),
+      readyForManualLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!config.autoTradingEnabled&&config.manualApprovalRequired&&!hardStopped&&portfolioAvailable&&!(daily?.blocked))
     })
   }
   if(path==='/api/live/preflight'&&req.method==='POST'){
