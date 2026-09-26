@@ -213,23 +213,7 @@ export function TradeJournal({language}:Props){
           const lotDetail=lot
             ? [
                 'LOT P/L '+(Number(lot.grossPnlPercent)>=0?'+':'')+Number(lot.grossPnlPercent||0).toFixed(2)+'% before sell fee',
-                'Entry                 Number.isFinite(Number(ds.closeVsLowerPct))
-                  ? ('Close ' + (Number(ds.closeVsLowerPct)>=0?'+':'') + Number(ds.closeVsLowerPct).toFixed(2) + '% vs lower BB')
-                  : '',
-                Number.isFinite(Number(ds.rsi))
-                  ? ('RSI ' + Number(ds.rsi).toFixed(1) + ' / needs < ' + Number(ds.rsiThreshold||30).toFixed(0))
-                  : '',
-                ds.crossedBelowLower===true?'BB cross YES':'BB cross NO',
-                ds.nearLowerBand===true?'Near lower BB YES':'Near lower BB NO',
-                ds.oversold===true?'RSI oversold YES':'RSI oversold NO',
-                ds.positionAlreadyOpen===true&&ds.rawEntrySignal===true
-                  ? 'VALID BUY SETUP • existing bot lot already open'
-                  : ds.positionAlreadyOpen===true
-                    ? 'Existing bot lot open • monitoring for exit'
-                    : String(ds.reason||'No deterministic entry trigger'),
-                ds.positionAlreadyOpen===true ? lotDetail : ''
-              ].filter(Boolean).join(' • ')
-            : ''
+                'Entry 
           const generatedDetail=[
             decision?('Decision: '+decision):'',
             confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
@@ -255,22 +239,7 @@ export function TradeJournal({language}:Props){
   </main>
 }
 +Number(lot.entryPrice||0).toFixed(6),
-                'Live                 Number.isFinite(Number(ds.closeVsLowerPct))
-                  ? ('Close ' + (Number(ds.closeVsLowerPct)>=0?'+':'') + Number(ds.closeVsLowerPct).toFixed(2) + '% vs lower BB')
-                  : '',
-                Number.isFinite(Number(ds.rsi))
-                  ? ('RSI ' + Number(ds.rsi).toFixed(1) + ' / needs < ' + Number(ds.rsiThreshold||30).toFixed(0))
-                  : '',
-                ds.crossedBelowLower===true?'BB cross YES':'BB cross NO',
-                ds.nearLowerBand===true?'Near lower BB YES':'Near lower BB NO',
-                ds.oversold===true?'RSI oversold YES':'RSI oversold NO',
-                ds.positionAlreadyOpen===true&&ds.rawEntrySignal===true
-                  ? 'VALID BUY SETUP • existing bot lot already open'
-                  : ds.positionAlreadyOpen===true
-                    ? 'Existing bot lot open • monitoring for exit'
-                    : String(ds.reason||'No deterministic entry trigger')
-              ].filter(Boolean).join(' • ')
-            : ''
+                'Live 
           const generatedDetail=[
             decision?('Decision: '+decision):'',
             confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
@@ -297,22 +266,7 @@ export function TradeJournal({language}:Props){
 }
 +Number(lot.livePrice||0).toFixed(6),
                 'SELL TARGET +'+Number(lot.requiredNetProfitPercent||1.5).toFixed(2)+'% NET',
-                'Trigger                 Number.isFinite(Number(ds.closeVsLowerPct))
-                  ? ('Close ' + (Number(ds.closeVsLowerPct)>=0?'+':'') + Number(ds.closeVsLowerPct).toFixed(2) + '% vs lower BB')
-                  : '',
-                Number.isFinite(Number(ds.rsi))
-                  ? ('RSI ' + Number(ds.rsi).toFixed(1) + ' / needs < ' + Number(ds.rsiThreshold||30).toFixed(0))
-                  : '',
-                ds.crossedBelowLower===true?'BB cross YES':'BB cross NO',
-                ds.nearLowerBand===true?'Near lower BB YES':'Near lower BB NO',
-                ds.oversold===true?'RSI oversold YES':'RSI oversold NO',
-                ds.positionAlreadyOpen===true&&ds.rawEntrySignal===true
-                  ? 'VALID BUY SETUP • existing bot lot already open'
-                  : ds.positionAlreadyOpen===true
-                    ? 'Existing bot lot open • monitoring for exit'
-                    : String(ds.reason||'No deterministic entry trigger')
-              ].filter(Boolean).join(' • ')
-            : ''
+                'Trigger 
           const generatedDetail=[
             decision?('Decision: '+decision):'',
             confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
@@ -359,7 +313,8 @@ export function TradeJournal({language}:Props){
                   ? 'VALID BUY SETUP • existing bot lot already open'
                   : ds.positionAlreadyOpen===true
                     ? 'Existing bot lot open • monitoring for exit'
-                    : String(ds.reason||'No deterministic entry trigger')
+                    : String(ds.reason||'No deterministic entry trigger'),
+                ds.positionAlreadyOpen===true ? lotDetail : ''
               ].filter(Boolean).join(' • ')
             : ''
           const generatedDetail=[
