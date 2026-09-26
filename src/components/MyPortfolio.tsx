@@ -1,4 +1,4 @@
-import { useEffect,useState } from 'react'
+import { useEffect,useRef,useState } from 'react'
 import { api } from '../lib/api'
 
 interface Props {language:'en'|'pt'}
@@ -21,9 +21,12 @@ export function MyPortfolio({language}:Props){
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
   const [lastUpdated,setLastUpdated]=useState<Date|null>(null)
+  const loadInFlight=useRef(false)
   const pt=language==='pt'
 
   const load=async()=>{
+    if(loadInFlight.current)return
+    loadInFlight.current=true
     setLoading(true)
     try{
       setData(await api.getPortfolioAllocation())
@@ -31,7 +34,10 @@ export function MyPortfolio({language}:Props){
       setError('')
     }catch(e){
       setError(e instanceof Error?e.message:String(e))
-    }finally{setLoading(false)}
+    }finally{
+      loadInFlight.current=false
+      setLoading(false)
+    }
   }
 
   useEffect(()=>{
