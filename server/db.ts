@@ -164,6 +164,89 @@ export const liveTradeHistory=(limit=200)=>{
 }
 
 
+export const realizedProfitHistory=()=>{
+  const placedRows=db.prepare(`
+    SELECT * FROM agent_events
+    WHERE type='live_order_placed'
+    ORDER BY id ASC
+  `).all() as Array<any>
+
+  const buysByOrderId=new Map<string,any>()
+  const parsed=placedRows.map(row=>({
+    id:Number(row.id),
+    type:String(row.type),
+    agentId:String(row.agent_id||''),
+    payload:JSON.parse(row.payload),
+    createdAt:String(row.created_at)
+  }))
+
+  for(const row of parsed){
+    const payload=row.payload||{}
+    if(String(payload.side||'').toUpperCase()!=='BUY')continue
+    const orderId=String(payload.orderId||'')
+    if(orderId)buysByOrderId.set(orderId,payload)
+  }
+
+  const trades:any[]=[]
+  for(const row of parsed){
+    const payload={...(row.payload||{})}
+    if(String(payload.side||'').toUpperCase()!=='SELL')continue
+
+    const sourceLotOrderId=String(payload.sourceLotOrderId||'')
+    const buy=sourceLotOrderId?buysByOrderId.get(sourceLotOrderId):null
+
+    let costBasis=Number(payload.sellCostBasisUsd)
+    let netProceeds=Number(payload.realizedNetProceedsUsd)
+    let netProfit=Number(payload.realizedNetProfitUsd)
+    let netProfitPercent=Number(payload.realizedNetProfitPercent)
+
+    if((!Number.isFinite(netProfit)||!Number.isFinite(netProfitPercent))&&buy){
+      const sellPrice=Number(payload.actualFillPrice||payload.preview?.est_average_filled_price||0)
+      const sellQty=Number(payload.executedQty||payload.preview?.base_size||0)
+      const sellFee=Number(payload.preview?.commission_total||0)
+      const buyPrice=Number(buy.actualFillPrice||buy.preview?.est_average_filled_price||0)
+      const buyQty=Number(buy.executedQty||buy.preview?.base_size||0)
+      const buyFee=Number(buy.preview?.commission_total||0)
+
+      if(sellPrice>0&&sellQty>0&&buyPrice>0&&buyQty>0){
+        const buyUnitCost=((buyPrice*buyQty)+buyFee)/buyQty
+        costBasis=buyUnitCost*sellQty
+        netProceeds=(sellPrice*sellQty)-sellFee
+        netProfit=netProceeds-costBasis
+        netProfitPercent=costBasis>0?(netProfit/costBasis)*100:0
+      }
+    }
+
+    if(!Number.isFinite(netProfit)||!Number.isFinite(netProfitPercent))continue
+
+    trades.push({
+      id:row.id,
+      productId:String(payload.productId||''),
+      sourceLotOrderId,
+      sellOrderId:String(payload.orderId||''),
+      boughtForUsd:Number.isFinite(costBasis)?costBasis:null,
+      soldForUsd:Number.isFinite(netProceeds)?netProceeds:null,
+      profitUsd:netProfit,
+      profitPercent:netProfitPercent,
+      exitReason:String(payload.exitReason||''),
+      createdAt:row.createdAt
+    })
+  }
+
+  const totalNetProfitUsd=trades.reduce((sum,row)=>sum+Number(row.profitUsd||0),0)
+  const profitOnlyUsd=trades.filter(row=>Number(row.profitUsd)>0).reduce((sum,row)=>sum+Number(row.profitUsd||0),0)
+  const soldLowerUsd=Math.abs(trades.filter(row=>Number(row.profitUsd)<0).reduce((sum,row)=>sum+Number(row.profitUsd||0),0))
+
+  return {
+    totalNetProfitUsd,
+    profitOnlyUsd,
+    soldLowerUsd,
+    completedTrades:trades.length,
+    profitableTrades:trades.filter(row=>Number(row.profitUsd)>0).length,
+    trades:trades.sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime())
+  }
+}
+
 export const restoreLiveTradeHistory=()=>{
   setSetting('live_history_hidden_before_id','0')
   const row=db.prepare(`
