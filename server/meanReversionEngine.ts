@@ -28,6 +28,7 @@ const FIVE_MINUTE_SECONDS=300
 const MAX_HISTORY=100
 const states=new Map<string,ProductState>()
 const executionLocks=new Set<string>()
+const exitAttemptAt=new Map<string,number>()
 
 let ws:WebSocket|null=null
 let reconnectTimer:NodeJS.Timeout|null=null
@@ -315,8 +316,14 @@ const handleTicker=async(productId:string,price:number)=>{
   const reason=stopLoss?'STOP_LOSS':'LOT_NET_TAKE_PROFIT'
   const stopPrice=targetLot.avgEntryPrice*(1-config.fixedStopLossPercent/100)
   const takeProfitPrice=targetLot.avgEntryPrice*(1+config.takeProfitPercent/100)
+  const exitKey=productId+':'+targetLot.orderId+':'+reason
+  const retryMs=stopLoss?2000:15000
+  const lastAttempt=Number(exitAttemptAt.get(exitKey)||0)
+  if(Date.now()-lastAttempt<retryMs)return
+
   const lock='SELL:'+productId
   if(executionLocks.has(lock))return
+  exitAttemptAt.set(exitKey,Date.now())
   executionLocks.add(lock)
 
   publish('mean_reversion_exit_signal',{
@@ -393,11 +400,20 @@ const processCandlePayload=(data:any)=>{
     for(const [productId,list] of grouped){
       list.sort((a,b)=>a.start-b.start)
       const state=states.get(productId)!
+
+      // Coinbase sends a multi-candle snapshot immediately after subscribing.
+      // Warm the local history from that snapshot, but never replay old candles
+      // through live BUY/SELL signal handling.
+      if(!state.current){
+        const latest=list.at(-1)
+        if(!latest)continue
+        for(const historical of list.slice(0,-1))appendClosed(state,historical)
+        state.current=latest
+        continue
+      }
+
       for(const candle of list){
-        if(!state.current){
-          state.current=candle
-          continue
-        }
+        if(candle.start<state.current.start)continue
         if(candle.start===state.current.start){
           state.current=candle
           continue
