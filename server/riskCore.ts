@@ -47,3 +47,75 @@ export const assessExposureLimits=(input:ExposureAssessmentInput)=>{
     projectedOpenBotPositions
   }
 }
+
+
+export const calculateRealizedSellMetrics=(input:{
+  avgEntryPrice:number
+  executedQty:number
+  actualFillPrice:number
+  sellCommission:number
+})=>{
+  const avgEntryPrice=Number(input.avgEntryPrice)
+  const executedQty=Number(input.executedQty)
+  const actualFillPrice=Number(input.actualFillPrice)
+  const sellCommission=Math.max(0,Number(input.sellCommission)||0)
+
+  const sellCostBasisUsd=
+    avgEntryPrice>0&&executedQty>0
+      ?avgEntryPrice*executedQty
+      :0
+
+  const realizedNetProceedsUsd=
+    actualFillPrice>0&&executedQty>0
+      ?(actualFillPrice*executedQty)-sellCommission
+      :0
+
+  const realizedNetProfitUsd=
+    sellCostBasisUsd>0
+      ?realizedNetProceedsUsd-sellCostBasisUsd
+      :null
+
+  const realizedNetProfitPercent=
+    realizedNetProfitUsd!=null&&sellCostBasisUsd>0
+      ?(realizedNetProfitUsd/sellCostBasisUsd)*100
+      :null
+
+  return {
+    sellCostBasisUsd,
+    realizedNetProceedsUsd,
+    realizedNetProfitUsd,
+    realizedNetProfitPercent
+  }
+}
+
+export const assessDailyRealizedLoss=(input:{
+  startEquityUsd:number
+  realizedLossUsd:number
+  maxDailyLossPercent:number
+})=>{
+  const startEquityUsd=Number(input.startEquityUsd)
+  const realizedLossUsd=Math.max(0,Number(input.realizedLossUsd)||0)
+  const limitPercent=Math.max(0,Number(input.maxDailyLossPercent)||0)
+  const botLossPercent=
+    startEquityUsd>0
+      ?(realizedLossUsd/startEquityUsd)*100
+      :0
+  return {
+    botLossPercent,
+    limitPercent,
+    blocked:botLossPercent>=limitPercent
+  }
+}
+
+export const assessEmergencyExecutionGate=(input:{
+  emergencyStop:boolean
+  tradingMode:string
+  liveTradingEnabled:boolean
+  autoTradingEnabled:boolean
+})=>{
+  const reasons:string[]=[]
+  if(input.emergencyStop)reasons.push('Emergency stop is active')
+  if(String(input.tradingMode).toLowerCase()!=='live')reasons.push('TRADING_MODE is not live')
+  if(!input.liveTradingEnabled||!input.autoTradingEnabled)reasons.push('Live or auto trading is disabled in .env')
+  return {approved:reasons.length===0,reasons}
+}
