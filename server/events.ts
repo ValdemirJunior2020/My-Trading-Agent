@@ -1,9 +1,10 @@
 import type { ServerResponse } from 'node:http'
-import { addEvent } from './db.js'
+import { addEvent,liveTradeHistory } from './db.js'
 const clients=new Set<ServerResponse>()
 export const attachEventStream=(res:ServerResponse)=>{
   res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform',Connection:'keep-alive','X-Accel-Buffering':'no'})
-  res.write('event: ready\ndata: {"ok":true}\n\n')
+  const snapshot={ok:true,history:liveTradeHistory(300)}
+  res.write('event: ready\\ndata: '+JSON.stringify(snapshot)+'\\n\\n')
   clients.add(res)
   const heartbeat=setInterval(()=>res.write(': heartbeat\n\n'),15000)
   res.on('close',()=>{clearInterval(heartbeat);clients.delete(res)})
