@@ -408,7 +408,8 @@ const runFullAgentPipelineInternal = async (options: PipelineOptions = {}) => {
     executionResult = await tryLimitedLiveExecution({
       productId,
       decision: candidateDecision,
-      confidence
+      confidence,
+      executionSource:options.signalSource||'AGENT_PIPELINE'
     })
   } else if (options.executeLive === false && ['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(candidateDecision)) {
     executionResult = {
