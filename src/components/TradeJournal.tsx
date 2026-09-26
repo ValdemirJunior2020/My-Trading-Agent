@@ -209,6 +209,141 @@ export function TradeJournal({language}:Props){
               ' • Approval required'
             : ''
           const ds=p.deterministicStrategy||{}
+          const lot=ds.lotProfitability||null
+          const lotDetail=lot
+            ? [
+                'LOT P/L '+(Number(lot.grossPnlPercent)>=0?'+':'')+Number(lot.grossPnlPercent||0).toFixed(2)+'% before sell fee',
+                'Entry                 Number.isFinite(Number(ds.closeVsLowerPct))
+                  ? ('Close ' + (Number(ds.closeVsLowerPct)>=0?'+':'') + Number(ds.closeVsLowerPct).toFixed(2) + '% vs lower BB')
+                  : '',
+                Number.isFinite(Number(ds.rsi))
+                  ? ('RSI ' + Number(ds.rsi).toFixed(1) + ' / needs < ' + Number(ds.rsiThreshold||30).toFixed(0))
+                  : '',
+                ds.crossedBelowLower===true?'BB cross YES':'BB cross NO',
+                ds.nearLowerBand===true?'Near lower BB YES':'Near lower BB NO',
+                ds.oversold===true?'RSI oversold YES':'RSI oversold NO',
+                ds.positionAlreadyOpen===true&&ds.rawEntrySignal===true
+                  ? 'VALID BUY SETUP • existing bot lot already open'
+                  : ds.positionAlreadyOpen===true
+                    ? 'Existing bot lot open • monitoring for exit'
+                    : String(ds.reason||'No deterministic entry trigger'),
+                ds.positionAlreadyOpen===true ? lotDetail : ''
+              ].filter(Boolean).join(' • ')
+            : ''
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const detail=String(rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          return <div className="journal-table journal-row" key={event.id}>
+            <span>{new Date(event.createdAt).toLocaleString()}</span>
+            <span><b className={'journal-status '+statusClass(status)}>{status}</b></span>
+            <span>{displayCoin}</span>
+            <span className={displaySide==='SELL'?'sell-text':displaySide==='BUY'?'buy-text':''}>{displaySide}</span>
+            <span>{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId}</span>
+            <span className="journal-detail" title={detail}>{detail}</span>
+          </div>
+        })}
+      </div>
+    </section>
+  </main>
+}
++Number(lot.entryPrice||0).toFixed(6),
+                'Live                 Number.isFinite(Number(ds.closeVsLowerPct))
+                  ? ('Close ' + (Number(ds.closeVsLowerPct)>=0?'+':'') + Number(ds.closeVsLowerPct).toFixed(2) + '% vs lower BB')
+                  : '',
+                Number.isFinite(Number(ds.rsi))
+                  ? ('RSI ' + Number(ds.rsi).toFixed(1) + ' / needs < ' + Number(ds.rsiThreshold||30).toFixed(0))
+                  : '',
+                ds.crossedBelowLower===true?'BB cross YES':'BB cross NO',
+                ds.nearLowerBand===true?'Near lower BB YES':'Near lower BB NO',
+                ds.oversold===true?'RSI oversold YES':'RSI oversold NO',
+                ds.positionAlreadyOpen===true&&ds.rawEntrySignal===true
+                  ? 'VALID BUY SETUP • existing bot lot already open'
+                  : ds.positionAlreadyOpen===true
+                    ? 'Existing bot lot open • monitoring for exit'
+                    : String(ds.reason||'No deterministic entry trigger')
+              ].filter(Boolean).join(' • ')
+            : ''
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const detail=String(rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          return <div className="journal-table journal-row" key={event.id}>
+            <span>{new Date(event.createdAt).toLocaleString()}</span>
+            <span><b className={'journal-status '+statusClass(status)}>{status}</b></span>
+            <span>{displayCoin}</span>
+            <span className={displaySide==='SELL'?'sell-text':displaySide==='BUY'?'buy-text':''}>{displaySide}</span>
+            <span>{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId}</span>
+            <span className="journal-detail" title={detail}>{detail}</span>
+          </div>
+        })}
+      </div>
+    </section>
+  </main>
+}
++Number(lot.livePrice||0).toFixed(6),
+                'SELL TARGET +'+Number(lot.requiredNetProfitPercent||1.5).toFixed(2)+'% NET',
+                'Trigger                 Number.isFinite(Number(ds.closeVsLowerPct))
+                  ? ('Close ' + (Number(ds.closeVsLowerPct)>=0?'+':'') + Number(ds.closeVsLowerPct).toFixed(2) + '% vs lower BB')
+                  : '',
+                Number.isFinite(Number(ds.rsi))
+                  ? ('RSI ' + Number(ds.rsi).toFixed(1) + ' / needs < ' + Number(ds.rsiThreshold||30).toFixed(0))
+                  : '',
+                ds.crossedBelowLower===true?'BB cross YES':'BB cross NO',
+                ds.nearLowerBand===true?'Near lower BB YES':'Near lower BB NO',
+                ds.oversold===true?'RSI oversold YES':'RSI oversold NO',
+                ds.positionAlreadyOpen===true&&ds.rawEntrySignal===true
+                  ? 'VALID BUY SETUP • existing bot lot already open'
+                  : ds.positionAlreadyOpen===true
+                    ? 'Existing bot lot open • monitoring for exit'
+                    : String(ds.reason||'No deterministic entry trigger')
+              ].filter(Boolean).join(' • ')
+            : ''
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const detail=String(rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const displaySide=event.type==='capital_rotation_plan'?'ROTATE':String(p.side||'—')
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          return <div className="journal-table journal-row" key={event.id}>
+            <span>{new Date(event.createdAt).toLocaleString()}</span>
+            <span><b className={'journal-status '+statusClass(status)}>{status}</b></span>
+            <span>{displayCoin}</span>
+            <span className={displaySide==='SELL'?'sell-text':displaySide==='BUY'?'buy-text':''}>{displaySide}</span>
+            <span>{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId}</span>
+            <span className="journal-detail" title={detail}>{detail}</span>
+          </div>
+        })}
+      </div>
+    </section>
+  </main>
+}
++Number(lot.sellTriggerPrice||0).toFixed(6),
+                lot.triggerReached===true
+                  ? 'PRICE TRIGGER REACHED • Coinbase net-after-fees preview decides execution'
+                  : 'Target not reached yet',
+                'Final net-after-fees: Coinbase preview at sell trigger'
+              ].join(' • ')
+            : ''
           const strategyDetail=event.type==='live_execution_cycle' && p.attempted===false && ds
             ? [
                 Number.isFinite(Number(ds.closeVsLowerPct))
