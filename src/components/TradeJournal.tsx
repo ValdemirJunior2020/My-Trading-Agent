@@ -512,7 +512,7 @@ export function TradeJournal({language}:Props){
               return [
                 String(p.reason||'EXIT').replace(/_/g,' '),
                 Number.isFinite(Number(p.stopLossPercent))?('Hard stop '+Number(p.stopLossPercent).toFixed(2)+'% from fill'):'',
-                Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net after BUY + SELL fees ,
+                Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net after BUY + SELL fees $'+Number(p.minimumNetProfitUsd).toFixed(2)):'',
                 Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
                 Number.isFinite(Number(p.trailingActivationNetPercent))?('Backup trailing +'+Number(p.trailingActivationNetPercent).toFixed(2)+'%'):'',
                 Number.isFinite(Number(p.trailingDistancePercent))?('Callback '+Number(p.trailingDistancePercent).toFixed(2)+'% from peak'):''
@@ -570,14 +570,26 @@ export function TradeJournal({language}:Props){
               ? 'SOLD'
               : rawSide
           const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
-          return <div className="journal-table journal-row" key={event.id}>
+          const profitableSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit>0
+          )
+          const losingSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit<0
+          )
+          return <div className={'journal-table journal-row '+(profitableSell?'profit-row':losingSell?'loss-row':'')} key={event.id}>
             <span className="journal-time">
               <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
               <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
             </span>
             <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
             <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
-            <span><b className={'journal-side-pill '+((displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span><b className={'journal-side-pill '+(profitableSell?'profit':(displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
             <span className="journal-amount">{displayAmount}</span>
             <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
             <span className={'journal-net-pnl '+(profit?(profit.netProfit>=0?'positive':'negative'):'')}>
@@ -588,7 +600,7 @@ export function TradeJournal({language}:Props){
                   </>
                 : '—'}
             </span>
-            <span className="journal-detail journal-context" data-help={hoverHelp} title={hoverHelp} aria-label={hoverHelp}>{detail}</span>
+            <span className={'journal-detail journal-context '+(profitableSell?'profit-context':losingSell?'loss-context':'')} data-help={hoverHelp} title={hoverHelp} aria-label={hoverHelp}>{detail}</span>
           </div>
         })}
       </div>
