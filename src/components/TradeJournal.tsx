@@ -496,7 +496,8 @@ export function TradeJournal({language}:Props){
                 '5m close < lower BB',
                 Number.isFinite(Number(p.rsi))?('RSI '+Number(p.rsi).toFixed(1)+' <30'):'',
                 Number.isFinite(Number(p.volumeRatio))?('Volume '+Number(p.volumeRatio).toFixed(2)+'× VMA20'):'',
-                Number.isFinite(Number(p.rules?.requestedBuyUsd))?('Dynamic buy 
+                Number.isFinite(Number(p.rules?.requestedBuyUsd))
+                  ? ('Dynamic buy 
                 'Max slippage 0.10%'
               ].filter(Boolean).join(' • ')
             }
@@ -504,7 +505,6 @@ export function TradeJournal({language}:Props){
               const result=p.result||{}
               return result.executed
                 ? ('DETERMINISTIC ENTRY EXECUTED • 
-                : 'DETERMINISTIC ENTRY BLOCKED • '+String(result.reason||'execution gate rejected')
             }
             if(event.type==='mean_reversion_exit_signal'){
               return [
@@ -774,7 +774,8 @@ export function TradeJournal({language}:Props){
     </section>
   </main>
 }
-+Number(p.rules.requestedBuyUsd).toFixed(2)):'Dynamic $5-step buy',
++Number(p.rules.requestedBuyUsd).toFixed(2))
+                  : 'Dynamic $5-step buy',
                 'Max slippage 0.10%'
               ].filter(Boolean).join(' • ')
             }
@@ -1323,7 +1324,8 @@ export function TradeJournal({language}:Props){
     </section>
   </main>
 }
-+Number(p.rules.requestedBuyUsd).toFixed(2)):'Dynamic $5-step buy',
++Number(p.rules.requestedBuyUsd).toFixed(2))
+                  : 'Dynamic $5-step buy',
                 'Max slippage 0.10%'
               ].filter(Boolean).join(' • ')
             }
