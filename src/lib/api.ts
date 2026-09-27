@@ -76,6 +76,7 @@ export const api={
   getPortfolioAllocation:()=>request<any>('/api/coinbase/portfolio-allocation',{signal:AbortSignal.timeout(12000)}),
   getPaperOrders:()=>request<{orders:any[]}>('/api/paper/orders'),
   paperOrder:(body:{productId:string;side:'BUY'|'SELL';size:number;price:number})=>request('/api/paper/orders',{method:'POST',body:JSON.stringify(body)}),
+  paperSimulate:(body:{productId:string;startingBalanceUsd?:number;candleLimit?:number})=>request<any>('/api/paper/simulate',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(45000)}),
   runAgent:(body:{agentId:string;asset:string;summary:string})=>request('/api/agents/run',{method:'POST',body:JSON.stringify(body)}),
   runPipeline:(body:{productId?:string;deepResearch?:boolean})=>request<{ok:boolean;result:any}>('/api/agents/pipeline',{method:'POST',body:JSON.stringify(body)}),
   getPipelineStatus:()=>request<PipelineStatus>('/api/agents/pipeline/status'),
