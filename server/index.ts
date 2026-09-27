@@ -8,6 +8,7 @@ import { startMeanReversionEngine,stopMeanReversionEngine } from './meanReversio
 import { handleApiRequest } from './routes/api.js'
 import { log,serverLogFile } from './logger.js'
 import { initializeSingleLossStopModel,migrateLegacyLossHaltEmergencyStop } from './risk.js'
+import { initializeLossGuard } from './lossGuard.js'
 
 const distDir=resolve(process.cwd(),'dist')
 const pidFile=join(config.dataDir,'server.pid')
@@ -116,6 +117,7 @@ server.listen(config.port,config.host,()=>{
   writeFileSync(pidFile,String(process.pid),'utf8')
   initializeSingleLossStopModel()
   migrateLegacyLossHaltEmergencyStop()
+  void initializeLossGuard()
   log.info('server_started',{
     host:config.host,
     port:config.port,
