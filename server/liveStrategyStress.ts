@@ -1,7 +1,7 @@
 import { config } from './config.js'
 import { getCandles } from './coinbase.js'
 import { getSetting,setSetting } from './db.js'
-import { smallAccountEntryDecision } from './bollingerStrategy.js'
+import { confirmedMeanReversionEntryDecision } from './bollingerStrategy.js'
 
 export type StressCandle={start:number;low:number;high:number;open:number;close:number;volume:number}
 
@@ -138,10 +138,17 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
 
     const crossedBelowLower=previousClose>=prevLower&&candle.close<lower
     const closeVsLowerPct=((candle.close-lower)/lower)*100
-    const decision=smallAccountEntryDecision({
+    const lookback=Math.max(0,i-3)
+    const threeCandleReturnPct=pct(candles[lookback].close,candle.close)
+    const decision=confirmedMeanReversionEntryDecision({
       rsiValue:currentRsi,
       closeVsLowerPct,
-      crossedBelowLower
+      crossedBelowLower,
+      previousClose,
+      previousLower:prevLower,
+      currentClose:candle.close,
+      currentLower:lower,
+      threeCandleReturnPct
     })
     if(!decision.ready)continue
 
@@ -150,8 +157,6 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     qty=filledValue/candle.close
     costBasisUsd=orderUsd
     avgEntryPrice=costBasisUsd/qty
-    const lookback=Math.max(0,i-3)
-    const threeCandleReturnPct=pct(candles[lookback].close,candle.close)
     entryMeta={rsi:currentRsi,closeVsLowerPct,threeCandleReturnPct,crossedBelowLower}
     trades.push({
       side:'BUY',time:candle.start,price:candle.close,
@@ -260,7 +265,8 @@ export const runLiveStrategyStressTest=async(input?:{productIds?:string[];candle
       stopLossPercent:config.fixedStopLossPercent,
       minNetProfitUsd:config.smallAccountMinNetProfitUsd,
       assumedMarketFeeRatePercent:Number((config.backtestMarketFeeRate*100).toFixed(4)),
-      sameLossGuardBehavior:'STOP SCENARIO AFTER FIRST REALIZED LOSS'
+      sameLossGuardBehavior:'STOP SCENARIO AFTER FIRST REALIZED LOSS',
+      entryConfirmation:'RSI <= strong threshold + lower-Bollinger reclaim + rising close + no >1% three-candle drop'
     }
   }
   setSetting('live_strategy_stress_last',JSON.stringify(result))
