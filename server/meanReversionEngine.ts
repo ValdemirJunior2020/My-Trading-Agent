@@ -141,7 +141,14 @@ const smallAccountBuyIsExecutable=async(productId:string)=>{
   }
 }
 
-const getAgentApproval=async(productId:string,intent:'BUY'|'SELL',reason:string,signalSource='MEAN_REVERSION')=>{
+type AgentSignalSource='MEAN_REVERSION'|'MOMENTUM_SCANNER'|'NEXT_WEEK_BREAKOUT'|'MANUAL'|'UNKNOWN'
+
+const getAgentApproval=async(
+  productId:string,
+  intent:'BUY'|'SELL',
+  reason:string,
+  signalSource:AgentSignalSource='MEAN_REVERSION'
+)=>{
   const status=getPipelineStatus()
   if(status.status==='running'){
     publish('signal_agent_approval_skipped',{
