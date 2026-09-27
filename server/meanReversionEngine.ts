@@ -31,6 +31,7 @@ const states=new Map<string,ProductState>()
 const executionLocks=new Set<string>()
 const exitAttemptAt=new Map<string,number>()
 const breakoutPeaks=new Map<string,number>()
+const meanReversionPeaks=new Map<string,number>()
 
 let ws:WebSocket|null=null
 let reconnectTimer:NodeJS.Timeout|null=null
@@ -498,18 +499,30 @@ const handleTicker=async(productId:string,price:number)=>{
   const middle=middleBandWithLivePrice(closes,price)
   if(middle==null)return
 
-  const stopLot=lots.find(lot=>price<=(lot.fillEntryPrice||lot.avgEntryPrice)*(1-config.fixedStopLossPercent/100))
-  const profitLot=lots.find(lot=>price>=lot.avgEntryPrice*(1+config.takeProfitPercent/100))
-  const targetLot=stopLot||profitLot
+  const targetLot=
+    lots.find(lot=>String(lot.executionSource||'')==='MEAN_REVERSION')||
+    lots.find(lot=>String(lot.executionSource||'')!=='NEXT_WEEK_BREAKOUT')
   if(!targetLot)return
 
-  const stopLoss=Boolean(stopLot)
-  const reason=stopLoss?'STOP_LOSS':'LOT_NET_TAKE_PROFIT'
+  const key=productId+':'+targetLot.orderId
+  const previousPeak=Number(meanReversionPeaks.get(key)||targetLot.fillEntryPrice||targetLot.avgEntryPrice||price)
+  const peak=Math.max(previousPeak,price)
+  meanReversionPeaks.set(key,peak)
+
   const stopEntryPrice=targetLot.fillEntryPrice||targetLot.avgEntryPrice
   const stopPrice=stopEntryPrice*(1-config.fixedStopLossPercent/100)
-  const takeProfitPrice=targetLot.avgEntryPrice*(1+config.takeProfitPercent/100)
-  const exitKey=productId+':'+targetLot.orderId+':'+reason
-  const retryMs=stopLoss?2000:15000
+  const activationPrice=
+    targetLot.avgEntryPrice*(1+config.trailingActivationNetPercent/100)/
+    Math.max(1e-12,1-config.backtestMarketFeeRate)
+  const trailingActive=peak>=activationPrice
+  const trailingStopPrice=peak*(1-config.trailingDistancePercent/100)
+  const stopLoss=price<=stopPrice
+  const trailingHit=trailingActive&&price<=trailingStopPrice
+  if(!stopLoss&&!trailingHit)return
+
+  const reason=stopLoss?'STOP_LOSS':'TRAILING_PROFIT'
+  const exitKey=key+':'+reason
+  const retryMs=2000
   const lastAttempt=Number(exitAttemptAt.get(exitKey)||0)
   if(Date.now()-lastAttempt<retryMs)return
 
@@ -528,27 +541,21 @@ const handleTicker=async(productId:string,price:number)=>{
     quantity:targetLot.qty,
     lotCostUsd:targetLot.costUsd,
     middleBand:middle,
-    takeProfitPrice,
-    takeProfitPercent:config.takeProfitPercent,
+    peakPrice:peak,
+    trailingActive,
+    trailingActivationPrice:activationPrice,
+    trailingActivationNetPercent:config.trailingActivationNetPercent,
+    trailingStopPrice,
+    trailingDistancePercent:config.trailingDistancePercent,
     stopPrice,
     stopLossPercent:config.fixedStopLossPercent
   },'strategy')
 
   try{
     // SELL exits are deterministic and safety/risk controlled.
-    // Stop-loss exits protect capital immediately.
-    // Profit exits rely on Coinbase preview to confirm the required
-    // net profit after fees before an order is allowed through.
+    // The 8% net threshold activates the trailing mechanism; the actual exit
+    // occurs only after price retreats by the configured trailing distance.
     const confidence=1
-
-    if(!stopLoss){
-      publish('mean_reversion_profit_sell_preview_gate',{
-        productId,
-        sourceLotOrderId:targetLot.orderId,
-        requiredNetProfitPercent:config.takeProfitPercent,
-        note:'AI approval bypassed for take-profit exit; Coinbase preview and server risk checks are authoritative.'
-      },'decision')
-    }
 
     const result=await tryLimitedLiveExecution({
       productId,
@@ -559,7 +566,7 @@ const handleTicker=async(productId:string,price:number)=>{
       exitReason:reason,
       avgEntryPrice:targetLot.avgEntryPrice,
       sourceLotOrderId:targetLot.orderId,
-      requiredNetProfitPercent:stopLoss?0:config.takeProfitPercent,
+      requiredNetProfitPercent:0,
       executionSource:'MEAN_REVERSION'
     })
     publish('mean_reversion_exit_result',{
@@ -569,6 +576,7 @@ const handleTicker=async(productId:string,price:number)=>{
       result
     },'execution')
     if(result?.executed){
+      meanReversionPeaks.delete(key)
       state.position=getBotManagedPosition(productId)
       state.lastPositionRefreshAt=Date.now()
     }
@@ -782,6 +790,14 @@ export const startMeanReversionEngine=async()=>{
       smallAccountStrongProximityPercent:config.smallAccountStrongProximityPercent,
       smallAccountNormalProximityPercent:config.smallAccountNormalProximityPercent,
       stopLossPercent:config.fixedStopLossPercent,
+      trailingActivationNetPercent:config.trailingActivationNetPercent,
+      trailingDistancePercent:config.trailingDistancePercent,
+      previousRsiAtOrBelow:config.entryPreviousRsiMax,
+      currentRsiAbove:config.entryCurrentRsiMinExclusive,
+      currentRsiMax:config.entryCurrentRsiMax,
+      minimumVolumeRatio:config.entryMinimumVolumeRatio,
+      maxConcurrentPositions:config.maxOpenBotPositions,
+      positionSizeUsd:config.maxLiveOrderUsd,
       maxSlippagePercent:config.maxSlippagePercent,
       rollingKillSwitchPercent:config.rollingKillSwitchPercent
     },'strategy')
