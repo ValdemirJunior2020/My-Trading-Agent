@@ -77,7 +77,7 @@ export function AgentDetails({agent,t}:Props){
   return <section className="panel details-panel">
     <header className="mini-heading">
       <h3>{t('agentDetails')}</h3>
-      <span className={`status-badge ${liveStatus}`}>{t(liveStatus)}</span>
+      <span className={`status-badge ${liveStatus} ${isLossGuard?'loss-guard-status':''}`}>{t(liveStatus)}</span>
     </header>
     <div className="agent-details-grid">
       <div className="agent-avatar"><PixelPerson status={liveStatus}/></div>
