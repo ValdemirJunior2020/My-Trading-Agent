@@ -135,8 +135,10 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     const lower=lowerBand(closes,config.bbPeriod,config.bbStdDev)
     const prevLower=lowerBand(prevCloses,config.bbPeriod,config.bbStdDev)
     const currentRsi=rsi(closes,config.rsiPeriod)
+    const previousRsi=rsi(prevCloses,config.rsiPeriod)
     const previousClose=prevCloses.at(-1)
-    if(lower==null||prevLower==null||currentRsi==null||previousClose==null)continue
+    const previousCandle=candles[i-1]
+    if(lower==null||prevLower==null||currentRsi==null||previousRsi==null||previousClose==null||!previousCandle)continue
 
     const crossedBelowLower=previousClose>=prevLower&&candle.close<lower
     const closeVsLowerPct=((candle.close-lower)/lower)*100
@@ -144,9 +146,11 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     const threeCandleReturnPct=pct(candles[lookback].close,candle.close)
     const decision=confirmedMeanReversionEntryDecision({
       rsiValue:currentRsi,
+      previousRsiValue:previousRsi,
       closeVsLowerPct,
       crossedBelowLower,
       previousClose,
+      previousHigh:previousCandle.high,
       previousLower:prevLower,
       currentClose:candle.close,
       currentLower:lower,
@@ -269,7 +273,7 @@ export const runLiveStrategyStressTest=async(input?:{productIds?:string[];candle
       minNetProfitUsd:config.smallAccountMinNetProfitUsd,
       assumedMarketFeeRatePercent:Number((config.backtestMarketFeeRate*100).toFixed(4)),
       sameLossGuardBehavior:'STOP SCENARIO AFTER FIRST REALIZED LOSS',
-      entryConfirmation:'RSI <= strong threshold + lower-Bollinger reclaim + rising close + no >1% three-candle drop',
+      entryConfirmation:'Previous RSI <=30, current RSI rebounds above 30 by at least 2 points (max 35), lower-Bollinger reclaim, close above previous high, and no >0.5% three-candle drop',
       stopLossBasis:'ACTUAL_FILL_PRICE_NOT_FEE_LOADED_COST_BASIS'
     }
   }
