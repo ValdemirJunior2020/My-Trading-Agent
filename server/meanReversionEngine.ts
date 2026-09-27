@@ -202,6 +202,8 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     : Infinity
   const threeLookbackClose=closes.at(-4)??previousClose
   const threeCandleReturnPct=threeLookbackClose>0?((candle.close-threeLookbackClose)/threeLookbackClose)*100:0
+  const priorVolumes=state.closed.slice(-21,-1).map(x=>Number(x.volume||0)).filter(v=>v>0)
+  const averageVolume=priorVolumes.length?avg(priorVolumes):0
   const entryDecision=confirmedMeanReversionEntryDecision({
     rsiValue:currentRsi,
     previousRsiValue:previousRsi,
@@ -212,7 +214,9 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     previousLower,
     currentClose:candle.close,
     currentLower,
-    threeCandleReturnPct
+    threeCandleReturnPct,
+    currentVolume:Number(candle.volume||0),
+    averageVolume
   })
   const oversold=entryDecision.oversold
   const position=refreshPosition(productId,state,true)
@@ -237,7 +241,10 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     candleRecovered:entryDecision.candleRecovered,
     brokePreviousHigh:entryDecision.brokePreviousHigh,
     threeCandleReturnPct,
-    entryBlockers:entryDecision.blockers
+    entryBlockers:entryDecision.blockers,
+    currentVolume:Number(candle.volume||0),
+    averageVolume,
+    volumeRatio:entryDecision.volumeRatio
   },'strategy')
 
   if(position.qty>0||!entryDecision.ready)return
@@ -270,7 +277,8 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
       minimumRsiRecoveryPoints:5,
       confirmedLowerBandReclaim:true,
       closeAbovePreviousHighRequired:true,
-      maxThreeCandleDropPercent:0.5
+      maxThreeCandleDropPercent:0.5,
+      minimumVolumeRatio:1.5
     }
   },'strategy')
 
@@ -281,7 +289,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     const approval=await getAgentApproval(
       productId,
       'BUY',
-      'Closed 5-minute candle confirmed RSI recovery above 35 after extreme oversold, lower-Bollinger reclaim, and a close above the previous candle high.'
+      'Closed 5-minute candle confirmed RSI recovery above 35, lower-Bollinger reclaim, bullish break, and at least 1.5x normal volume.'
     )
     if(!approval.approved){
       publish('mean_reversion_buy_blocked_by_agents',{
