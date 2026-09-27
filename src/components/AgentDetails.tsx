@@ -32,14 +32,17 @@ export function AgentDetails({agent,t}:Props){
   const isLossGuard=agent.id==='loss_guard'
   const safety:any=system?.safety||{}
   const rollingRisk:any=safety.rollingRisk||{}
+  const lossGuard:any=safety.lossGuard||{}
   const deterministicRunning=Boolean((system as any)?.meanReversion?.running)
+  const singleLossLocked=Boolean(lossGuard.singleLossLocked)
   const rollingLocked=Boolean(rollingRisk.locked||rollingRisk.blocked)
+  const safetyLocked=singleLossLocked||rollingLocked
   const pipelineRunning=pipeline?.status==='running'
   const isCurrent=pipelineRunning&&pipeline?.currentAgent===agent.id
   const isCompleted=Boolean(pipeline?.completedAgents?.includes(agent.id))
 
   const liveStatus:AgentStatus=isLossGuard
-    ? (rollingLocked?'approved':'waiting')
+    ? (safetyLocked?'approved':'waiting')
     : isCurrent
       ? (agent.id==='critic'?'reviewing':'working')
       : pipelineRunning
@@ -47,9 +50,11 @@ export function AgentDetails({agent,t}:Props){
         : 'idle'
 
   const currentTask=isLossGuard
-    ? (rollingLocked
-        ? '3% / 24h EMERGENCY LOCKDOWN ACTIVE'
-        : 'Monitoring rolling 24-hour account equity')
+    ? (singleLossLocked
+        ? 'FIRST LOSS EMERGENCY SHUTDOWN ACTIVE'
+        : rollingLocked
+          ? '3% / 24h EMERGENCY LOCKDOWN ACTIVE'
+          : 'Monitoring first-loss + rolling 24h protection')
     : isCurrent
       ? 'Processing optional AI analysis'
       : pipelineRunning
@@ -59,9 +64,11 @@ export function AgentDetails({agent,t}:Props){
           : 'Waiting for live strategy engine'
 
   const lastCompleted=isLossGuard
-    ? (rollingLocked
-        ? 'Kill switch triggered — manual reset required'
-        : '24h equity protection armed')
+    ? (singleLossLocked
+        ? 'First realized loss triggered full shutdown — manual reset required'
+        : rollingLocked
+          ? '3% / 24h kill switch triggered — manual reset required'
+          : 'First-loss and 24h protections armed')
     : isCompleted
       ? 'Completed optional AI analysis'
       : pipeline?.status==='completed'
@@ -71,9 +78,11 @@ export function AgentDetails({agent,t}:Props){
           : 'No current completed step'
 
   const reasoning=isLossGuard
-    ? (rollingLocked
-        ? 'Rolling account equity reached the 3% drawdown limit. Open orders are canceled, bot-managed positions are liquidated, and automated trading remains locked until manual reset.'
-        : 'This safety monitor tracks rolling 24-hour account equity. It triggers only when drawdown reaches 3%, then performs the full manual-reset lockdown.')
+    ? (singleLossLocked
+        ? 'A realized losing SELL triggered the first-loss rule. Open orders are canceled, all remaining bot-managed positions are liquidated, and all automated trading remains locked until you manually reset it.'
+        : rollingLocked
+          ? 'Rolling account equity reached the 3% drawdown limit. Open orders are canceled, bot-managed positions are liquidated, and automated trading remains locked until manual reset.'
+          : 'Two protections are armed: the first realized losing SELL triggers a full shutdown, and a 3% rolling 24-hour equity drawdown triggers the same manual-reset lockdown.')
     : isCurrent
       ? 'This AI agent is analyzing in the background. It cannot approve, reject, modify, or override deterministic live trades.'
       : pipelineRunning
@@ -83,7 +92,13 @@ export function AgentDetails({agent,t}:Props){
           : 'The deterministic live strategy engine is not currently reporting as running.'
 
   const startedAt=isLossGuard
-    ? (rollingRisk?.pauseStartedAt?new Date(rollingRisk.pauseStartedAt).toLocaleTimeString():(rollingLocked?'Locked':'Monitoring now'))
+    ? (singleLossLocked&&lossGuard?.triggeredAt
+        ? new Date(lossGuard.triggeredAt).toLocaleTimeString()
+        : rollingRisk?.pauseStartedAt
+          ? new Date(rollingRisk.pauseStartedAt).toLocaleTimeString()
+          : safetyLocked
+            ? 'Locked'
+            : 'Monitoring now')
     : isCurrent&&pipeline?.startedAt
       ? new Date(pipeline.startedAt).toLocaleTimeString()
       : deterministicRunning
