@@ -2,10 +2,9 @@ import { config, coinbaseConfigured } from './config.js'
 import { getCandles, getProduct, listAccounts } from './coinbase.js'
 import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
-import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive, getRuntimeRiskLimits } from './risk.js'
+import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive } from './risk.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { confirmedMeanReversionEntryDecision, getBotManagedLots, getBotManagedPosition } from './bollingerStrategy.js'
-import { getPipelineStatus, runFullAgentPipeline } from './pipeline.js'
 import { NEXT_WEEK_BREAKOUT,breakoutHardStopPrice,breakoutTrailingActivationPrice,breakoutTrailingStopPrice,evaluateBreakoutConfirmation,nextWeekBreakoutActive } from './velocityBreakout.js'
 
 type Candle={
@@ -172,49 +171,6 @@ const smallAccountBuyIsExecutable=async(productId:string)=>{
     }
   }catch(error){
     return {ok:false,error:error instanceof Error?error.message:String(error)}
-  }
-}
-
-type AgentSignalSource='MEAN_REVERSION'|'MOMENTUM_SCANNER'|'NEXT_WEEK_BREAKOUT'|'MANUAL'|'UNKNOWN'
-
-const getAgentApproval=async(
-  productId:string,
-  intent:'BUY'|'SELL',
-  reason:string,
-  signalSource:AgentSignalSource='MEAN_REVERSION'
-)=>{
-  const status=getPipelineStatus()
-  if(status.status==='running'){
-    publish('signal_agent_approval_skipped',{
-      productId,
-      intent,
-      reason:'Another agent analysis is already running.'
-    },'manager')
-    return {approved:false,decision:'WAIT',confidence:0,result:null as any}
-  }
-  try{
-    const result=await runFullAgentPipeline({
-      productId,
-      deepResearch:false,
-      executeLive:false,
-      signalSource,
-      signalIntent:intent,
-      signalReason:reason
-    })
-    const decision=String(result?.decision?.decision||'WAIT').toUpperCase()
-    const confidence=Number(result?.decision?.confidence||0)
-    const approved=decision===intent+'_CANDIDATE'
-    publish('signal_agent_approval_completed',{
-      productId,intent,decision,confidence,approved,reason
-    },'manager')
-    return {approved,decision,confidence,result}
-  }catch(error){
-    publish('signal_agent_pipeline_failed',{
-      productId,
-      intent,
-      error:error instanceof Error?error.message:String(error)
-    },'manager')
-    return {approved:false,decision:'WAIT',confidence:0,result:null as any}
   }
 }
 
@@ -715,11 +671,12 @@ const startSafetyTimer=()=>{
 
         if(nextSafePause!==safePause){
           safePause=nextSafePause
-          publish(safePause?'mean_reversion_auto_safe_pause':'mean_reversion_auto_safe_resumed',{
+          publish(safePause?'mean_reversion_rolling_kill_locked':'mean_reversion_rolling_kill_cleared',{
             guard,
             streamRemainsActive:true,
-            newBuysBlocked:safePause,
-            protectiveSellsAllowed:true
+            allAutomatedTradingBlocked:safePause,
+            protectiveSellsAllowed:false,
+            manualResetRequired:safePause
           },'risk')
         }
       }catch(error){
@@ -749,17 +706,12 @@ export const startMeanReversionEngine=async()=>{
       bollingerPeriod:config.bbPeriod,
       bollingerStdDev:config.bbStdDev,
       rsiPeriod:config.rsiPeriod,
-      rsiOversold:config.rsiOversold,
-      smallAccountMode:config.smallAccountMode,
-      smallAccountStrongRsi:config.smallAccountStrongRsi,
-      smallAccountStrongProximityPercent:config.smallAccountStrongProximityPercent,
-      smallAccountNormalProximityPercent:config.smallAccountNormalProximityPercent,
+      rsiStrictlyBelow:config.entryRsiStrictlyBelow,
+      macroTimeframeMinutes:config.macroTimeframeMinutes,
+      macroBollingerPeriod:config.macroBollingerPeriod,
       stopLossPercent:config.fixedStopLossPercent,
       trailingActivationNetPercent:config.trailingActivationNetPercent,
       trailingDistancePercent:config.trailingDistancePercent,
-      previousRsiAtOrBelow:config.entryPreviousRsiMax,
-      currentRsiAbove:config.entryCurrentRsiMinExclusive,
-      currentRsiMax:config.entryCurrentRsiMax,
       minimumVolumeRatio:config.entryMinimumVolumeRatio,
       maxConcurrentPositions:config.maxOpenBotPositions,
       positionSizeUsd:config.maxLiveOrderUsd,
