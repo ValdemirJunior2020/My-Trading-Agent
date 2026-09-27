@@ -36,11 +36,41 @@ const readJson=async(req:IncomingMessage)=>{
   return chunks.length?JSON.parse(Buffer.concat(chunks).toString('utf8')):{}
 }
 
+const withTimeout=async<T>(promise:Promise<T>,fallback:T,timeoutMs=2500):Promise<T>=>{
+  let timer:NodeJS.Timeout|undefined
+  try{
+    return await Promise.race([
+      promise.catch(()=>fallback),
+      new Promise<T>(resolve=>{
+        timer=setTimeout(()=>resolve(fallback),timeoutMs)
+      })
+    ])
+  }finally{
+    if(timer)clearTimeout(timer)
+  }
+}
+
 const statusPayload=async(startedAt:string)=>{
-  migrateLegacyLossHaltEmergencyStop()
-  const [ollama,engines]=await Promise.all([getOllamaStatus(),quantStatus()])
+  // Server health must never depend on optional local subsystems.
+  // Quant/WSL and Ollama probes are bounded so the UI can show the backend
+  // online immediately even when those services are slow or unavailable.
+  try{migrateLegacyLossHaltEmergencyStop()}catch{}
+  const [ollama,engines]=await Promise.all([
+    withTimeout(getOllamaStatus(),{online:false,models:[]},2500),
+    withTimeout(
+      quantStatus(),
+      {
+        available:false,
+        vectorbt:{installed:false},
+        nautilusTrader:{installed:false},
+        rdAgent:{installed:false,transport:'wsl'},
+        python:null
+      },
+      2500
+    )
+  ])
   return {
-    server:{online:true,version:'0.6.1',startedAt},
+    server:{online:true,version:'0.6.2',startedAt},
     ollama,
     coinbase:{configured:coinbaseConfigured()},
     engines,
