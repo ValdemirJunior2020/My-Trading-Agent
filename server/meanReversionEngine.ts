@@ -2,7 +2,7 @@ import { config, coinbaseConfigured } from './config.js'
 import { getCandles, getProduct, listAccounts } from './coinbase.js'
 import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
-import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, getRuntimeRiskLimits } from './risk.js'
+import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive, getRuntimeRiskLimits } from './risk.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { getBotManagedLots, getBotManagedPosition, smallAccountEntryDecision } from './bollingerStrategy.js'
 import { getPipelineStatus, runFullAgentPipeline } from './pipeline.js'
@@ -176,6 +176,7 @@ const getAgentApproval=async(productId:string,intent:'BUY'|'SELL',reason:string)
 }
 
 const handleClosedCandle=async(productId:string,candle:Candle)=>{
+  if(emergencyStopActive())return
   const state=states.get(productId)
   if(!state)return
 
@@ -296,6 +297,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
 }
 
 const handleTicker=async(productId:string,price:number)=>{
+  if(emergencyStopActive())return
   if(!(price>0))return
   const state=states.get(productId)
   if(!state)return
