@@ -9,9 +9,8 @@ export const agents: Agent[] = [
   { id:'manager', icon:'▣', nameKey:'agentManager', roomKey:'managerRoom', taskKey:'systemNormal', asset:'SYSTEM', status:'working', detailKey:'managerDetail', lastKey:'lastManager', startedAt:'14:26:00', ollama:false, gridArea:'manager' },
   { id:'backtest', icon:'↻', nameKey:'backtestingLab', roomKey:'backtestingRoom', taskKey:'runBacktest', asset:'BTC-USD', status:'working', detailKey:'backtestDetail', lastKey:'lastBacktest', startedAt:'14:31:02', ollama:false, gridArea:'backtest' },
   { id:'portfolio', icon:'▤', nameKey:'portfolioManager', roomKey:'portfolioRoom', taskKey:'checkExposure', asset:'PORTFOLIO', status:'working', detailKey:'portfolioDetail', lastKey:'lastPortfolio', startedAt:'14:30:57', ollama:true, gridArea:'portfolio' },
-  { id:'paper', icon:'◫', nameKey:'paperTrader', roomKey:'paperRoom', taskKey:'simulateExecution', asset:'ETH-USD', status:'approved', detailKey:'paperDetail', lastKey:'lastPaper', startedAt:'14:31:20', ollama:false, gridArea:'paper' },
   { id:'decision', icon:'★', nameKey:'finalDecisionAgent', roomKey:'decisionRoom', taskKey:'compareReports', asset:'BTC-USD', status:'waiting', detailKey:'decisionDetail', lastKey:'lastDecision', startedAt:'14:31:33', ollama:true, gridArea:'decision' },
-  { id:'execution', icon:'⇄', nameKey:'executionAgent', roomKey:'executionRoom', taskKey:'readyOrders', asset:'PAPER', status:'idle', detailKey:'executionDetail', lastKey:'lastExecution', startedAt:'14:25:11', ollama:false, gridArea:'execution' },
+  { id:'execution', icon:'⇄', nameKey:'executionAgent', roomKey:'executionRoom', taskKey:'readyOrders', asset:'LIVE', status:'idle', detailKey:'executionDetail', lastKey:'lastExecution', startedAt:'14:25:11', ollama:false, gridArea:'execution' },
   { id:'loss_guard', icon:'✚', nameKey:'lossGuardAgent', roomKey:'lossGuardRoom', taskKey:'lossGuardWaiting', asset:'ALL LIVE TRADING', status:'waiting', detailKey:'lossGuardDetail', lastKey:'lastLossGuard', startedAt:'—', ollama:false, gridArea:'lossguard' }
 ]
 
@@ -20,10 +19,8 @@ export const watchlist = [
 ]
 
 export const activities = [
-  ['14:32:18', 'Execution Agent', 'Paper order book updated', 'ok'],
   ['14:32:14', 'Trade Critic', 'Reviewing BTC trade proposal', 'warn'],
   ['14:31:52', 'Backtesting Lab', 'Strategy test completed — 68.4%', 'ok'],
   ['14:31:33', 'Final Decision', 'WAIT on BTC-USD', 'warn'],
-  ['14:31:20', 'Paper Trader', 'ETH paper trade opened', 'ok'],
   ['14:30:57', 'Risk Manager', 'Position size within hard limits', 'ok']
 ]
