@@ -240,7 +240,7 @@ export function LiveTrading({ language }: Props) {
         <div className="live-stats">
           <div><small>{pt ? 'Portfólio atual' : 'Current portfolio'}</small><strong>{readiness?.currentPortfolioUsd != null ? '$' + Number(readiness.currentPortfolioUsd).toFixed(2) : '—'}</strong></div>
           <div><small>{pt ? 'Slot de produção' : 'Production slot'}</small><strong>$100.00 / 1</strong></div>
-          <div><small>{pt ? 'Stop / Trailing' : 'Stop / Trailing'}</small><strong>0.80% / +8.00% → 1.50%</strong></div>
+          <div><small>{pt ? 'Saída' : 'Exit'}</small><strong>+$0.02 net / 0.80% stop</strong></div>
           <div><small>{pt ? 'Entrada 10m / 5m' : '10m / 5m Entry'}</small><strong>SMA20 gate / RSI&lt;30 • VMA 1.5×</strong></div>
         </div>
 
