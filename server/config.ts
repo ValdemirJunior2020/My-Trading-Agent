@@ -12,7 +12,7 @@ const num = (value: string | undefined, fallback: number) => {
 }
 
 export const PRODUCTION_STRATEGY = Object.freeze({
-  positionSizeUsd: 100,
+  buyStepUsd: 5,
   maxConcurrentPositions: 1,
   hardStopLossPercent: 0.8,
   minimumNetProfitUsd: 0.02,
@@ -46,7 +46,10 @@ export const config = {
   maxDailyLossPercent: num(process.env.MAX_DAILY_LOSS_PERCENT, 2),
   maxTotalExposurePercent: num(process.env.MAX_TOTAL_EXPOSURE_PERCENT, 25),
   maxOpenBotPositions: PRODUCTION_STRATEGY.maxConcurrentPositions,
-  maxLiveOrderUsd: PRODUCTION_STRATEGY.positionSizeUsd,
+  buyStepUsd: PRODUCTION_STRATEGY.buyStepUsd,
+  // Dynamic sizing uses available cash + runtime exposure limits.
+  // This legacy field is retained as a very high compatibility ceiling only.
+  maxLiveOrderUsd: 1_000_000,
   minLiveOrderUsd: num(process.env.MIN_LIVE_ORDER_USD, 1),
   autoTradeCooldownSeconds: Math.max(60, num(process.env.AUTO_TRADE_COOLDOWN_SECONDS, 900)),
   autoTradeMinConfidencePercent: Math.max(0, Math.min(100, num(process.env.AUTO_TRADE_MIN_CONFIDENCE_PERCENT, 70))),
@@ -64,7 +67,7 @@ export const config = {
   smallAccountStrongProximityPercent: Math.max(0.1, Math.min(2, num(process.env.SMALL_ACCOUNT_STRONG_PROXIMITY_PERCENT, 0.9))),
   smallAccountNormalProximityPercent: Math.max(0.1, Math.min(1.5, num(process.env.SMALL_ACCOUNT_NORMAL_PROXIMITY_PERCENT, 0.4))),
   smallAccountMinDollarVolume24h: Math.max(1_000_000, num(process.env.SMALL_ACCOUNT_MIN_DOLLAR_VOLUME_24H, 10_000_000)),
-  smallAccountMaxBuyUsd: PRODUCTION_STRATEGY.positionSizeUsd,
+  smallAccountMaxBuyUsd: 1_000_000,
   smallAccountMinNetProfitUsd: PRODUCTION_STRATEGY.minimumNetProfitUsd,
   takeProfitPercent: Math.max(0.2, Math.min(10, num(process.env.TAKE_PROFIT_PERCENT, 1.5))),
   maxRequiredGrossProfitPercent: Math.max(1, Math.min(10, num(process.env.MAX_REQUIRED_GROSS_PROFIT_PERCENT, 4))),
