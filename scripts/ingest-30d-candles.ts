@@ -1,7 +1,7 @@
 import { getCandles } from '../server/coinbase.js'
 import { historicalCandleCount,insertHistoricalCandles } from '../server/db.js'
 
-const PRODUCTS=['SOL-USD','XRP-USD','BTC-USD'] as const
+const PRODUCTS=['SOL-USD','XRP-USD','BTC-USD','ETH-USD','LINK-USD','ADA-USD','DOGE-USD','AVAX-USD','DOT-USD','POL-USD','ATOM-USD','NEAR-USD','LTC-USD','UNI-USD','SHIB-USD'] as const
 const GRANULARITY='FIVE_MINUTE'
 const DAYS=30
 const CANDLES_PER_DAY=24*12
