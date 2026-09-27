@@ -11,6 +11,7 @@ import { getChallengeSnapshot,getTradingChallenge,saveTradingChallenge } from '.
 import { getAutoRunSettings,saveAutoRunSettings } from '../autorun.js'
 import { scanCryptoMarket } from '../scanner.js'
 import { getMeanReversionEngineStatus } from '../meanReversionEngine.js'
+import { getLossGuardState,resetLossGuard } from '../lossGuard.js'
 
 const json=(res:ServerResponse,status:number,body:unknown)=>{
   res.writeHead(status,{
@@ -47,6 +48,7 @@ const statusPayload=async(startedAt:string)=>{
     safety:{
       emergencyStop:emergencyStopActive(),
       lossHaltActive:getSetting('loss_halt_active','false')==='true',
+      lossGuard:getLossGuardState(),
       rollingRisk:getRollingRiskState(),
       mode:config.tradingMode,
       liveTradingEnabled:config.liveTradingEnabled,
@@ -73,7 +75,7 @@ export const handleApiRequest=async(
   if(path==='/api/live/history'&&req.method==='DELETE'){const result=clearLiveTradeHistory();return json(res,200,{ok:true,...result})}
   if(path==='/api/live/history/restore'&&req.method==='POST'){const result=restoreLiveTradeHistory();return json(res,200,{ok:true,...result})}
   if(path==='/api/paper/orders'&&req.method==='GET')return json(res,200,{orders:listPaperTrades()})
-  if(path==='/api/emergency-stop'&&req.method==='POST'){const body=await readJson(req) as {active?:boolean};const active=Boolean(body.active);setSetting('emergency_stop',String(active));setSetting('emergency_stop_reason',active?'MANUAL':'');const event=publish(active?'emergency_stop_activated':'emergency_stop_cleared',{active},'manager');return json(res,200,{ok:true,active,event})}
+  if(path==='/api/emergency-stop'&&req.method==='POST'){const body=await readJson(req) as {active?:boolean};const active=Boolean(body.active);if(!active&&getLossGuardState().active)resetLossGuard();setSetting('emergency_stop',String(active));setSetting('emergency_stop_reason',active?'MANUAL':'');const event=publish(active?'emergency_stop_activated':'emergency_stop_cleared',{active},'manager');return json(res,200,{ok:true,active,event,lossGuard:getLossGuardState()})}
   if(path==='/api/paper/orders'&&req.method==='POST'){const body=await readJson(req) as PaperOrderRequest;const order:PaperOrderRequest={productId:String(body.productId||'').toUpperCase(),side:String(body.side||'').toUpperCase() as 'BUY'|'SELL',size:Number(body.size),price:Number(body.price)};const risk=evaluatePaperOrder(order);if(!risk.approved){publish('paper_order_rejected',{order,risk},'risk');return json(res,422,{ok:false,risk})}const trade=openPaperTrade(order.productId,order.side,order.size,order.price);publish('paper_order_opened',{trade,risk},'paper');return json(res,201,{ok:true,trade,risk})}
   if(path==='/api/agents/run'&&req.method==='POST'){const body=await readJson(req) as {agentId?:string;asset?:string;summary?:string};const agentId=String(body.agentId||''),asset=String(body.asset||'UNKNOWN'),summary=String(body.summary||'');if(!agentId||!summary)return json(res,400,{error:'agentId and summary are required.'});publish('agent_started',{asset},agentId);const result=await runAgent(agentId,asset,summary);saveAnalysis(agentId,asset,summary,result.output,result.model);publish('agent_completed',{asset,output:result.output},agentId);return json(res,200,result)}
   if(path==='/api/agents/pipeline/status'&&req.method==='GET')return json(res,200,getPipelineStatus())
@@ -119,9 +121,10 @@ export const handleApiRequest=async(
       actionResult={action:'SET_RISK_LIMITS',limits}
       publish('risk_limits_updated',{limits},'risk')
     }else if(plan.action==='EMERGENCY_STOP'){
+      if(!plan.active&&getLossGuardState().active)resetLossGuard()
       setSetting('emergency_stop',String(Boolean(plan.active)))
       setSetting('emergency_stop_reason',plan.active?'MANUAL':'')
-      actionResult={action:'EMERGENCY_STOP',active:Boolean(plan.active)}
+      actionResult={action:'EMERGENCY_STOP',active:Boolean(plan.active),lossGuard:getLossGuardState()}
       publish(plan.active?'emergency_stop_activated':'emergency_stop_cleared',{active:Boolean(plan.active)},'manager')
     }else if(plan.action==='SET_AUTO_RUN'){
       const settings=saveAutoRunSettings({enabled:plan.enabled,intervalSeconds:plan.intervalSeconds,deepResearch:plan.deepResearch})
