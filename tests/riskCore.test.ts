@@ -215,3 +215,41 @@ test('capital preservation allows BUY only with no loss and no open bot position
   assert.equal(clear.approved,true)
   assert.equal(openPosition.approved,false)
 })
+
+
+test('loss halt allows SELL exits while still blocking BUY execution',()=>{
+  const sell=assessEmergencyExecutionGate({
+    emergencyStop:true,
+    tradingMode:'live',
+    liveTradingEnabled:true,
+    autoTradingEnabled:true,
+    lossHaltActive:true,
+    protectiveExit:true,
+    emergencyStopReason:'LOSS_HALT'
+  })
+  const buy=assessEmergencyExecutionGate({
+    emergencyStop:true,
+    tradingMode:'live',
+    liveTradingEnabled:true,
+    autoTradingEnabled:true,
+    lossHaltActive:true,
+    protectiveExit:false,
+    emergencyStopReason:'LOSS_HALT'
+  })
+  assert.equal(sell.approved,true)
+  assert.equal(sell.lossHaltExitAllowed,true)
+  assert.equal(buy.approved,false)
+})
+
+test('manual emergency stop still blocks SELL exits',()=>{
+  const result=assessEmergencyExecutionGate({
+    emergencyStop:true,
+    tradingMode:'live',
+    liveTradingEnabled:true,
+    autoTradingEnabled:true,
+    lossHaltActive:true,
+    protectiveExit:true,
+    emergencyStopReason:'MANUAL'
+  })
+  assert.equal(result.approved,false)
+})
