@@ -124,6 +124,7 @@ export type BotManagedLot={
   qty:number
   costUsd:number
   avgEntryPrice:number
+  fillEntryPrice:number
 }
 
 export const getBotManagedLots=(productId:string):BotManagedLot[]=>{
@@ -148,7 +149,8 @@ export const getBotManagedLots=(productId:string):BotManagedLot[]=>{
         openedAt:String(p.placedAt||event.createdAt||''),
         qty:base,
         costUsd,
-        avgEntryPrice:costUsd/base
+        avgEntryPrice:costUsd/base,
+        fillEntryPrice:price
       })
       continue
     }
@@ -230,7 +232,8 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
   let exitReason:string|null=null
 
   if(position.qty>0&&position.avgEntryPrice>0){
-    stopPrice=position.avgEntryPrice*(1-config.fixedStopLossPercent/100)
+    const stopBasis=position.lots[0]?.fillEntryPrice||position.avgEntryPrice
+    stopPrice=stopBasis*(1-config.fixedStopLossPercent/100)
     takeProfitPrice=position.avgEntryPrice*(1+config.takeProfitPercent/100)
 
     if(livePrice>=takeProfitPrice)exitReason='FIXED_TAKE_PROFIT'
@@ -253,6 +256,7 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
         qty:Number(lot.qty||0),
         costUsd:Number(lot.costUsd||0),
         entryPrice,
+        fillEntryPrice:Number(lot.fillEntryPrice||entryPrice),
         livePrice,
         grossPnlPercent,
         sellTriggerPercent:config.takeProfitPercent,
