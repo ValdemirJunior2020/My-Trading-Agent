@@ -1,36 +1,49 @@
 {
-  "profileName": "positive-expectancy-production-v3",
+  "profileName": "deterministic-dual-timeframe-production-v4",
   "mode": "PRODUCTION_LOCKED",
-  "granularity": "FIVE_MINUTE",
-  "fees": {
-    "assumedMarketFeeRatePerSide": 0.006,
-    "assumedRoundTripFeeRate": 0.012
+  "timeframes": {
+    "macro": "TEN_MINUTE_FROM_CLOSED_5M_PAIRS",
+    "execution": "FIVE_MINUTE"
   },
-  "entryConfirmation": {
-    "previousRsiAtOrBelow": 30,
-    "currentRsiAbove": 30,
-    "currentRsiMax": 36,
-    "minimumRsiRecoveryPoints": 1,
-    "requireLowerBollingerReclaim": true,
-    "requireCloseAbovePreviousHigh": true,
-    "maxThreeCandleDropPercent": 0.5,
-    "volumeLookbackCandles": 20,
-    "minimumVolumeRatio": 1.5
+  "indicators": {
+    "bollinger": {
+      "period": 20,
+      "stdDev": 2
+    },
+    "rsi": {
+      "period": 14,
+      "strictlyBelow": 30
+    },
+    "vma": {
+      "lookbackCandles": 20,
+      "minimumRatio": 1.5
+    }
   },
-  "accountExecution": {
-    "baselineAllocationUsd": 100,
+  "entry": {
+    "macroGate": "latest closed 10m close > Bollinger middle band (SMA20)",
+    "fiveMinuteTrigger": "closed 5m close < lower Bollinger band",
+    "aiOverrideAllowed": false
+  },
+  "execution": {
+    "fixedPositionSizeUsd": 100,
     "maxConcurrentPositions": 1,
+    "maxEntrySlippagePercent": 0.1,
     "spotOnly": true,
     "leverage": false
   },
   "exits": {
-    "hardStopPercent": 2.5,
+    "hardStopPercentFromActualFill": 0.8,
     "trailingActivationNetPercent": 8,
-    "trailingDistancePercent": 1.5
+    "trailingDistancePercent": 1.5,
+    "staticTakeProfit": false
   },
-  "validationSource": {
-    "historicalWindowDays": 90,
-    "productCount": 15,
-    "status": "PROMOTED_TO_PRODUCTION_DEFAULTS"
-  }
+  "rollingEquityProtection": {
+    "windowHours": 24,
+    "killSwitchDrawdownPercent": 3,
+    "cancelOpenOrders": true,
+    "liquidateBotManagedPositions": true,
+    "lockNewEntries": true,
+    "manualResetRequired": true
+  },
+  "aiRole": "BACKGROUND_SCAN_AND_INGESTION_ONLY"
 }
