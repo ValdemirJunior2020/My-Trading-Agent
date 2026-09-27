@@ -4,7 +4,7 @@ import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liv
 import { attachEventStream,publish } from '../events.js'
 import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner } from '../ollama.js'
 import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts,listSpotUsdProducts } from '../coinbase.js'
-import { emergencyStopActive,evaluateLiveOrder,evaluatePaperOrder,getDailyEquityGuard,getRuntimeRiskLimits,saveRuntimeRiskLimits,getRollingRiskState,type PaperOrderRequest } from '../risk.js'
+import { emergencyStopActive,evaluateLiveOrder,evaluatePaperOrder,getDailyEquityGuard,getRuntimeRiskLimits,migrateLegacyLossHaltEmergencyStop,saveRuntimeRiskLimits,getRollingRiskState,type PaperOrderRequest } from '../risk.js'
 import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from '../quant.js'
 import { getPipelineStatus,runFullAgentPipeline } from '../pipeline.js'
 import { getChallengeSnapshot,getTradingChallenge,saveTradingChallenge } from '../challenge.js'
@@ -35,6 +35,7 @@ const readJson=async(req:IncomingMessage)=>{
 }
 
 const statusPayload=async(startedAt:string)=>{
+  migrateLegacyLossHaltEmergencyStop()
   const [ollama,engines]=await Promise.all([getOllamaStatus(),quantStatus()])
   return {
     server:{online:true,version:'0.6.1',startedAt},
