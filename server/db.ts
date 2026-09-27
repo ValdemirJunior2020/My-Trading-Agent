@@ -29,19 +29,6 @@ CREATE TABLE IF NOT EXISTS agent_analysis (
   model TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS paper_trades (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  product_id TEXT NOT NULL,
-  side TEXT NOT NULL,
-  size REAL NOT NULL,
-  price REAL NOT NULL,
-  notional REAL NOT NULL,
-  status TEXT NOT NULL,
-  opened_at TEXT NOT NULL,
-  closed_at TEXT,
-  close_price REAL,
-  pnl REAL
-);
 CREATE TABLE IF NOT EXISTS equity_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   equity_usd REAL NOT NULL,
@@ -75,18 +62,6 @@ export const saveAnalysis = (agentId:string,asset:string,inputSummary:string,out
   db.prepare('INSERT INTO agent_analysis (agent_id,asset,input_summary,output_json,model,created_at) VALUES (?,?,?,?,?,?)')
     .run(agentId,asset,inputSummary,JSON.stringify(output),model,new Date().toISOString())
 }
-export const openPaperTrade = (productId:string,side:string,size:number,price:number) => {
-  const notional=size*price, openedAt=new Date().toISOString()
-  const result=db.prepare('INSERT INTO paper_trades (product_id,side,size,price,notional,status,opened_at) VALUES (?,?,?,?,?,?,?)')
-    .run(productId,side,size,price,notional,'OPEN',openedAt)
-  return {id:Number(result.lastInsertRowid),productId,side,size,price,notional,status:'OPEN',openedAt}
-}
-export const listPaperTrades=()=>db.prepare('SELECT * FROM paper_trades ORDER BY id DESC LIMIT 100').all()
-export const openPaperNotional=():number=>{
-  const row=db.prepare("SELECT COALESCE(SUM(notional),0) total FROM paper_trades WHERE status='OPEN'").get() as {total:number}
-  return Number(row.total||0)
-}
-
 
 export const liveTradeHistory=(limit=200)=>{
   const bounded=Math.max(1,Math.min(1000,Math.floor(limit)))
