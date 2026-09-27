@@ -1,6 +1,6 @@
 import type { IncomingMessage,ServerResponse } from 'node:http'
 import { config,coinbaseConfigured,coinbaseCredentialShape } from '../config.js'
-import { listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liveTradeHistory,clearLiveTradeHistory,restoreLiveTradeHistory,latestLiveOrderEvent,realizedProfitHistory } from '../db.js'
+import { getSetting,listPaperTrades,openPaperTrade,recentEvents,saveAnalysis,setSetting,liveTradeHistory,clearLiveTradeHistory,restoreLiveTradeHistory,latestLiveOrderEvent,realizedProfitHistory } from '../db.js'
 import { attachEventStream,publish } from '../events.js'
 import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner } from '../ollama.js'
 import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts,listSpotUsdProducts } from '../coinbase.js'
