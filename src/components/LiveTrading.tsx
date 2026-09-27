@@ -268,7 +268,7 @@ export function LiveTrading({ language }: Props) {
           <div className="scanner-head">
             <div>
               <span className="eyebrow">MULTI-CRYPTO SCANNER</span>
-              <h2>{pt ? 'Oportunidades de curto prazo com liquidez' : 'Short-term opportunities with liquidity checks'}</h2>
+              <h2>{pt ? 'Compras no mercado • vendas somente das suas moedas' : 'Market-wide buys • sells only from your holdings'}</h2>
             </div>
             <strong>{scanner?.scanned != null ? scanner.scanned + ' scanned' : '—'}</strong>
           </div>
@@ -279,7 +279,7 @@ export function LiveTrading({ language }: Props) {
               {scannerBuy ? <span>{'Opportunity ' + Number(scannerBuy.buyScore || 0).toFixed(0) + '/100'}</span> : null}
             </div>
             <div className={scannerSell ? 'scanner-best sell' : 'scanner-best wait'}>
-              <small>{pt ? 'Melhor venda' : 'Best sell'}</small>
+              <small>{pt ? 'Melhor venda — somente moedas que você possui' : 'Best sell — owned coins only'}</small>
               <strong>{scannerSell ? scannerSell.productId + ' — SELL' : (pt ? 'NENHUMA VENDA AGORA' : 'NO SELL RIGHT NOW')}</strong>
               {scannerSell ? <span>{'Opportunity ' + Number(scannerSell.sellScore || 0).toFixed(0) + '/100'}</span> : null}
             </div>
