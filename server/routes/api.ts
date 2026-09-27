@@ -46,6 +46,7 @@ const statusPayload=async(startedAt:string)=>{
     meanReversion:getMeanReversionEngineStatus(),
     safety:{
       emergencyStop:emergencyStopActive(),
+      lossHaltActive:getSetting('loss_halt_active','false')==='true',
       rollingRisk:getRollingRiskState(),
       mode:config.tradingMode,
       liveTradingEnabled:config.liveTradingEnabled,
@@ -170,6 +171,7 @@ export const handleApiRequest=async(
     const daily=portfolioAvailable?getDailyEquityGuard(totalPortfolioUsd):null
     const rollingRisk=getRollingRiskState()
     const hardStopped=emergencyStopActive()
+    const lossHaltActive=getSetting('loss_halt_active','false')==='true'
     const entryPaused=Boolean(rollingRisk?.paused)
     return json(res,200,{
       ok:true,
@@ -178,6 +180,7 @@ export const handleApiRequest=async(
       automaticTradingEnabled:config.autoTradingEnabled,
       manualApprovalRequired:config.manualApprovalRequired,
       emergencyStop:hardStopped,
+      lossHaltActive,
       autoSafePause:entryPaused,
       rollingRiskGuard:rollingRisk,
       currentPortfolioUsd:portfolioAvailable?totalPortfolioUsd:null,
@@ -191,7 +194,7 @@ export const handleApiRequest=async(
       riskLimits:getRuntimeRiskLimits(),
       liveOrderLimits:{maxLiveOrderUsd:config.maxLiveOrderUsd,minLiveOrderUsd:config.minLiveOrderUsd,cooldownSeconds:config.autoTradeCooldownSeconds,minConfidencePercent:config.autoTradeMinConfidencePercent},
       readyForLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!hardStopped&&portfolioAvailable&&!(daily?.blocked)),
-      readyForAutoLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&config.autoTradingEnabled&&!hardStopped&&!entryPaused&&portfolioAvailable&&!(daily?.blocked)),
+      readyForAutoLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&config.autoTradingEnabled&&!hardStopped&&!lossHaltActive&&!entryPaused&&portfolioAvailable&&!(daily?.blocked)),
       readyForProtectiveExits:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!hardStopped&&portfolioAvailable),
       readyForManualLive:Boolean(String(config.tradingMode).toLowerCase()==='live'&&config.liveTradingEnabled&&!config.autoTradingEnabled&&config.manualApprovalRequired&&!hardStopped&&portfolioAvailable&&!(daily?.blocked))
     })
