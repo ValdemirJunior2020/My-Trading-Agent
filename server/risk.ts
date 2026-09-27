@@ -1,7 +1,7 @@
 import { config } from './config.js'
 import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from './riskCore.js'
 import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
-import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
+import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { publish } from './events.js'
 import { triggerLossGuard } from './lossGuard.js'
@@ -904,6 +904,25 @@ export const tryLimitedLiveExecution = async (opts: {
       maxSlippagePercent: config.maxSlippagePercent,
       warnings: preview.warning || []
     }, 'execution')
+
+    // Re-check the global stop immediately before sending the real order.
+    // This closes the gap where another trade could realize a loss after this
+    // preview passed but before this order reached Coinbase.
+    const finalExecutionGate=assessEmergencyExecutionGate({
+      emergencyStop:emergencyStopActive(),
+      tradingMode:config.tradingMode,
+      liveTradingEnabled:config.liveTradingEnabled,
+      autoTradingEnabled:config.autoTradingEnabled,
+      manualApprovalRequired:config.manualApprovalRequired,
+      lossHaltActive:getSetting('loss_halt_active','false')==='true',
+      protectiveExit:side==='SELL',
+      emergencyStopReason:getSetting('emergency_stop_reason','')
+    })
+    if(!finalExecutionGate.approved){
+      const reason=finalExecutionGate.reasons[0]||'Global execution stop is active'
+      publish('live_order_rejected',{productId,side,notionalUsd,reasons:finalExecutionGate.reasons,reason},'risk')
+      return {executed:false,reason,reasons:finalExecutionGate.reasons,preflight,preview}
+    }
 
     const orderResult = await createMarketOrder({
       productId,
