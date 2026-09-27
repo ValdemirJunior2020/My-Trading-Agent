@@ -12,6 +12,7 @@ import { getAutoRunSettings,saveAutoRunSettings } from '../autorun.js'
 import { scanCryptoMarket } from '../scanner.js'
 import { getMeanReversionEngineStatus } from '../meanReversionEngine.js'
 import { getLossGuardState,resetLossGuard } from '../lossGuard.js'
+import { getLatestLiveStrategyStressTest,runLiveStrategyStressTest } from '../liveStrategyStress.js'
 
 const json=(res:ServerResponse,status:number,body:unknown)=>{
   res.writeHead(status,{
@@ -79,6 +80,8 @@ export const handleApiRequest=async(
   if(path==='/api/agents/pipeline/status'&&req.method==='GET')return json(res,200,getPipelineStatus())
   if(path==='/api/scanner'&&req.method==='GET')return json(res,200,await scanCryptoMarket())
   if(path==='/api/strategy/mean-reversion/status'&&req.method==='GET')return json(res,200,getMeanReversionEngineStatus())
+  if(path==='/api/live/stress-test'&&req.method==='GET')return json(res,200,{result:getLatestLiveStrategyStressTest()})
+  if(path==='/api/live/stress-test'&&req.method==='POST'){const body=await readJson(req) as {productIds?:string[];candleLimit?:number};const result=await runLiveStrategyStressTest({productIds:Array.isArray(body.productIds)?body.productIds:undefined,candleLimit:Number(body.candleLimit||1200)});publish('live_strategy_stress_completed',{scenarioCount:result.scenarioCount,losses:result.losses,wins:result.wins,winRatePercent:result.winRatePercent,lossPatterns:result.lossPatterns},'backtest');return json(res,200,{ok:true,result})}
   if(path==='/api/agents/auto-run'&&req.method==='GET')return json(res,200,getAutoRunSettings())
   if(path==='/api/agents/auto-run'&&req.method==='POST'){
     const body=await readJson(req) as {enabled?:boolean;intervalSeconds?:number;deepResearch?:boolean}
