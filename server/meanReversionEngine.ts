@@ -447,9 +447,21 @@ const handleTicker=async(productId:string,price:number)=>{
   const trailingStopPrice=peak*(1-config.trailingDistancePercent/100)
   const stopLoss=price<=stopPrice
   const trailingHit=trailingActive&&price<=trailingStopPrice
-  if(!stopLoss&&!trailingHit)return
 
-  const reason=stopLoss?'STOP_LOSS':'TRAILING_PROFIT'
+  const estimatedSellGrossUsd=price*targetLot.qty
+  const estimatedSellFeeUsd=estimatedSellGrossUsd*config.backtestMarketFeeRate
+  const estimatedNetProceedsUsd=estimatedSellGrossUsd-estimatedSellFeeUsd
+  const estimatedNetProfitUsd=estimatedNetProceedsUsd-targetLot.costUsd
+  const microProfitReady=
+    estimatedNetProfitUsd+1e-9>=config.smallAccountMinNetProfitUsd
+
+  if(!stopLoss&&!microProfitReady&&!trailingHit)return
+
+  const reason=stopLoss
+    ? 'STOP_LOSS'
+    : microProfitReady
+      ? 'MICRO_NET_PROFIT'
+      : 'TRAILING_PROFIT'
   const exitKey=key+':'+reason
   const retryMs=2000
   const lastAttempt=Number(exitAttemptAt.get(exitKey)||0)
@@ -476,14 +488,20 @@ const handleTicker=async(productId:string,price:number)=>{
     trailingActivationNetPercent:config.trailingActivationNetPercent,
     trailingStopPrice,
     trailingDistancePercent:config.trailingDistancePercent,
+    estimatedSellGrossUsd,
+    estimatedSellFeeUsd,
+    estimatedNetProceedsUsd,
+    estimatedNetProfitUsd,
+    minimumNetProfitUsd:config.smallAccountMinNetProfitUsd,
+    microProfitReady,
     stopPrice,
     stopLossPercent:config.fixedStopLossPercent
   },'strategy')
 
   try{
     // SELL exits are deterministic and safety/risk controlled.
-    // The 8% net threshold activates the trailing mechanism; the actual exit
-    // occurs only after price retreats by the configured trailing distance.
+    // Profit exits are fee-aware: the live Coinbase preview must still show
+    // at least the configured net-dollar profit before the order is sent.
     const confidence=1
 
     const result=await tryLimitedLiveExecution({
@@ -496,6 +514,7 @@ const handleTicker=async(productId:string,price:number)=>{
       avgEntryPrice:targetLot.avgEntryPrice,
       sourceLotOrderId:targetLot.orderId,
       requiredNetProfitPercent:0,
+      requiredNetProfitUsd:stopLoss?0:config.smallAccountMinNetProfitUsd,
       executionSource:'MEAN_REVERSION'
     })
     publish('mean_reversion_exit_result',{
