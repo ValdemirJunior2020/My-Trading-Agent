@@ -11,7 +11,7 @@ type StressTrade={
   price:number
   pnlUsd?:number
   pnlPercent?:number
-  reason?:'TAKE_PROFIT'|'STOP_LOSS'
+  reason?:'TRAILING_PROFIT'|'STOP_LOSS'
   entryRsi?:number
   entryCloseVsLowerPct?:number
   entryThreeCandleReturnPct?:number
