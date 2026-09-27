@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { aggregateStressResults,buildStressWindows,simulateLiveStrategyWindow,type StressCandle } from '../server/liveStrategyStress.js'
+import { confirmedMeanReversionEntryDecision } from '../server/bollingerStrategy.js'
 
 const makeCandles=(count:number,startPrice=100):StressCandle[]=>{
   const out:StressCandle[]=[]
@@ -33,4 +34,40 @@ test('live strategy stress simulation never submits orders and returns determini
   assert.ok(summary.wins>=0)
   assert.ok(summary.losses>=0)
   assert.ok(summary.winRatePercent>=0&&summary.winRatePercent<=100)
+})
+
+
+test('entry confirmation blocks buying while RSI is still <=30',()=>{
+  const result=confirmedMeanReversionEntryDecision({
+    rsiValue:29,
+    previousRsiValue:27,
+    closeVsLowerPct:0.2,
+    crossedBelowLower:false,
+    previousClose:99,
+    previousHigh:100,
+    previousLower:99.5,
+    currentClose:100.5,
+    currentLower:100,
+    threeCandleReturnPct:-0.2
+  })
+  assert.equal(result.ready,false)
+  assert.ok(result.blockers.includes('RSI_NOT_REBOUNDED_ABOVE_30'))
+})
+
+test('entry confirmation allows only a strong rebound setup',()=>{
+  const result=confirmedMeanReversionEntryDecision({
+    rsiValue:33,
+    previousRsiValue:29,
+    closeVsLowerPct:0.2,
+    crossedBelowLower:false,
+    previousClose:99,
+    previousHigh:100,
+    previousLower:99.5,
+    currentClose:100.5,
+    currentLower:100,
+    threeCandleReturnPct:-0.2
+  })
+  assert.equal(result.ready,true)
+  assert.equal(result.rsiRecoveryConfirmed,true)
+  assert.equal(result.brokePreviousHigh,true)
 })
