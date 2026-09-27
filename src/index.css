@@ -236,7 +236,7 @@ body{font-size:14px;line-height:1.45}
 .journal-order-id{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#70aee4!important}
 .journal-context{position:relative;cursor:help}
 .journal-context:hover{color:#d9eefb}
-.journal-context:hover::after{content:attr(title);position:absolute;right:0;bottom:calc(100% + 8px);z-index:20;width:min(420px,65vw);white-space:normal;line-height:1.45;background:#0b1721;border:1px solid #31536a;border-radius:8px;padding:10px 11px;color:#dceaf3;box-shadow:0 16px 36px #0009;font-size:10px}
+.journal-context:hover::after{content:attr(data-help);position:absolute;right:0;bottom:calc(100% + 8px);z-index:20;width:min(420px,65vw);white-space:normal;line-height:1.45;background:#0b1721;border:1px solid #31536a;border-radius:8px;padding:10px 11px;color:#dceaf3;box-shadow:0 16px 36px #0009;font-size:10px}
 
 .journal-pagination{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;color:#7890a5;font-size:9px}
 .journal-pagination>div{display:flex;gap:5px;align-items:center}
