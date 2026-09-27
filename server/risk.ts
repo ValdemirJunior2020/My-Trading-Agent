@@ -47,30 +47,28 @@ export const emergencyStopActive = () => getSetting('emergency_stop', 'false') =
 export const rollingRiskPauseActive = () => getSetting('rolling_risk_pause', 'false') === 'true'
 
 export const initializeSingleLossStopModel=()=>{
-  if(getSetting('single_loss_stop_model_v1_initialized','false')==='true')return false
+  if(getSetting('single_loss_stop_model_v2_initialized','false')==='true')return false
 
   const hadLossHalt=getSetting('loss_halt_active','false')==='true'
   const hadEmergency=emergencyStopActive()
   const previousReason=getSetting('emergency_stop_reason','')
 
-  // One-time cleanup of the old persisted stop state. From this version onward,
-  // a NEW realized losing SELL sets loss_halt_active and blocks NEW BUYs only.
+  // One-time cleanup of ALL persisted legacy stop state. This is intentionally
+  // unconditional because older versions could leave emergency_stop=true after
+  // already clearing loss_halt_active.
   setSetting('loss_halt_active','false')
   setSetting('loss_halt_triggered_at','')
   setSetting('loss_halt_product','')
   setSetting('loss_halt_amount_usd','')
+  setSetting('emergency_stop','false')
+  setSetting('emergency_stop_reason','')
 
-  if(hadLossHalt){
-    setSetting('emergency_stop','false')
-    setSetting('emergency_stop_reason','')
-  }
-
-  setSetting('single_loss_stop_model_v1_initialized','true')
+  setSetting('single_loss_stop_model_v2_initialized','true')
   publish('single_loss_stop_model_initialized',{
     clearedLegacyLossHalt:hadLossHalt,
-    clearedLegacyEmergency:hadLossHalt&&hadEmergency,
+    clearedLegacyEmergency:hadEmergency,
     previousEmergencyStopReason:previousReason||null,
-    behavior:'NEXT realized loss blocks new BUYs; existing SELL exits stay enabled.'
+    behavior:'NEXT realized loss blocks new BUYs; existing SELL exits stay enabled. Manual emergency stop remains available after initialization.'
   },'risk')
   return true
 }
