@@ -4,7 +4,7 @@ import { getSetting,recentEvents,saveAnalysis,setSetting,liveTradeHistory,clearL
 import { attachEventStream,publish } from '../events.js'
 import { getOllamaStatus,runAgent,runToolCopilot,runToolCopilotPlanner } from '../ollama.js'
 import { getCandles,getMarketTrades,getProduct,getProductBook,listAccounts,listSpotUsdProducts } from '../coinbase.js'
-import { emergencyStopActive,evaluateLiveOrder,getDailyEquityGuard,getRuntimeRiskLimits,migrateLegacyLossHaltEmergencyStop,saveRuntimeRiskLimits,getRollingRiskState } from '../risk.js'
+import { emergencyStopActive,evaluateLiveOrder,getDailyEquityGuard,getRuntimeRiskLimits,migrateLegacyLossHaltEmergencyStop,saveRuntimeRiskLimits,getRollingRiskState,resetRollingKillSwitchLock } from '../risk.js'
 import { quantStatus,runNautilusSmoke,runRdAgent,runVectorbtSma } from '../quant.js'
 import { getPipelineStatus,runFullAgentPipeline } from '../pipeline.js'
 import { getChallengeSnapshot,getTradingChallenge,saveTradingChallenge } from '../challenge.js'
@@ -105,7 +105,7 @@ export const handleApiRequest=async(
   if(path==='/api/live/profits'&&req.method==='GET')return json(res,200,realizedProfitHistory())
   if(path==='/api/live/history'&&req.method==='DELETE'){const result=clearLiveTradeHistory();return json(res,200,{ok:true,...result})}
   if(path==='/api/live/history/restore'&&req.method==='POST'){const result=restoreLiveTradeHistory();return json(res,200,{ok:true,...result})}
-  if(path==='/api/emergency-stop'&&req.method==='POST'){const body=await readJson(req) as {active?:boolean};const active=Boolean(body.active);if(!active&&getLossGuardState().active)resetLossGuard();setSetting('emergency_stop',String(active));setSetting('emergency_stop_reason',active?'MANUAL':'');const event=publish(active?'emergency_stop_activated':'emergency_stop_cleared',{active},'manager');return json(res,200,{ok:true,active,event,lossGuard:getLossGuardState()})}
+  if(path==='/api/emergency-stop'&&req.method==='POST'){const body=await readJson(req) as {active?:boolean};const active=Boolean(body.active);if(!active){resetLossGuard();resetRollingKillSwitchLock()}setSetting('emergency_stop',String(active));setSetting('emergency_stop_reason',active?'MANUAL':'');const event=publish(active?'emergency_stop_activated':'emergency_stop_cleared',{active},'manager');return json(res,200,{ok:true,active,event,lossGuard:getLossGuardState(),rollingRisk:getRollingRiskState()})}
   if(path==='/api/agents/run'&&req.method==='POST'){const body=await readJson(req) as {agentId?:string;asset?:string;summary?:string};const agentId=String(body.agentId||''),asset=String(body.asset||'UNKNOWN'),summary=String(body.summary||'');if(!agentId||!summary)return json(res,400,{error:'agentId and summary are required.'});publish('agent_started',{asset},agentId);const result=await runAgent(agentId,asset,summary);saveAnalysis(agentId,asset,summary,result.output,result.model);publish('agent_completed',{asset,output:result.output},agentId);return json(res,200,result)}
   if(path==='/api/agents/pipeline/status'&&req.method==='GET')return json(res,200,getPipelineStatus())
   if(path==='/api/scanner'&&req.method==='GET')return json(res,200,await scanCryptoMarket())
