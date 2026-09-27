@@ -208,7 +208,7 @@ const strategyHoverHelp=(event:any,pt:boolean)=>{
   }
   return pt
     ? 'Este evento pertence ao motor determinístico atual: compras dinâmicas em passos de $5 conforme o caixa disponível, saída somente quando a prévia cobre todas as taxas e deixa pelo menos $0,02 líquido, stop de 0,8%, primeiro prejuízo realizado = desligamento total e kill switch de 3%/24h.'
-    : 'This event belongs to the current deterministic engine: dynamic $5-step buys based on available cash, fee-aware exits only when previewed proceeds cover all costs plus at least $0.02 net, 0.8% stop, first realized loss = full shutdown, and a 3%/24h kill switch.'
+    : 'This event belongs to the current deterministic engine: dynamic $5-step buys based on available cash, fee-aware exits only when previewed proceeds cover all costs plus at least $0.10 net, 0.8% stop, first realized loss = full shutdown, and a 3%/24h kill switch.'
 }
 
 export function TradeJournal({language}:Props){
