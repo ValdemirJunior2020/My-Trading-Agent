@@ -186,3 +186,32 @@ test('profit-first entry rejects excessive fee economics',()=>{
   assert.equal(result.approved,false)
   assert.ok(result.requiredGrossProfitPercent>4)
 })
+
+
+test('capital preservation blocks another BUY after any realized loss',()=>{
+  const result=assessCapitalPreservationBuy({
+    enabled:true,
+    realizedPnlTodayUsd:-0.01,
+    realizedLossTodayUsd:0.01,
+    openBotPositions:0
+  })
+  assert.equal(result.approved,false)
+  assert.match(result.reasons.join(' '),/realized bot loss/i)
+})
+
+test('capital preservation allows BUY only with no loss and no open bot position',()=>{
+  const clear=assessCapitalPreservationBuy({
+    enabled:true,
+    realizedPnlTodayUsd:0,
+    realizedLossTodayUsd:0,
+    openBotPositions:0
+  })
+  const openPosition=assessCapitalPreservationBuy({
+    enabled:true,
+    realizedPnlTodayUsd:0,
+    realizedLossTodayUsd:0,
+    openBotPositions:1
+  })
+  assert.equal(clear.approved,true)
+  assert.equal(openPosition.approved,false)
+})
