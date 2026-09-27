@@ -17,8 +17,10 @@ const storedNumber = (key: string, fallback: number) => {
 }
 
 export const getRuntimeRiskLimits = (): RuntimeRiskLimits => ({
-  maxPositionPercent: storedNumber('risk_max_position_percent', config.maxPositionPercent),
-  maxTotalExposurePercent: storedNumber('risk_max_total_exposure_percent', config.maxTotalExposurePercent),
+  // Production sizing is intentionally fixed here so stale saved UI settings
+  // cannot silently re-enable the old 5% / 25% limits.
+  maxPositionPercent: config.maxPositionPercent,
+  maxTotalExposurePercent: config.maxTotalExposurePercent,
   maxDailyLossPercent: storedNumber('risk_max_daily_loss_percent', config.maxDailyLossPercent)
 })
 
@@ -810,11 +812,16 @@ export const tryLimitedLiveExecution = async (opts: {
     const quoteMax=Number(productInfo?.quote_max_size||Infinity)
     const quoteIncrement=Number(productInfo?.quote_increment||0.01)
     const buyStepUsd=Math.max(0.01,Number(config.buyStepUsd||5))
-    const requestedBuyUsd=Number(opts.requestedBuyUsd||availableUsd)
+    const strategyTargetUsd=Math.max(
+      buyStepUsd,
+      Math.floor(((totalPortfolioUsd*(config.targetBuyPercent/100))+1e-9)/buyStepUsd)*buyStepUsd
+    )
+    const requestedBuyUsd=Number(opts.requestedBuyUsd||strategyTargetUsd)
     const remainingExposureUsd=Math.max(0,maxExposureUsd-botExposure.totalBotExposureUsd)
     const rawAffordableUsd=Math.min(
       availableUsd,
-      requestedBuyUsd>0?requestedBuyUsd:availableUsd,
+      requestedBuyUsd>0?requestedBuyUsd:strategyTargetUsd,
+      strategyTargetUsd,
       maxFromPercent,
       remainingExposureUsd,
       quoteMax
