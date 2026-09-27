@@ -1,5 +1,5 @@
 import { config } from './config.js'
-import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessMarketEntryEconomics,calculateRealizedSellMetrics } from './riskCore.js'
+import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,calculateRealizedSellMetrics } from './riskCore.js'
 import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
@@ -725,17 +725,17 @@ export const tryLimitedLiveExecution = async (opts: {
         Number(preview.quote_size||0),
         Number(notionalUsd||0)
       )
-      const entryEconomics=assessMarketEntryEconomics({
+      const entryEconomics=assessProfitFirstEntryEconomics({
         buyNotionalUsd:buyNotionalForFee,
         buyCommissionUsd,
-        stopLossPercent:config.fixedStopLossPercent,
-        maxNetStopLossPercent:config.fixedStopLossPercent,
-        maxSlippagePercent:config.maxSlippagePercent
+        takeProfitPercent:config.takeProfitPercent,
+        maxSlippagePercent:config.maxSlippagePercent,
+        maxRequiredGrossProfitPercent:config.maxRequiredGrossProfitPercent
       })
 
       if(!entryEconomics.approved){
         const reason=
-          'BUY blocked: current market-order fees make the configured stop-loss exceed the allowed net loss'
+          'BUY blocked: fees make the required gross move too large for the profit-first setup'
         publish('live_order_preview_rejected',{
           productId,
           side,
@@ -866,6 +866,42 @@ export const tryLimitedLiveExecution = async (opts: {
 
     setSetting('live_last_order_at_' + productId, placedAt)
     setSetting('live_last_order_id_' + productId, orderId)
+
+    if(
+      side==='SELL' &&
+      realizedNetProfitUsd!=null &&
+      Number.isFinite(realizedNetProfitUsd) &&
+      realizedNetProfitUsd<0
+    ){
+      setSetting('loss_halt_active','true')
+      setSetting('emergency_stop','true')
+      setSetting('loss_halt_triggered_at',placedAt)
+      setSetting('loss_halt_product',productId)
+      setSetting('loss_halt_amount_usd',String(realizedNetProfitUsd))
+
+      let canceledOrderIds:string[]=[]
+      try{
+        const openOrders=await listOpenOrders()
+        const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
+        if(ids.length){
+          await cancelOrders(ids)
+          canceledOrderIds=ids
+        }
+      }catch(error){
+        publish('loss_halt_cancel_failed',{
+          productId,
+          error:error instanceof Error?error.message:String(error)
+        },'risk')
+      }
+
+      publish('loss_halt_triggered',{
+        productId,
+        realizedNetProfitUsd,
+        realizedNetProfitPercent,
+        message:'ANY realized loss hard-stops automatic live trading until manually reset.',
+        canceledOrderIds
+      },'risk')
+    }
 
     publish('live_order_placed', {
       productId,
