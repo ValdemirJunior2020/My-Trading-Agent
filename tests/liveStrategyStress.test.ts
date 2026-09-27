@@ -48,7 +48,9 @@ test('entry confirmation blocks buying while RSI is still in the 30-35 recovery 
     previousLower:99.5,
     currentClose:100.5,
     currentLower:100,
-    threeCandleReturnPct:-0.2
+    threeCandleReturnPct:-0.2,
+    currentVolume:180,
+    averageVolume:100
   })
   assert.equal(result.ready,false)
   assert.ok(result.blockers.includes('RSI_NOT_REBOUNDED_ABOVE_35'))
@@ -65,10 +67,32 @@ test('entry confirmation allows only a strong rebound setup',()=>{
     previousLower:99.5,
     currentClose:100.5,
     currentLower:100,
-    threeCandleReturnPct:-0.2
+    threeCandleReturnPct:-0.2,
+    currentVolume:180,
+    averageVolume:100
   })
   assert.equal(result.ready,true)
   assert.equal(result.rsiRecoveryConfirmed,true)
   assert.ok(result.rsiRecoveryPoints>=5)
   assert.equal(result.brokePreviousHigh,true)
+})
+
+
+test('volume confirmation blocks a rebound without 1.5x participation',()=>{
+  const result=confirmedMeanReversionEntryDecision({
+    rsiValue:36,
+    previousRsiValue:29,
+    closeVsLowerPct:0.2,
+    crossedBelowLower:false,
+    previousClose:99,
+    previousHigh:100,
+    previousLower:99.5,
+    currentClose:100.5,
+    currentLower:100,
+    threeCandleReturnPct:-0.2,
+    currentVolume:120,
+    averageVolume:100
+  })
+  assert.equal(result.ready,false)
+  assert.ok(result.blockers.includes('VOLUME_REBOUND_BELOW_1_5X'))
 })
