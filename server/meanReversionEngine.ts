@@ -96,6 +96,55 @@ const appendClosed=(state:ProductState,candle:Candle)=>{
   state.closed=[...map.values()].sort((a,b)=>a.start-b.start).slice(-MAX_HISTORY)
 }
 
+const buildClosedTenMinuteBars=(fiveMinuteCandles:Candle[])=>{
+  const buckets=new Map<number,Candle[]>()
+  for(const candle of fiveMinuteCandles){
+    const bucketStart=Math.floor(candle.start/600)*600
+    const rows=buckets.get(bucketStart)||[]
+    rows.push(candle)
+    buckets.set(bucketStart,rows)
+  }
+
+  const result:Candle[]=[]
+  for(const [bucketStart,rows] of [...buckets.entries()].sort((a,b)=>a[0]-b[0])){
+    const ordered=rows.sort((a,b)=>a.start-b.start)
+    const first=ordered.find(row=>row.start===bucketStart)
+    const second=ordered.find(row=>row.start===bucketStart+300)
+    if(!first||!second)continue
+    result.push({
+      start:bucketStart,
+      open:first.open,
+      high:Math.max(first.high,second.high),
+      low:Math.min(first.low,second.low),
+      close:second.close,
+      volume:first.volume+second.volume
+    })
+  }
+  return result
+}
+
+const tenMinuteMacroContext=(fiveMinuteCandles:Candle[])=>{
+  const bars=buildClosedTenMinuteBars(fiveMinuteCandles)
+  if(bars.length<config.macroBollingerPeriod)return {
+    ready:false,
+    reason:'NOT_ENOUGH_CLOSED_10M_BARS',
+    candleCount:bars.length,
+    latestClose:null,
+    middleBand:null
+  }
+  const closes=bars.map(row=>row.close)
+  const latestClose=closes.at(-1)!
+  const middleBand=avg(closes.slice(-config.macroBollingerPeriod))
+  return {
+    ready:latestClose>middleBand,
+    reason:latestClose>middleBand?'ABOVE_10M_BOLLINGER_MIDDLE':'NOT_ABOVE_10M_BOLLINGER_MIDDLE',
+    candleCount:bars.length,
+    latestClose,
+    middleBand,
+    latestStart:bars.at(-1)!.start
+  }
+}
+
 const refreshPosition=(productId:string,state:ProductState,force=false)=>{
   if(!force&&Date.now()-state.lastPositionRefreshAt<5000)return state.position
   state.position=getBotManagedPosition(productId)
@@ -104,38 +153,22 @@ const refreshPosition=(productId:string,state:ProductState,force=false)=>{
 }
 
 const smallAccountBuyIsExecutable=async(productId:string)=>{
-  if(!config.smallAccountMode)return {ok:true}
   try{
-    const [product,accounts,snapshot]=await Promise.all([
+    const [product,accounts]=await Promise.all([
       getProduct(productId),
-      listAccounts(),
-      getChallengeSnapshot()
+      listAccounts()
     ])
-    const limits=getRuntimeRiskLimits()
-    const totalPortfolioUsd=Number(snapshot.currentPortfolioUsd||0)
     const usdAccount=(accounts as any[]).find((a:any)=>String(a.currency||'').toUpperCase()==='USD')
     const availableUsd=Number(usdAccount?.availableBalance?.value??usdAccount?.availableBalance??0)||0
     const quoteMin=Math.max(config.minLiveOrderUsd,Number((product as any)?.quote_min_size||0))
-    const quoteIncrement=Number((product as any)?.quote_increment||0.01)
-    const minExecutableQuoteUsd=quoteIncrement>0
-      ? Math.ceil((quoteMin-Number.EPSILON)/quoteIncrement)*quoteIncrement
-      : quoteMin
-    const normalRiskSizedBuyUsd=
-      totalPortfolioUsd>0?totalPortfolioUsd*(limits.maxPositionPercent/100):0
-    const smallAccountOverrideUsd=
-      totalPortfolioUsd>0?Math.min(config.smallAccountMaxBuyUsd,totalPortfolioUsd*0.10):0
-    const safeMaxBuyUsd=Math.min(
-      availableUsd,
-      config.maxLiveOrderUsd,
-      Math.max(normalRiskSizedBuyUsd,smallAccountOverrideUsd)
-    )
+    const quoteMax=Number((product as any)?.quote_max_size||Infinity)
+    const requiredUsd=config.maxLiveOrderUsd
     return {
-      ok:safeMaxBuyUsd+1e-8>=minExecutableQuoteUsd,
-      quoteMin,
-      minExecutableQuoteUsd,
-      safeMaxBuyUsd,
+      ok:availableUsd+1e-8>=requiredUsd&&requiredUsd+1e-8>=quoteMin&&requiredUsd<=quoteMax+1e-8,
+      requiredUsd,
       availableUsd,
-      totalPortfolioUsd
+      quoteMin,
+      quoteMax
     }
   }catch(error){
     return {ok:false,error:error instanceof Error?error.message:String(error)}
@@ -193,93 +226,29 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
   appendClosed(state,candle)
 
   if(nextWeekBreakoutActive()){
-    const position=refreshPosition(productId,state,true)
-    let breakout:any
     try{
-      breakout=await evaluateBreakoutConfirmation(productId,state.closed)
+      const breakout=await evaluateBreakoutConfirmation(productId,state.closed)
+      publish('next_week_breakout_candle',{
+        productId,
+        candleStart:candle.start,
+        candleClose:candle.close,
+        ready:Boolean(breakout.ready),
+        crossedAboveUpper:Boolean(breakout.crossedAboveUpper),
+        volumeRatio20:Number(breakout.volumeRatio20||0),
+        discovery:breakout.discovery||null,
+        executionMode:'ADVISORY_ONLY',
+        rules:NEXT_WEEK_BREAKOUT
+      },'strategy')
     }catch(error){
       publish('next_week_breakout_scan_failed',{
         productId,
         error:error instanceof Error?error.message:String(error)
       },'strategy')
-      return
     }
-
-    publish('next_week_breakout_candle',{
-      productId,
-      candleStart:candle.start,
-      candleClose:candle.close,
-      positionOpen:position.qty>0,
-      ready:Boolean(breakout.ready),
-      crossedAboveUpper:Boolean(breakout.crossedAboveUpper),
-      volumeRatio20:Number(breakout.volumeRatio20||0),
-      discovery:breakout.discovery||null,
-      rules:NEXT_WEEK_BREAKOUT
-    },'strategy')
-
-    if(position.qty>0||!breakout.ready)return
-
-    const executable=await smallAccountBuyIsExecutable(productId)
-    if(!executable.ok){
-      publish('next_week_breakout_buy_skipped',{
-        productId,
-        reason:'CURRENT_RISK_LIMITS_DO_NOT_ALLOW_ENTRY',
-        ...executable
-      },'strategy')
-      return
-    }
-
-    const lock='BUY:'+productId
-    if(executionLocks.has(lock))return
-    executionLocks.add(lock)
-    try{
-      const approval=await getAgentApproval(
-        productId,
-        'BUY',
-        'Next-week breakout: 24h volume >=2x seven-day daily average, 24h move 8-18%, 5m upper-Bollinger breakout, and 5m volume >=2.5x VMA20.',
-        'NEXT_WEEK_BREAKOUT'
-      )
-      if(!approval.approved){
-        publish('next_week_breakout_blocked_by_agents',{
-          productId,
-          decision:approval.decision,
-          confidence:approval.confidence
-        },'decision')
-        return
-      }
-
-      const result=await tryLimitedLiveExecution({
-        productId,
-        decision:'BUY_CANDIDATE',
-        confidence:approval.confidence,
-        triggerPrice:candle.close,
-        requestedBuyUsd:NEXT_WEEK_BREAKOUT.requestedAllocationUsd,
-        executionSource:'NEXT_WEEK_BREAKOUT'
-      })
-      publish('next_week_breakout_entry_result',{productId,result,rules:NEXT_WEEK_BREAKOUT},'execution')
-      if(result?.executed){
-        state.position={
-          qty:Number(result.executedQty||0),
-          avgEntryPrice:Number(result.actualFillPrice||0)
-        }
-        state.lastPositionRefreshAt=Date.now()
-        publish('next_week_breakout_position_opened',{
-          productId,
-          orderId:result.orderId,
-          entryPrice:state.position.avgEntryPrice,
-          quantity:state.position.qty,
-          requestedAllocationUsd:NEXT_WEEK_BREAKOUT.requestedAllocationUsd,
-          note:'Actual order size remains capped by all existing live risk limits.'
-        },'execution')
-      }
-    }finally{
-      executionLocks.delete(lock)
-    }
-    return
   }
 
   const closes=state.closed.map(x=>x.close)
-  if(closes.length<Math.max(config.bbPeriod+1,config.rsiPeriod+1))return
+  if(closes.length<Math.max(config.bbPeriod+1,config.rsiPeriod+1,config.macroBollingerPeriod*2))return
 
   const currentLower=lowerBand(closes)
   const previousCloses=closes.slice(0,-1)
@@ -291,21 +260,23 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
 
   if(currentLower==null||previousLower==null||currentRsi==null||previousRsi==null||previousClose==null||!previousCandle)return
 
-  const crossedBelow=
-    previousClose>=previousLower &&
-    candle.close<currentLower
+  const closeBelowLowerBand=candle.close<currentLower
   const closeVsLowerPct=currentLower>0
     ? ((candle.close-currentLower)/currentLower)*100
     : Infinity
   const threeLookbackClose=closes.at(-4)??previousClose
   const threeCandleReturnPct=threeLookbackClose>0?((candle.close-threeLookbackClose)/threeLookbackClose)*100:0
-  const priorVolumes=state.closed.slice(-21,-1).map(x=>Number(x.volume||0)).filter(v=>v>0)
-  const averageVolume=priorVolumes.length?avg(priorVolumes):0
+  const priorVolumes=state.closed
+    .slice(-(config.entryVolumeLookbackCandles+1),-1)
+    .map(x=>Number(x.volume||0))
+    .filter(v=>v>0)
+  const averageVolume=priorVolumes.length===config.entryVolumeLookbackCandles?avg(priorVolumes):0
+
   const entryDecision=confirmedMeanReversionEntryDecision({
     rsiValue:currentRsi,
     previousRsiValue:previousRsi,
     closeVsLowerPct,
-    crossedBelowLower:crossedBelow,
+    crossedBelowLower:closeBelowLowerBand,
     previousClose,
     previousHigh:previousCandle.high,
     previousLower,
@@ -315,42 +286,43 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     currentVolume:Number(candle.volume||0),
     averageVolume
   })
-  const oversold=entryDecision.oversold
+  const macro=tenMinuteMacroContext(state.closed)
   const position=refreshPosition(productId,state,true)
+  const deterministicReady=Boolean(entryDecision.ready&&macro.ready)
 
   publish('mean_reversion_candle_closed',{
     productId,
+    timestampIso:new Date().toISOString(),
+    monotonicNs:process.hrtime.bigint().toString(),
     candleStart:candle.start,
     candleClose:candle.close,
     bollingerLower:currentLower,
     bollingerMiddle:avg(closes.slice(-config.bbPeriod)),
-    closeVsLowerPct,
-    proximityThresholdPercent:entryDecision.proximityThresholdPercent,
-    mode:entryDecision.mode,
+    closeBelowLowerBand,
     rsi:currentRsi,
-    previousRsi,
-    rsiRecoveryPoints:entryDecision.rsiRecoveryPoints,
-    crossedBelowLowerBand:crossedBelow,
-    nearLowerBand:entryDecision.nearLowerBand,
-    rsiOversold:oversold,
+    rsiThresholdExclusive:config.entryRsiStrictlyBelow,
     positionOpen:position.qty>0,
-    confirmedReclaim:entryDecision.reclaimedLowerBand,
-    candleRecovered:entryDecision.candleRecovered,
-    brokePreviousHigh:entryDecision.brokePreviousHigh,
-    threeCandleReturnPct,
-    entryBlockers:entryDecision.blockers,
     currentVolume:Number(candle.volume||0),
-    averageVolume,
-    volumeRatio:entryDecision.volumeRatio
+    averageVolume20:averageVolume,
+    volumeRatio:entryDecision.volumeRatio,
+    minimumVolumeRatio:config.entryMinimumVolumeRatio,
+    macro10m:macro,
+    deterministicReady,
+    entryBlockers:[
+      ...entryDecision.blockers,
+      ...(macro.ready?[]:['TEN_MINUTE_MACRO_FILTER_BLOCKED'])
+    ]
   },'strategy')
 
-  if(position.qty>0||!entryDecision.ready)return
+  if(position.qty>0||!deterministicReady)return
 
   const executable=await smallAccountBuyIsExecutable(productId)
   if(!executable.ok){
     publish('mean_reversion_buy_skipped',{
       productId,
-      reason:'SMALL_ACCOUNT_MINIMUM_DOES_NOT_FIT',
+      timestampIso:new Date().toISOString(),
+      monotonicNs:process.hrtime.bigint().toString(),
+      reason:'EXACT_100_USD_ALLOCATION_NOT_EXECUTABLE',
       ...executable
     },'strategy')
     return
@@ -358,24 +330,22 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
 
   publish('mean_reversion_buy_signal',{
     productId,
+    timestampIso:new Date().toISOString(),
+    monotonicNs:process.hrtime.bigint().toString(),
     triggerPrice:candle.close,
     candleStart:candle.start,
     lowerBand:currentLower,
     rsi:currentRsi,
+    volumeRatio:entryDecision.volumeRatio,
+    macro10m:macro,
     rules:{
-      candleClosed:true,
-      mode:entryDecision.mode,
-      closeBelowLowerBand:crossedBelow,
-      nearLowerBand:entryDecision.nearLowerBand,
-      proximityThresholdPercent:entryDecision.proximityThresholdPercent,
-      previousRsiMustBeAtOrBelow:30,
-      currentRsiMustReboundAbove:30,
-      currentRsiMax:36,
-      minimumRsiRecoveryPoints:1,
-      confirmedLowerBandReclaim:true,
-      closeAbovePreviousHighRequired:true,
-      maxThreeCandleDropPercent:0.5,
-      minimumVolumeRatio:1.5
+      macro10mCloseAboveBollingerMiddle:true,
+      fiveMinuteCloseStrictlyBelowLowerBand:true,
+      currentRsiStrictlyBelow:config.entryRsiStrictlyBelow,
+      minimumVolumeRatio:config.entryMinimumVolumeRatio,
+      volumeLookbackCandles:config.entryVolumeLookbackCandles,
+      positionSizeUsd:config.maxLiveOrderUsd,
+      maxEntrySlippagePercent:config.maxSlippagePercent
     }
   },'strategy')
 
@@ -383,28 +353,20 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
   if(executionLocks.has(lock))return
   executionLocks.add(lock)
   try{
-    const approval=await getAgentApproval(
-      productId,
-      'BUY',
-      'Closed 5-minute candle confirmed a low-bound RSI pivot from <=30 to >30 and <=36, lower-Bollinger reclaim, bullish break, and at least 1.5x normal volume.'
-    )
-    if(!approval.approved){
-      publish('mean_reversion_buy_blocked_by_agents',{
-        productId,
-        decision:approval.decision,
-        confidence:approval.confidence
-      },'decision')
-      return
-    }
-
     const result=await tryLimitedLiveExecution({
       productId,
       decision:'BUY_CANDIDATE',
-      confidence:approval.confidence,
+      confidence:1,
       triggerPrice:candle.close,
+      requestedBuyUsd:config.maxLiveOrderUsd,
       executionSource:'MEAN_REVERSION'
     })
-    publish('mean_reversion_entry_result',{productId,result},'execution')
+    publish('mean_reversion_entry_result',{
+      productId,
+      timestampIso:new Date().toISOString(),
+      monotonicNs:process.hrtime.bigint().toString(),
+      result
+    },'execution')
     if(result?.executed){
       state.position={
         qty:Number(result.executedQty||0),
@@ -413,11 +375,14 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
       state.lastPositionRefreshAt=Date.now()
       publish('mean_reversion_position_opened',{
         productId,
+        timestampIso:new Date().toISOString(),
+        monotonicNs:process.hrtime.bigint().toString(),
         orderId:result.orderId,
         entryPrice:state.position.avgEntryPrice,
         quantity:state.position.qty,
         hardStopPrice:state.position.avgEntryPrice*(1-config.fixedStopLossPercent/100),
-        stopLossPercent:config.fixedStopLossPercent
+        stopLossPercent:config.fixedStopLossPercent,
+        strategyControl:'DETERMINISTIC_SERVER_ONLY'
       },'execution')
     }
   }finally{
