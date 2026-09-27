@@ -249,9 +249,8 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
   const macro=tenMinuteMacroContext(state.closed)
   const position=refreshPosition(productId,state,true)
   const globalExposure=getOpenBotExposureSummary()
-  const globalSlotOccupied=globalExposure.openBotPositions>=config.maxOpenBotPositions
-  const globalSlotProductIds=globalExposure.positions.map(row=>row.productId)
-  const deterministicReady=Boolean(entryDecision.ready&&macro.ready&&!globalSlotOccupied)
+  const openBotProductIds=globalExposure.positions.map(row=>row.productId)
+  const deterministicReady=Boolean(entryDecision.ready&&macro.ready&&position.qty<=0)
 
   publish('mean_reversion_candle_closed',{
     productId,
@@ -265,10 +264,8 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     rsi:currentRsi,
     rsiThresholdExclusive:config.entryRsiStrictlyBelow,
     positionOpen:position.qty>0,
-    globalSlotOccupied,
-    globalSlotProductIds,
+    openBotProductIds,
     globalOpenBotPositions:globalExposure.openBotPositions,
-    globalMaxOpenBotPositions:config.maxOpenBotPositions,
     currentVolume:Number(candle.volume||0),
     averageVolume20:averageVolume,
     volumeRatio:entryDecision.volumeRatio,
@@ -278,11 +275,11 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     entryBlockers:[
       ...entryDecision.blockers,
       ...(macro.ready?[]:['TEN_MINUTE_MACRO_FILTER_BLOCKED']),
-      ...(globalSlotOccupied?['GLOBAL_POSITION_SLOT_OCCUPIED']:[])
+      ...(position.qty>0?['PRODUCT_ALREADY_HAS_OPEN_BOT_POSITION']:[])
     ]
   },'strategy')
 
-  if(position.qty>0||!deterministicReady)return
+  if(!deterministicReady)return
 
   const executable=await smallAccountBuyIsExecutable(productId)
   if(!executable.ok){
@@ -755,7 +752,7 @@ export const startMeanReversionEngine=async()=>{
       trailingActivationNetPercent:config.trailingActivationNetPercent,
       trailingDistancePercent:config.trailingDistancePercent,
       minimumVolumeRatio:config.entryMinimumVolumeRatio,
-      maxConcurrentPositions:config.maxOpenBotPositions,
+      concurrentPositionPolicy:'MULTIPLE_DIFFERENT_PRODUCTS_ALLOWED',
       buyStepUsd:config.buyStepUsd,
       maxSlippagePercent:config.maxSlippagePercent,
       rollingKillSwitchPercent:config.rollingKillSwitchPercent
