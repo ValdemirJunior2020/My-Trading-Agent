@@ -37,7 +37,7 @@ test('live strategy stress simulation never submits orders and returns determini
 })
 
 
-test('entry confirmation blocks buying while RSI is still in the 30-35 recovery zone',()=>{
+test('entry confirmation accepts a low-bound RSI pivot above 30',()=>{
   const result=confirmedMeanReversionEntryDecision({
     rsiValue:33,
     previousRsiValue:29,
@@ -52,13 +52,13 @@ test('entry confirmation blocks buying while RSI is still in the 30-35 recovery 
     currentVolume:180,
     averageVolume:100
   })
-  assert.equal(result.ready,false)
-  assert.ok(result.blockers.includes('RSI_RECOVERY_NOT_CONFIRMED'))
+  assert.equal(result.ready,true)
+  assert.equal(result.rsiRecoveryConfirmed,true)
 })
 
 test('entry confirmation allows only a strong rebound setup',()=>{
   const result=confirmedMeanReversionEntryDecision({
-    rsiValue:36,
+    rsiValue:35,
     previousRsiValue:29,
     closeVsLowerPct:0.2,
     crossedBelowLower:false,
@@ -95,4 +95,24 @@ test('volume confirmation blocks a rebound without 1.5x participation',()=>{
   })
   assert.equal(result.ready,false)
   assert.ok(result.blockers.includes('VMA20_VOLUME_BELOW_REQUIRED_RATIO'))
+})
+
+
+test('entry confirmation blocks RSI above 36 to avoid chase entries',()=>{
+  const result=confirmedMeanReversionEntryDecision({
+    rsiValue:37,
+    previousRsiValue:29,
+    closeVsLowerPct:0.2,
+    crossedBelowLower:false,
+    previousClose:99,
+    previousHigh:100,
+    previousLower:99.5,
+    currentClose:100.5,
+    currentLower:100,
+    threeCandleReturnPct:-0.2,
+    currentVolume:180,
+    averageVolume:100
+  })
+  assert.equal(result.ready,false)
+  assert.ok(result.blockers.includes('RSI_RECOVERY_NOT_CONFIRMED'))
 })
