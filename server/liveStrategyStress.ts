@@ -238,7 +238,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     wins,
     losses,
     netPnlUsd,
-    stoppedByLossGuard:false,
+    stoppedByLossGuard,
     noTrade:trades.every(t=>t.side!=='BUY')
   }
 }
