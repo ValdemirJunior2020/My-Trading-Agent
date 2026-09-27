@@ -6,6 +6,7 @@ import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopAct
 import { getChallengeSnapshot } from './challenge.js'
 import { confirmedMeanReversionEntryDecision, getBotManagedLots, getBotManagedPosition } from './bollingerStrategy.js'
 import { getPipelineStatus, runFullAgentPipeline } from './pipeline.js'
+import { NEXT_WEEK_BREAKOUT,breakoutHardStopPrice,breakoutTrailingActivationPrice,breakoutTrailingStopPrice,evaluateBreakoutConfirmation,nextWeekBreakoutActive } from './velocityBreakout.js'
 
 type Candle={
   start:number
@@ -29,6 +30,7 @@ const MAX_HISTORY=100
 const states=new Map<string,ProductState>()
 const executionLocks=new Set<string>()
 const exitAttemptAt=new Map<string,number>()
+const breakoutPeaks=new Map<string,number>()
 
 let ws:WebSocket|null=null
 let reconnectTimer:NodeJS.Timeout|null=null
@@ -139,7 +141,7 @@ const smallAccountBuyIsExecutable=async(productId:string)=>{
   }
 }
 
-const getAgentApproval=async(productId:string,intent:'BUY'|'SELL',reason:string)=>{
+const getAgentApproval=async(productId:string,intent:'BUY'|'SELL',reason:string,signalSource='MEAN_REVERSION')=>{
   const status=getPipelineStatus()
   if(status.status==='running'){
     publish('signal_agent_approval_skipped',{
@@ -154,7 +156,7 @@ const getAgentApproval=async(productId:string,intent:'BUY'|'SELL',reason:string)
       productId,
       deepResearch:false,
       executeLive:false,
-      signalSource:'MEAN_REVERSION',
+      signalSource,
       signalIntent:intent,
       signalReason:reason
     })
@@ -181,6 +183,93 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
   if(!state)return
 
   appendClosed(state,candle)
+
+  if(nextWeekBreakoutActive()){
+    const position=refreshPosition(productId,state,true)
+    let breakout:any
+    try{
+      breakout=await evaluateBreakoutConfirmation(productId,state.closed)
+    }catch(error){
+      publish('next_week_breakout_scan_failed',{
+        productId,
+        error:error instanceof Error?error.message:String(error)
+      },'strategy')
+      return
+    }
+
+    publish('next_week_breakout_candle',{
+      productId,
+      candleStart:candle.start,
+      candleClose:candle.close,
+      positionOpen:position.qty>0,
+      ready:Boolean(breakout.ready),
+      crossedAboveUpper:Boolean(breakout.crossedAboveUpper),
+      volumeRatio20:Number(breakout.volumeRatio20||0),
+      discovery:breakout.discovery||null,
+      rules:NEXT_WEEK_BREAKOUT
+    },'strategy')
+
+    if(position.qty>0||!breakout.ready)return
+
+    const executable=await smallAccountBuyIsExecutable(productId)
+    if(!executable.ok){
+      publish('next_week_breakout_buy_skipped',{
+        productId,
+        reason:'CURRENT_RISK_LIMITS_DO_NOT_ALLOW_ENTRY',
+        ...executable
+      },'strategy')
+      return
+    }
+
+    const lock='BUY:'+productId
+    if(executionLocks.has(lock))return
+    executionLocks.add(lock)
+    try{
+      const approval=await getAgentApproval(
+        productId,
+        'BUY',
+        'Next-week breakout: 24h volume >=2x seven-day daily average, 24h move 8-18%, 5m upper-Bollinger breakout, and 5m volume >=2.5x VMA20.',
+        'NEXT_WEEK_BREAKOUT'
+      )
+      if(!approval.approved){
+        publish('next_week_breakout_blocked_by_agents',{
+          productId,
+          decision:approval.decision,
+          confidence:approval.confidence
+        },'decision')
+        return
+      }
+
+      const result=await tryLimitedLiveExecution({
+        productId,
+        decision:'BUY_CANDIDATE',
+        confidence:approval.confidence,
+        triggerPrice:candle.close,
+        requestedBuyUsd:NEXT_WEEK_BREAKOUT.requestedAllocationUsd,
+        executionSource:'NEXT_WEEK_BREAKOUT'
+      })
+      publish('next_week_breakout_entry_result',{productId,result,rules:NEXT_WEEK_BREAKOUT},'execution')
+      if(result?.executed){
+        state.position={
+          qty:Number(result.executedQty||0),
+          avgEntryPrice:Number(result.actualFillPrice||0)
+        }
+        state.lastPositionRefreshAt=Date.now()
+        publish('next_week_breakout_position_opened',{
+          productId,
+          orderId:result.orderId,
+          entryPrice:state.position.avgEntryPrice,
+          quantity:state.position.qty,
+          requestedAllocationUsd:NEXT_WEEK_BREAKOUT.requestedAllocationUsd,
+          note:'Actual order size remains capped by all existing live risk limits.'
+        },'execution')
+      }
+    }finally{
+      executionLocks.delete(lock)
+    }
+    return
+  }
+
   const closes=state.closed.map(x=>x.close)
   if(closes.length<Math.max(config.bbPeriod+1,config.rsiPeriod+1))return
 
@@ -336,6 +425,67 @@ const handleTicker=async(productId:string,price:number)=>{
 
   const lots=getBotManagedLots(productId)
   if(!lots.length)return
+
+  const breakoutLot=lots.find(lot=>String(lot.executionSource||'')==='NEXT_WEEK_BREAKOUT')
+  if(breakoutLot){
+    const key=productId+':'+breakoutLot.orderId
+    const previousPeak=Number(breakoutPeaks.get(key)||breakoutLot.fillEntryPrice||price)
+    const peak=Math.max(previousPeak,price)
+    breakoutPeaks.set(key,peak)
+
+    const hardStop=breakoutHardStopPrice(breakoutLot.fillEntryPrice||breakoutLot.avgEntryPrice)
+    const activation=breakoutTrailingActivationPrice(breakoutLot.avgEntryPrice)
+    const trailingActive=peak>=activation
+    const trailingStop=breakoutTrailingStopPrice(peak)
+    const hardStopHit=price<=hardStop
+    const trailingHit=trailingActive&&price<=trailingStop
+
+    if(hardStopHit||trailingHit){
+      const reason=hardStopHit?'BREAKOUT_HARD_STOP':'BREAKOUT_TRAILING_PROFIT'
+      const exitKey=key+':'+reason
+      const lastAttempt=Number(exitAttemptAt.get(exitKey)||0)
+      if(Date.now()-lastAttempt<2000)return
+      const lock='SELL:'+productId
+      if(executionLocks.has(lock))return
+      exitAttemptAt.set(exitKey,Date.now())
+      executionLocks.add(lock)
+      publish('next_week_breakout_exit_signal',{
+        productId,
+        sourceLotOrderId:breakoutLot.orderId,
+        reason,
+        livePrice:price,
+        fillEntryPrice:breakoutLot.fillEntryPrice,
+        feeLoadedEntryPrice:breakoutLot.avgEntryPrice,
+        peakPrice:peak,
+        activationPrice:activation,
+        trailingStopPrice:trailingStop,
+        hardStopPrice:hardStop
+      },'strategy')
+      try{
+        const result=await tryLimitedLiveExecution({
+          productId,
+          decision:'SELL_CANDIDATE',
+          confidence:1,
+          triggerPrice:price,
+          baseSizeOverride:breakoutLot.qty,
+          exitReason:reason,
+          avgEntryPrice:breakoutLot.avgEntryPrice,
+          sourceLotOrderId:breakoutLot.orderId,
+          requiredNetProfitPercent:hardStopHit?0:NEXT_WEEK_BREAKOUT.minimumTrailingExitNetPercent,
+          executionSource:'NEXT_WEEK_BREAKOUT'
+        })
+        publish('next_week_breakout_exit_result',{productId,reason,result},'execution')
+        if(result?.executed){
+          breakoutPeaks.delete(key)
+          state.position=getBotManagedPosition(productId)
+          state.lastPositionRefreshAt=Date.now()
+        }
+      }finally{
+        executionLocks.delete(lock)
+      }
+    }
+    return
+  }
 
   const closes=state.closed.map(x=>x.close)
   const middle=middleBandWithLivePrice(closes,price)
