@@ -132,7 +132,7 @@ export function WorkspacePage({page,language,system}:Props){
 
   if(page==='strategies')return <PageShell title={pt?'Estratégias':'Strategies'} subtitle={pt?'Estratégias e regras que o pipeline realmente utiliza.':'Strategies and rules actually used by the pipeline.'}>
     <div className="tool-card-grid">
-      <article><h3>Production Rule Set</h3><p>$100 fixed allocation • 1 global position • fee-aware exit at +$0.02 net • 0.80% fill-based hard stop • 3%/24h account kill switch.</p></article>
+      <article><h3>Production Rule Set</h3><p>Dynamic $5-step buys from available cash • 1 global position • fee-aware exit once net proceeds exceed full cost by at least $0.02 • 0.80% fill-based hard stop • first realized loss = full shutdown • 3%/24h account kill switch.</p></article>
       <article><h3>Dual-Timeframe Entry</h3><p>Closed 10m close &gt; Bollinger middle/SMA20 • closed 5m close &lt; lower Bollinger • RSI14 &lt;30 • volume ≥1.5× VMA20.</p></article>
       <article><h3>Deterministic Execution</h3><p>0.10% max entry slippage. AI may scan and ingest data, but it cannot approve, reject, or modify live entry/exit math.</p></article>
       <article><h3>Rolling Kill Switch</h3><p>3% rolling 24h equity drawdown cancels open orders, liquidates bot-managed positions, blocks trading, and requires manual reset.</p></article>
