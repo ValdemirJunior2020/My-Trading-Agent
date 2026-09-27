@@ -6,7 +6,7 @@ import { publish } from './events.js'
 import { getOllamaStatus } from './ollama.js'
 import { getPipelineStatus, runFullAgentPipeline } from './pipeline.js'
 import { getChallengeSnapshot } from './challenge.js'
-import { getRuntimeRiskLimits } from './risk.js'
+import { emergencyStopActive,getRuntimeRiskLimits } from './risk.js'
 
 export interface AutoRunSettings {
   enabled: boolean
@@ -59,6 +59,7 @@ const isSameAsLast=(productId:string)=>productId.toUpperCase()===lastSelectedPro
 const selectable=(productId:string)=>!recentlyAnalyzed(productId)&&!isSameAsLast(productId)
 
 const shouldRunNow = () => {
+  if(emergencyStopActive())return false
   const state = getPipelineStatus()
   if (state.status === 'running') return false
   const settings = getAutoRunSettings()
