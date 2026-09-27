@@ -13,7 +13,10 @@
     "start": "node server-dist/index.js",
     "start:local": "npm run build && npm start",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "data:ingest30d": "tsx scripts/ingest-30d-candles.ts",
+    "backtest:100": "python quant/backtest_100_account.py",
+    "validate:100": "npm run data:ingest30d && .venv-quant\\\\Scripts\\\\python.exe quant\\\\backtest_100_account.py"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "latest",
