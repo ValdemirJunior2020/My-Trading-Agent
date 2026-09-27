@@ -78,9 +78,9 @@ export const confirmedMeanReversionEntryDecision=(params:{
     crossedBelowLower:params.crossedBelowLower
   })
   const wasExtremeOversold=params.previousRsiValue<=config.smallAccountStrongRsi
-  const rsiReboundedAboveExtreme=params.rsiValue>config.smallAccountStrongRsi&&params.rsiValue<=config.rsiOversold
+  const rsiReboundedAboveOversold=params.rsiValue>config.rsiOversold&&params.rsiValue<=45
   const rsiRecoveryPoints=params.rsiValue-params.previousRsiValue
-  const rsiRecoveryConfirmed=wasExtremeOversold&&rsiReboundedAboveExtreme&&rsiRecoveryPoints>=2
+  const rsiRecoveryConfirmed=wasExtremeOversold&&rsiReboundedAboveOversold&&rsiRecoveryPoints>=5
   const previousWasBelow=params.previousClose<params.previousLower
   const reclaimedLowerBand=previousWasBelow&&params.currentClose>=params.currentLower
   const candleRecovered=params.currentClose>params.previousClose
@@ -88,7 +88,6 @@ export const confirmedMeanReversionEntryDecision=(params:{
   const notFallingFast=params.threeCandleReturnPct>-0.5
   const insideSafeReclaimZone=params.closeVsLowerPct>=0&&params.closeVsLowerPct<=config.smallAccountStrongProximityPercent
   const ready=Boolean(
-    base.oversold &&
     rsiRecoveryConfirmed &&
     reclaimedLowerBand &&
     candleRecovered &&
@@ -97,10 +96,9 @@ export const confirmedMeanReversionEntryDecision=(params:{
     insideSafeReclaimZone
   )
   const blockers:string[]=[]
-  if(!base.oversold)blockers.push('RSI_NOT_OVERSOLD')
   if(!wasExtremeOversold)blockers.push('PREVIOUS_RSI_NOT_EXTREME_OVERSOLD')
-  if(!rsiReboundedAboveExtreme)blockers.push('RSI_NOT_REBOUNDED_ABOVE_30')
-  if(rsiRecoveryPoints<2)blockers.push('RSI_RECOVERY_TOO_WEAK')
+  if(!rsiReboundedAboveOversold)blockers.push('RSI_NOT_REBOUNDED_ABOVE_35')
+  if(rsiRecoveryPoints<5)blockers.push('RSI_RECOVERY_TOO_WEAK')
   if(!reclaimedLowerBand)blockers.push('LOWER_BAND_NOT_RECLAIMED')
   if(!candleRecovered)blockers.push('NO_PRICE_RECOVERY')
   if(!brokePreviousHigh)blockers.push('NO_BULLISH_BREAK_ABOVE_PREVIOUS_HIGH')
@@ -113,6 +111,7 @@ export const confirmedMeanReversionEntryDecision=(params:{
     previousRsiValue:params.previousRsiValue,
     rsiRecoveryPoints,
     rsiRecoveryConfirmed,
+    rsiReboundedAboveOversold,
     previousWasBelow,
     reclaimedLowerBand,
     candleRecovered,
