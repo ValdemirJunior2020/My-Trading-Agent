@@ -53,7 +53,7 @@ test('entry confirmation blocks buying while RSI is still in the 30-35 recovery 
     averageVolume:100
   })
   assert.equal(result.ready,false)
-  assert.ok(result.blockers.includes('RSI_NOT_REBOUNDED_ABOVE_35'))
+  assert.ok(result.blockers.includes('RSI_RECOVERY_NOT_CONFIRMED'))
 })
 
 test('entry confirmation allows only a strong rebound setup',()=>{
@@ -94,5 +94,5 @@ test('volume confirmation blocks a rebound without 1.5x participation',()=>{
     averageVolume:100
   })
   assert.equal(result.ready,false)
-  assert.ok(result.blockers.includes('VOLUME_REBOUND_BELOW_1_5X'))
+  assert.ok(result.blockers.includes('VMA20_VOLUME_BELOW_REQUIRED_RATIO'))
 })
