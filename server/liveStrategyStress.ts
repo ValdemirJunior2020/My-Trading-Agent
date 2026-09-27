@@ -144,6 +144,8 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     const closeVsLowerPct=((candle.close-lower)/lower)*100
     const lookback=Math.max(0,i-3)
     const threeCandleReturnPct=pct(candles[lookback].close,candle.close)
+    const priorVolumes=candles.slice(Math.max(0,i-20),i).map(x=>Number(x.volume||0)).filter(v=>v>0)
+    const averageVolume=priorVolumes.length?avg(priorVolumes):0
     const decision=confirmedMeanReversionEntryDecision({
       rsiValue:currentRsi,
       previousRsiValue:previousRsi,
@@ -154,7 +156,9 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
       previousLower:prevLower,
       currentClose:candle.close,
       currentLower:lower,
-      threeCandleReturnPct
+      threeCandleReturnPct,
+      currentVolume:Number(candle.volume||0),
+      averageVolume
     })
     if(!decision.ready)continue
 
@@ -273,7 +277,7 @@ export const runLiveStrategyStressTest=async(input?:{productIds?:string[];candle
       minNetProfitUsd:config.smallAccountMinNetProfitUsd,
       assumedMarketFeeRatePercent:Number((config.backtestMarketFeeRate*100).toFixed(4)),
       sameLossGuardBehavior:'STOP SCENARIO AFTER FIRST REALIZED LOSS',
-      entryConfirmation:'Previous RSI <=30, current RSI rebounds above 35 by at least 5 points (max 45), lower-Bollinger reclaim, close above previous high, and no >0.5% three-candle drop',
+      entryConfirmation:'Previous RSI <=30, current RSI rebounds above 35 by at least 5 points (max 45), lower-Bollinger reclaim, close above previous high, no >0.5% three-candle drop, and rebound volume >=1.5x prior 20-candle average',
       stopLossBasis:'ACTUAL_FILL_PRICE_NOT_FEE_LOADED_COST_BASIS'
     }
   }
