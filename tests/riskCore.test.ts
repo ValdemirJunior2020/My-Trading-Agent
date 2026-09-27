@@ -315,3 +315,38 @@ test('newer real MANUAL emergency stop is preserved',()=>{
     latestManualEmergencyAt:'2026-09-27T00:25:00.000Z'
   }),false)
 })
+
+
+test('Loss Guard blocks both BUY and SELL execution',()=>{
+  const buy=assessEmergencyExecutionGate({
+    emergencyStop:true,
+    tradingMode:'live',
+    liveTradingEnabled:true,
+    autoTradingEnabled:true,
+    lossHaltActive:true,
+    protectiveExit:false,
+    emergencyStopReason:'LOSS_GUARD'
+  })
+  const sell=assessEmergencyExecutionGate({
+    emergencyStop:true,
+    tradingMode:'live',
+    liveTradingEnabled:true,
+    autoTradingEnabled:true,
+    lossHaltActive:true,
+    protectiveExit:true,
+    emergencyStopReason:'LOSS_GUARD'
+  })
+  assert.equal(buy.approved,false)
+  assert.equal(sell.approved,false)
+  assert.equal(sell.lossHaltExitAllowed,false)
+})
+
+test('Loss Guard emergency reason is never cleared as legacy loss-halt state',()=>{
+  assert.equal(shouldClearLegacyLossHaltEmergency({
+    emergencyStop:true,
+    lossHaltActive:true,
+    emergencyStopReason:'LOSS_GUARD',
+    lossHaltTriggeredAt:'2026-09-27T10:38:12.000Z',
+    latestManualEmergencyAt:''
+  }),false)
+})
