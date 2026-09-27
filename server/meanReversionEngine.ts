@@ -323,14 +323,15 @@ const handleTicker=async(productId:string,price:number)=>{
   const middle=middleBandWithLivePrice(closes,price)
   if(middle==null)return
 
-  const stopLot=lots.find(lot=>price<=lot.avgEntryPrice*(1-config.fixedStopLossPercent/100))
+  const stopLot=lots.find(lot=>price<=(lot.fillEntryPrice||lot.avgEntryPrice)*(1-config.fixedStopLossPercent/100))
   const profitLot=lots.find(lot=>price>=lot.avgEntryPrice*(1+config.takeProfitPercent/100))
   const targetLot=stopLot||profitLot
   if(!targetLot)return
 
   const stopLoss=Boolean(stopLot)
   const reason=stopLoss?'STOP_LOSS':'LOT_NET_TAKE_PROFIT'
-  const stopPrice=targetLot.avgEntryPrice*(1-config.fixedStopLossPercent/100)
+  const stopEntryPrice=targetLot.fillEntryPrice||targetLot.avgEntryPrice
+  const stopPrice=stopEntryPrice*(1-config.fixedStopLossPercent/100)
   const takeProfitPrice=targetLot.avgEntryPrice*(1+config.takeProfitPercent/100)
   const exitKey=productId+':'+targetLot.orderId+':'+reason
   const retryMs=stopLoss?2000:15000
@@ -348,6 +349,7 @@ const handleTicker=async(productId:string,price:number)=>{
     reason,
     livePrice:price,
     entryPrice:targetLot.avgEntryPrice,
+    fillEntryPrice:stopEntryPrice,
     quantity:targetLot.qty,
     lotCostUsd:targetLot.costUsd,
     middleBand:middle,
