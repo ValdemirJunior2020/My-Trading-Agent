@@ -267,3 +267,30 @@ test('loss halt model keeps SELL gate open when global emergency is off',()=>{
   })
   assert.equal(result.approved,true)
 })
+
+
+test('loss halt exit bypass ignores stale non-manual stop reason',()=>{
+  const result=assessEmergencyExecutionGate({
+    emergencyStop:true,
+    tradingMode:'live',
+    liveTradingEnabled:true,
+    autoTradingEnabled:true,
+    lossHaltActive:true,
+    protectiveExit:true,
+    emergencyStopReason:'LOSS_HALT'
+  })
+  assert.equal(result.approved,true)
+})
+
+test('manual emergency reason still blocks sell exits even during loss halt',()=>{
+  const result=assessEmergencyExecutionGate({
+    emergencyStop:true,
+    tradingMode:'live',
+    liveTradingEnabled:true,
+    autoTradingEnabled:true,
+    lossHaltActive:true,
+    protectiveExit:true,
+    emergencyStopReason:'MANUAL'
+  })
+  assert.equal(result.approved,false)
+})
