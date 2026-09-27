@@ -457,15 +457,18 @@ const handleTicker=async(productId:string,price:number)=>{
   const microProfitReady=
     estimatedNetProfitUsd+1e-9>=config.smallAccountMinNetProfitUsd
 
-  if(!stopLoss&&!microProfitReady&&!trailingHit)return
+  // A profit exit is never signaled unless estimated proceeds cover the
+  // fee-loaded BUY cost, the estimated SELL fee, and leave the configured
+  // minimum net profit. The hard stop remains exempt from the profit floor.
+  if(!stopLoss&&!microProfitReady)return
 
   const reason=stopLoss
     ? 'STOP_LOSS'
-    : microProfitReady
-      ? 'MICRO_NET_PROFIT'
-      : 'TRAILING_PROFIT'
+    : trailingHit
+      ? 'TRAILING_PROFIT'
+      : 'MICRO_NET_PROFIT'
   const exitKey=key+':'+reason
-  const retryMs=2000
+  const retryMs=stopLoss?2000:30000
   const lastAttempt=Number(exitAttemptAt.get(exitKey)||0)
   if(Date.now()-lastAttempt<retryMs)return
 
