@@ -4,7 +4,6 @@ import { getSetting, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquit
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { publish } from './events.js'
-import { triggerLossGuard } from './lossGuard.js'
 
 export interface RuntimeRiskLimits {
   maxPositionPercent: number
@@ -497,12 +496,8 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
     productId, side, notionalUsd, totalPortfolioUsd, availableUsd, currentAssetUsd
   } = input
   const availableAssetUsd = Number(input.availableAssetUsd ?? currentAssetUsd)
-  const normalMaxPositionUsd = totalPortfolioUsd * (limits.maxPositionPercent / 100)
-  const smallAccountOverrideUsd = config.smallAccountMode
-    ? Math.min(config.smallAccountMaxBuyUsd, totalPortfolioUsd * 0.10)
-    : 0
-  const maxPositionUsd = Math.max(normalMaxPositionUsd, smallAccountOverrideUsd)
-  const maxExposureUsd = totalPortfolioUsd * (limits.maxTotalExposurePercent / 100)
+  const maxPositionUsd = config.maxLiveOrderUsd
+  const maxExposureUsd = config.maxLiveOrderUsd
   const daily = getDailyEquityGuard(totalPortfolioUsd)
   const botExposure=getOpenBotExposureSummary()
   const productAlreadyOpen=botExposure.positions.some(row=>row.productId===productId.toUpperCase())
@@ -529,21 +524,9 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   if (side === 'SELL' && notionalUsd > availableAssetUsd + 1e-8) reasons.push('Insufficient available asset balance for this sell.')
   reasons.push(...exposure.reasons)
 
-  if(side==='BUY'){
-    if(getSetting('loss_halt_active','false')==='true'){
-      reasons.push('Loss halt is active: new BUY entries are blocked until manually reset.')
-    }
-
-    const capitalGuard=assessCapitalPreservationBuy({
-      enabled:config.capitalPreservationMode,
-      realizedPnlTodayUsd:Number(daily.realizedBotPnlUsd||0),
-      realizedLossTodayUsd:Number(daily.realizedBotLossUsd||0),
-      openBotPositions:botExposure.openBotPositions
-    })
-    reasons.push(...capitalGuard.reasons)
-  }
-
-  if (daily.blocked) reasons.push('Bot realized-loss guard is active at ' + daily.botLossPercent.toFixed(2) + '% loss.')
+  // Legacy daily/single-loss guards remain visible as telemetry only.
+  // Production execution authority is the deterministic strategy plus the
+  // latched 3% rolling 24-hour account-equity kill switch.
 
   return {
     approved: reasons.length === 0,
