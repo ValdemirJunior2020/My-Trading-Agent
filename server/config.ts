@@ -51,6 +51,7 @@ export const config = {
   smallAccountMaxBuyUsd: Math.max(1, Math.min(25, num(process.env.SMALL_ACCOUNT_MAX_BUY_USD, 10))),
   smallAccountMinNetProfitUsd: Math.max(0, Math.min(5, num(process.env.SMALL_ACCOUNT_MIN_NET_PROFIT_USD, 0.10))),
   takeProfitPercent: Math.max(0.2, Math.min(10, num(process.env.TAKE_PROFIT_PERCENT, 1.5))),
+  maxRequiredGrossProfitPercent: Math.max(1, Math.min(10, num(process.env.MAX_REQUIRED_GROSS_PROFIT_PERCENT, 4))),
   fixedStopLossPercent: 0.8,
   rollingKillSwitchPercent: 3,
   rollingKillSwitchWindowMs: 24 * 60 * 60 * 1000,
