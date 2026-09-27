@@ -1,4 +1,4 @@
-import { getCandles,getProduct,getProductBook,listSpotUsdProducts } from './coinbase.js'
+import { getCandles,getProduct,getProductBook,listAccounts,listSpotUsdProducts } from './coinbase.js'
 import { config } from './config.js'
 
 export const SCAN_PRODUCTS=[
@@ -10,9 +10,35 @@ export const SCAN_PRODUCTS=[
 const PRIORITY_PRODUCTS=['XRP-USD','BTC-USD','ETH-USD','SOL-USD','LINK-USD']
 const EXCLUDED_BASES=new Set(['USD','USDC','USDT','DAI','PYUSD'])
 
+const accountBalanceValue=(value:any)=>{
+  const raw=value?.value??value
+  const n=Number(raw)
+  return Number.isFinite(n)?n:0
+}
+
+const ownedSpotUsdProducts=async()=>{
+  try{
+    const accounts=await listAccounts()
+    return [...new Set(
+      accounts
+        .filter((account:any)=>{
+          const base=String(account?.currency||'').toUpperCase()
+          const total=accountBalanceValue(account?.availableBalance)+accountBalanceValue(account?.hold)
+          return base&&!EXCLUDED_BASES.has(base)&&total>0
+        })
+        .map((account:any)=>String(account.currency).toUpperCase()+'-USD')
+    )]
+  }catch{
+    return []
+  }
+}
+
 const discoverScanUniverse=async()=>{
   try{
-    const products=await listSpotUsdProducts(300)
+    const [products,ownedProducts]=await Promise.all([
+      listSpotUsdProducts(300),
+      ownedSpotUsdProducts()
+    ])
     const ranked=products
       .filter((p:any)=>!EXCLUDED_BASES.has(String(p.baseCurrency||p.productId.split('-')[0]).toUpperCase()))
       .map((p:any)=>({...p,notional24h:Number(p.price||0)*Number(p.volume24h||0)}))
@@ -20,9 +46,10 @@ const discoverScanUniverse=async()=>{
       .sort((a:any,b:any)=>b.notional24h-a.notional24h)
 
     const dynamic=ranked.slice(0,24).map((p:any)=>p.productId)
-    return [...new Set([...PRIORITY_PRODUCTS,...config.watchlist,...dynamic])].slice(0,28)
+    return [...new Set([...ownedProducts,...PRIORITY_PRODUCTS,...config.watchlist,...dynamic])]
   }catch{
-    return [...new Set([...PRIORITY_PRODUCTS,...config.watchlist,...SCAN_PRODUCTS])]
+    const ownedProducts=await ownedSpotUsdProducts()
+    return [...new Set([...ownedProducts,...PRIORITY_PRODUCTS,...config.watchlist,...SCAN_PRODUCTS])]
   }
 }
 
@@ -48,6 +75,9 @@ export interface ScanResult{
   score:number
   buyCandidate:boolean
   sellCandidate:boolean
+  owned:boolean
+  ownedQuantity:number
+  ownedUsdValue:number
   reasons:string[]
 }
 
@@ -65,8 +95,24 @@ const spreadBpsFromBook=(book:any)=>{
 }
 
 export const scanCryptoMarket=async(products?:string[])=>{
-  const universe=products&&products.length?products:await discoverScanUniverse()
-  const key=universe.join('|')
+  const [universe,accounts]=await Promise.all([
+    products&&products.length?Promise.resolve(products):discoverScanUniverse(),
+    listAccounts().catch(()=>[])
+  ])
+  const ownedByBase=new Map<string,{available:number;hold:number}>()
+  for(const account of accounts as any[]){
+    const base=String(account?.currency||'').toUpperCase()
+    if(!base||EXCLUDED_BASES.has(base))continue
+    const available=accountBalanceValue(account?.availableBalance)
+    const hold=accountBalanceValue(account?.hold)
+    if(available+hold<=0)continue
+    ownedByBase.set(base,{available,hold})
+  }
+  const holdingsKey=[...ownedByBase.entries()]
+    .sort(([a],[b])=>a.localeCompare(b))
+    .map(([base,balance])=>base+':'+balance.available.toFixed(12)+':'+balance.hold.toFixed(12))
+    .join('|')
+  const key=universe.join('|')+'::'+holdingsKey
   if(cachedScan&&cachedKey===key&&Date.now()-cachedAt<config.scannerCacheMs) return cachedScan
 
   const existing=inFlightScans.get(key)
@@ -148,9 +194,15 @@ export const scanCryptoMarket=async(products?:string[])=>{
       else if(dollarVolume24h>=10_000_000){buyScore+=4;sellScore+=4}
       else if(dollarVolume24h<1_000_000){buyScore-=18;sellScore-=18;reasons.push('thin 24h dollar volume')}
 
+      const rowPrice=Number((product as any)?.price||latest.close)
+      const baseCurrency=String(productId.split('-')[0]||'').toUpperCase()
+      const ownedBalance=ownedByBase.get(baseCurrency)
+      const ownedQuantity=Number(ownedBalance?.available||0)
+      const totalOwnedQuantity=ownedQuantity+Number(ownedBalance?.hold||0)
+
       preliminary.push({
         productId,
-        price:Number((product as any)?.price||latest.close),
+        price:rowPrice,
         change1hPercent,
         change6hPercent,
         change24hPercent,
@@ -166,6 +218,9 @@ export const scanCryptoMarket=async(products?:string[])=>{
         score:clamp(buyScore),
         buyCandidate:false,
         sellCandidate:false,
+        owned:totalOwnedQuantity>0,
+        ownedQuantity,
+        ownedUsdValue:ownedQuantity*rowPrice,
         reasons
       })
     }catch{}
@@ -202,6 +257,9 @@ export const scanCryptoMarket=async(products?:string[])=>{
       row.price>row.sma20
 
     row.sellCandidate=
+      row.owned&&
+      row.ownedQuantity>0&&
+      row.ownedUsdValue+1e-8>=config.minLiveOrderUsd&&
       liquidEnough&&
       row.sellScore>=76&&
       row.change6hPercent<0&&
@@ -217,6 +275,8 @@ export const scanCryptoMarket=async(products?:string[])=>{
     generatedAt:new Date().toISOString(),
     scanned:preliminary.length,
     universe,
+    ownedProducts:[...ownedByBase.keys()].map(base=>base+'-USD'),
+    sellScope:'COINBASE_OWNED_BALANCES_ONLY',
     strategy:'SHORT_TERM_PERCENTAGE_OPPORTUNITY',
     best:bestBuy,
     bestBuy,
