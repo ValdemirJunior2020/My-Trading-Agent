@@ -625,6 +625,14 @@ export const tryLimitedLiveExecution = async (opts: {
   }
 
   const side = opts.decision === 'BUY_CANDIDATE' ? 'BUY' : 'SELL'
+  const executionSource=String(opts.executionSource||'UNKNOWN').toUpperCase()
+  if(side==='BUY'&&executionSource!=='MEAN_REVERSION'){
+    return {
+      executed:false,
+      reason:'Automated BUY rejected: production execution is deterministic and only the MEAN_REVERSION engine may open positions.',
+      executionSource
+    }
+  }
   const lossHaltActive=getSetting('loss_halt_active','false')==='true'
   let emergencyStopReason=getSetting('emergency_stop_reason','')
 
@@ -677,10 +685,10 @@ export const tryLimitedLiveExecution = async (opts: {
   }
 
   const rollingKillSwitch=await checkRollingEquityKillSwitch(totalPortfolioUsd)
-  if(side==='BUY' && rollingKillSwitch.blocked){
+  if(rollingKillSwitch.blocked){
     return {
       executed:false,
-      reason:'AUTO SAFE PAUSE is active: new BUY entries are temporarily blocked while protective SELL exits remain enabled',
+      reason:'Rolling 24-hour 3% kill switch is locked. Manual reset is required before any automated execution can resume.',
       rollingKillSwitch
     }
   }
@@ -721,91 +729,51 @@ export const tryLimitedLiveExecution = async (opts: {
   let quoteSizeUsd: number | undefined
 
   if (side === 'BUY') {
-    // Locked production profile: one global $100 bot slot.
-    // Existing non-bot holdings do not reduce this strategy allocation; only
-    // bot-managed exposure consumes the production slot.
     const strategyPositionUsd=config.maxLiveOrderUsd
-    const currentBotProductUsd=botExposure.positions
-      .filter(row=>row.productId===productId)
-      .reduce((sum,row)=>sum+Number(row.costUsd||0),0)
-    const remainingPositionUsd=Math.max(0,strategyPositionUsd-currentBotProductUsd)
-    const remainingTotalExposureUsd=Math.max(0,strategyPositionUsd-botExposure.totalBotExposureUsd)
-    const quoteMin = Math.max(config.minLiveOrderUsd, Number(productInfo?.quote_min_size || 0))
-    const quoteMax = Number(productInfo?.quote_max_size || Infinity)
+    const quoteMin=Math.max(config.minLiveOrderUsd,Number(productInfo?.quote_min_size||0))
+    const quoteMax=Number(productInfo?.quote_max_size||Infinity)
+    const quoteIncrement=productInfo?.quote_increment||0.01
 
-    // Market BUYs use quote_size in USD, so BTC/ETH can be bought fractionally.
-    // The strategy requests the full $100 slot when cash is available.
-    const safeMaxBuyUsd = Math.min(
-      strategyPositionUsd,
-      hardCap,
-      remainingPositionUsd,
-      remainingTotalExposureUsd,
-      availableUsd,
-      quoteMax
-    )
-
-    if (!(safeMaxBuyUsd > 0)) {
+    if(productAlreadyOpen||botExposure.openBotPositions>0){
       return {
         executed:false,
-        reason:'No spendable USD is available inside the current risk limits',
-        productId,
-        side,
-        availableUsd,
-        maxFromPercent,
-        hardCap,
-        remainingTotalExposureUsd
+        reason:'The single global production position slot is already occupied.',
+        openBotPositions:botExposure.openBotPositions,
+        maxOpenBotPositions:config.maxOpenBotPositions
       }
     }
 
-    if (safeMaxBuyUsd + 1e-8 < quoteMin) {
+    if(availableUsd+1e-8<strategyPositionUsd){
       return {
         executed:false,
-        reason:'Safe fractional BUY amount is below Coinbase minimum',
-        productId,
-        side,
-        availableUsd,
-        safeMaxBuyUsd,
-        coinbaseMinimumUsd:quoteMin,
-        maxFromPercent,
-        hardCap,
-        remainingTotalExposureUsd,
-        note:'Coin price is not the required order size; Coinbase market BUYs use fractional quote-size USD.'
+        reason:'Fixed $100 production allocation requires at least $100 of available USD.',
+        requiredUsd:strategyPositionUsd,
+        availableUsd
       }
     }
 
-    const quoteIncrement = productInfo?.quote_increment || 0.01
-    const minExecutableQuoteUsd = ceilToIncrement(quoteMin, quoteIncrement)
-
-    const requestedBuyUsd=Number(opts.requestedBuyUsd||0)
-    const strategyRequestedCap=requestedBuyUsd>0?Math.min(requestedBuyUsd,safeMaxBuyUsd):safeMaxBuyUsd
-    quoteSizeUsd = floorToIncrement(strategyRequestedCap, quoteIncrement)
-
-    // If flooring an exactly-$10 style cap produces $9.99 because of the
-    // exchange increment, snap up to the smallest valid Coinbase amount,
-    // but only when that amount still fits every safety cap.
-    if (
-      quoteSizeUsd + 1e-8 < minExecutableQuoteUsd &&
-      minExecutableQuoteUsd <= safeMaxBuyUsd + 1e-8 &&
-      minExecutableQuoteUsd <= quoteMax + 1e-8
-    ) {
-      quoteSizeUsd = minExecutableQuoteUsd
-    }
-
-    if (quoteSizeUsd > quoteMax) quoteSizeUsd = floorToIncrement(quoteMax, quoteIncrement)
-
-    if (!(quoteSizeUsd > 0) || quoteSizeUsd + 1e-8 < minExecutableQuoteUsd) {
+    if(strategyPositionUsd+1e-8<quoteMin||strategyPositionUsd>quoteMax+1e-8){
       return {
         executed:false,
-        reason:'Rounded fractional BUY amount fell below Coinbase minimum',
-        quoteSizeUsd,
-        coinbaseMinimumUsd:quoteMin,
-        minimumExecutableUsd:minExecutableQuoteUsd,
-        availableUsd,
-        safeMaxBuyUsd
+        reason:'Fixed $100 production allocation is outside Coinbase order-size limits for this product.',
+        requiredUsd:strategyPositionUsd,
+        quoteMin,
+        quoteMax
       }
     }
 
-    notionalUsd = quoteSizeUsd
+    quoteSizeUsd=floorToIncrement(strategyPositionUsd,quoteIncrement)
+    if(Math.abs(quoteSizeUsd-strategyPositionUsd)>1e-8){
+      return {
+        executed:false,
+        reason:'Coinbase quote increment cannot represent the fixed $100 allocation exactly.',
+        requiredUsd:strategyPositionUsd,
+        roundedUsd:quoteSizeUsd,
+        quoteIncrement
+      }
+    }
+
+    notionalUsd=strategyPositionUsd
   } else {
     const baseIncrement = productInfo?.base_increment || 0.00000001
     const baseMin = Number(productInfo?.base_min_size || 0)
@@ -1044,20 +1012,6 @@ export const tryLimitedLiveExecution = async (opts: {
 
     setSetting('live_last_order_at_' + productId, placedAt)
     setSetting('live_last_order_id_' + productId, orderId)
-
-    if(
-      side==='SELL' &&
-      realizedNetProfitUsd!=null &&
-      Number.isFinite(realizedNetProfitUsd) &&
-      realizedNetProfitUsd<0
-    ){
-      await triggerLossGuard({
-        productId,
-        realizedNetProfitUsd,
-        realizedNetProfitPercent,
-        triggeredAt:placedAt
-      })
-    }
 
     publish('live_order_placed', {
       productId,
