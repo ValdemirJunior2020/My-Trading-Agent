@@ -158,7 +158,9 @@ const currentBotInventoryForEmergency=()=>{
     .map(([productId,row])=>({productId,qty:row.qty,costUsd:row.costUsd}))
 }
 
-const liquidateBotInventoryForRollingKill=async()=>{
+const liquidateBotInventoryForEmergency=async(
+  executionSource:'ROLLING_24H_KILL_SWITCH'|'SINGLE_LOSS_KILL_SWITCH'
+)=>{
   const results:any[]=[]
   for(const position of currentBotInventoryForEmergency()){
     try{
@@ -168,6 +170,7 @@ const liquidateBotInventoryForRollingKill=async()=>{
         results.push({productId:position.productId,executed:false,reason:'POSITION_BELOW_COINBASE_SELL_MINIMUM',qty:position.qty,baseMin})
         continue
       }
+
       const preview=await previewMarketOrder({
         productId:position.productId,
         side:'SELL',
@@ -178,6 +181,7 @@ const liquidateBotInventoryForRollingKill=async()=>{
         results.push({productId:position.productId,executed:false,reason:previewErrors.join(', ')||'NO_PREVIEW_ID'})
         continue
       }
+
       const order=await createMarketOrder({
         productId:position.productId,
         side:'SELL',
@@ -187,31 +191,56 @@ const liquidateBotInventoryForRollingKill=async()=>{
       const orderId=String(order.success_response?.order_id||'')
       const fill=await waitForOrderFill(orderId,10000)
       const eventTimestamp=new Date().toISOString()
-      publish('rolling_kill_switch_liquidation_fill',{
+      const actualFillPrice=Number(fill.filledPrice||0)
+      const executedQty=Number(fill.executedQty||position.qty||0)
+      const notionalUsd=actualFillPrice*executedQty
+      const eventType=executionSource==='ROLLING_24H_KILL_SWITCH'
+        ?'rolling_kill_switch_liquidation_fill'
+        :'single_loss_kill_switch_liquidation_fill'
+
+      const payload={
         timestampIso:eventTimestamp,
         monotonicNs:process.hrtime.bigint().toString(),
         productId:position.productId,
+        side:'SELL',
+        notionalUsd,
         orderId,
         requestedQty:position.qty,
-        actualFillPrice:Number(fill.filledPrice||0),
-        executedQty:Number(fill.executedQty||0),
-        executionSource:'ROLLING_24H_KILL_SWITCH'
-      },'risk')
+        actualFillPrice,
+        executedQty,
+        preview,
+        fill,
+        exitReason:executionSource,
+        executionSource
+      }
+
+      publish(eventType,payload,'risk')
+      // Record emergency liquidation as a normal placed SELL too so bot
+      // inventory reconstruction remains correct across restarts.
+      publish('live_order_placed',payload,'execution')
+
       results.push({
         productId:position.productId,
         executed:true,
         orderId,
-        actualFillPrice:Number(fill.filledPrice||0),
-        executedQty:Number(fill.executedQty||0)
+        actualFillPrice,
+        executedQty
       })
     }catch(error){
       const message=error instanceof Error?error.message:String(error)
-      publish('rolling_kill_switch_liquidation_failed',{
-        timestampIso:new Date().toISOString(),
-        monotonicNs:process.hrtime.bigint().toString(),
-        productId:position.productId,
-        error:message
-      },'risk')
+      publish(
+        executionSource==='ROLLING_24H_KILL_SWITCH'
+          ?'rolling_kill_switch_liquidation_failed'
+          :'single_loss_kill_switch_liquidation_failed',
+        {
+          timestampIso:new Date().toISOString(),
+          monotonicNs:process.hrtime.bigint().toString(),
+          productId:position.productId,
+          executionSource,
+          error:message
+        },
+        'risk'
+      )
       results.push({productId:position.productId,executed:false,error:message})
     }
   }
@@ -220,6 +249,74 @@ const liquidateBotInventoryForRollingKill=async()=>{
 
 let lastRollingEquitySnapshotAt=0
 let rollingKillInFlight:Promise<any>|null=null
+let singleLossKillInFlight:Promise<any>|null=null
+
+const triggerSingleLossEmergency=async(input:{
+  productId:string
+  realizedNetProfitUsd:number
+  realizedNetProfitPercent:number|null
+})=>{
+  if(!(Number(input.realizedNetProfitUsd)<0))return null
+  if(getSetting('single_loss_kill_switch_locked','false')==='true')return {
+    locked:true,
+    reason:'SINGLE_REALIZED_LOSS'
+  }
+
+  const triggeredAt=new Date().toISOString()
+  setSetting('single_loss_kill_switch_locked','true')
+  setSetting('single_loss_kill_switch_triggered_at',triggeredAt)
+  setSetting('single_loss_kill_switch_product',input.productId)
+  setSetting('single_loss_kill_switch_loss_usd',String(input.realizedNetProfitUsd))
+  setSetting('single_loss_kill_switch_loss_percent',String(input.realizedNetProfitPercent??0))
+  setSetting('loss_guard_active','true')
+  setSetting('loss_halt_active','true')
+  setSetting('emergency_stop','true')
+  setSetting('emergency_stop_reason','SINGLE_REALIZED_LOSS')
+
+  if(!singleLossKillInFlight){
+    singleLossKillInFlight=(async()=>{
+      let canceledOrderIds:string[]=[]
+      let liquidationResults:any[]=[]
+      try{
+        try{
+          const openOrders=await listOpenOrders()
+          const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
+          if(ids.length){
+            await cancelOrders(ids)
+            canceledOrderIds=ids
+          }
+        }catch(error){
+          publish('single_loss_kill_switch_cancel_failed',{
+            timestampIso:new Date().toISOString(),
+            productId:input.productId,
+            error:error instanceof Error?error.message:String(error)
+          },'risk')
+        }
+
+        liquidationResults=await liquidateBotInventoryForEmergency('SINGLE_LOSS_KILL_SWITCH')
+
+        publish('single_loss_kill_switch_triggered',{
+          timestampIso:triggeredAt,
+          productId:input.productId,
+          realizedNetProfitUsd:input.realizedNetProfitUsd,
+          realizedNetProfitPercent:input.realizedNetProfitPercent,
+          canceledOrderIds,
+          liquidationResults,
+          mode:'FULL_MANUAL_RESET_LOCKDOWN',
+          entryBehavior:'ALL_AUTOMATION_BLOCKED',
+          exitBehavior:'ALL_REMAINING_BOT_POSITIONS_MARKET_LIQUIDATED',
+          resetBehavior:'MANUAL_RESET_REQUIRED'
+        },'loss_guard')
+
+        return {locked:true,canceledOrderIds,liquidationResults}
+      }finally{
+        singleLossKillInFlight=null
+      }
+    })()
+  }
+
+  return await singleLossKillInFlight
+}
 
 export const resetRollingKillSwitchLock=()=>{
   const resetAt=new Date().toISOString()
@@ -291,7 +388,7 @@ export const checkRollingEquityKillSwitch=async(currentPortfolioUsd:number)=>{
             },'risk')
           }
 
-          liquidationResults=await liquidateBotInventoryForRollingKill()
+          liquidationResults=await liquidateBotInventoryForEmergency('ROLLING_24H_KILL_SWITCH')
 
           publish('rolling_kill_switch_triggered',{
             timestampIso:new Date().toISOString(),
@@ -967,6 +1064,16 @@ export const tryLimitedLiveExecution = async (opts: {
       realizedNetProceedsUsd:side==='SELL'?realizedNetProceedsUsd:null,
       sellCostBasisUsd:side==='SELL'?sellCostBasisUsd:null
     }, 'execution')
+
+    if(side==='SELL'&&Number(realizedNetProfitUsd)<0){
+      await triggerSingleLossEmergency({
+        productId,
+        realizedNetProfitUsd:Number(realizedNetProfitUsd),
+        realizedNetProfitPercent:Number.isFinite(Number(realizedNetProfitPercent))
+          ?Number(realizedNetProfitPercent)
+          :null
+      })
+    }
 
     return {
       executed: true,
