@@ -14,15 +14,17 @@ const num = (value: string | undefined, fallback: number) => {
 export const PRODUCTION_STRATEGY = Object.freeze({
   positionSizeUsd: 100,
   maxConcurrentPositions: 1,
-  hardStopLossPercent: 2.5,
+  hardStopLossPercent: 0.8,
   trailingActivationNetPercent: 8,
   trailingDistancePercent: 1.5,
-  previousRsiMax: 30,
-  currentRsiMinExclusive: 30,
-  currentRsiMax: 36,
-  minimumRsiRecoveryPoints: 1,
+  maxEntrySlippagePercent: 0.1,
+  macroTimeframeMinutes: 10,
+  macroBollingerPeriod: 20,
+  entryRsiStrictlyBelow: 30,
   volumeLookbackCandles: 20,
-  minimumVolumeRatio: 1.5
+  minimumVolumeRatio: 1.5,
+  rollingKillSwitchPercent: 3,
+  rollingKillSwitchWindowHours: 24
 })
 
 export const config = {
@@ -68,15 +70,14 @@ export const config = {
   fixedStopLossPercent: PRODUCTION_STRATEGY.hardStopLossPercent,
   trailingActivationNetPercent: PRODUCTION_STRATEGY.trailingActivationNetPercent,
   trailingDistancePercent: PRODUCTION_STRATEGY.trailingDistancePercent,
-  entryPreviousRsiMax: PRODUCTION_STRATEGY.previousRsiMax,
-  entryCurrentRsiMinExclusive: PRODUCTION_STRATEGY.currentRsiMinExclusive,
-  entryCurrentRsiMax: PRODUCTION_STRATEGY.currentRsiMax,
-  entryMinimumRsiRecoveryPoints: PRODUCTION_STRATEGY.minimumRsiRecoveryPoints,
+  entryRsiStrictlyBelow: PRODUCTION_STRATEGY.entryRsiStrictlyBelow,
   entryVolumeLookbackCandles: PRODUCTION_STRATEGY.volumeLookbackCandles,
   entryMinimumVolumeRatio: PRODUCTION_STRATEGY.minimumVolumeRatio,
-  rollingKillSwitchPercent: 3,
-  rollingKillSwitchWindowMs: 24 * 60 * 60 * 1000,
-  maxSlippagePercent: Math.max(0.01, Math.min(5, num(process.env.MAX_SLIPPAGE_PERCENT, 0.1))),
+  macroTimeframeMinutes: PRODUCTION_STRATEGY.macroTimeframeMinutes,
+  macroBollingerPeriod: PRODUCTION_STRATEGY.macroBollingerPeriod,
+  rollingKillSwitchPercent: PRODUCTION_STRATEGY.rollingKillSwitchPercent,
+  rollingKillSwitchWindowMs: PRODUCTION_STRATEGY.rollingKillSwitchWindowHours * 60 * 60 * 1000,
+  maxSlippagePercent: PRODUCTION_STRATEGY.maxEntrySlippagePercent,
   watchlist: (process.env.WATCHLIST || 'XRP,BTC,ETH,SOL,LINK')
     .split(',')
     .map((s) => s.trim().toUpperCase())
