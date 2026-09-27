@@ -33,6 +33,8 @@ export function WorkspacePage({page,language,system}:Props){
   const [paperSide,setPaperSide]=useState<'BUY'|'SELL'>('BUY')
   const [paperSize,setPaperSize]=useState('1')
   const [paperPrice,setPaperPrice]=useState('')
+  const [paperSimulation,setPaperSimulation]=useState<any|null>(null)
+  const [paperSimBalance,setPaperSimBalance]=useState('1000')
   const [error,setError]=useState('')
 
   const loadCore=async()=>{
@@ -97,6 +99,18 @@ export function WorkspacePage({page,language,system}:Props){
     finally{setBusy(false)}
   }
 
+  const runPaperSimulation=async()=>{
+    setBusy(true);setError('');setPaperSimulation(null)
+    try{
+      setPaperSimulation(await api.paperSimulate({
+        productId:product,
+        startingBalanceUsd:Number(paperSimBalance)||1000,
+        candleLimit:1000
+      }))
+    }catch(e){setError(e instanceof Error?e.message:String(e))}
+    finally{setBusy(false)}
+  }
+
   const saveSettings=async()=>{
     setBusy(true);setError('')
     try{
@@ -149,8 +163,33 @@ export function WorkspacePage({page,language,system}:Props){
     {error&&<div className="tool-error">{error}</div>}{backtest&&<div className="tool-json">{JSON.stringify(backtest,null,2)}</div>}
   </PageShell>
 
-  if(page==='paperTrading')return <PageShell title={pt?'Paper Trading':'Paper Trading'} subtitle={pt?'Teste ordens usando o motor de risco sem dinheiro real.':'Test orders through the risk engine without real money.'}>
+  if(page==='paperTrading')return <PageShell title={pt?'Paper Trading':'Paper Trading'} subtitle={pt?'Simule $1.000 com as regras atuais usando somente dados da Coinbase. Nenhuma ordem real é enviada.':'Simulate $1,000 with the current rules using Coinbase data only. No live order is sent.'}>
     {marketSelector}
+    <div className="paper-sim-card">
+      <div>
+        <span className="eyebrow">{pt?'LABORATÓRIO SEGURO':'SAFE LAB'}</span>
+        <h3>{pt?'Simulação Paper de $1.000':'$1,000 Paper Simulation'}</h3>
+        <p>{pt?'Usa RSI + Bollinger + take profit + stop loss atuais em 1.000 candles de 5 minutos. Coinbase continua sendo a única fonte de mercado.':'Uses the current RSI + Bollinger + take-profit + stop-loss rules across 1,000 five-minute candles. Coinbase remains the only market source.'}</p>
+      </div>
+      <div className="paper-sim-actions">
+        <label><span>{pt?'Capital simulado':'Simulated capital'}</span><input type="number" min="100" step="100" value={paperSimBalance} onChange={e=>setPaperSimBalance(e.target.value)}/></label>
+        <button className="tool-primary" disabled={busy} onClick={()=>void runPaperSimulation()}>{busy?(pt?'Simulando...':'Simulating...'):(pt?'▶ Testar $1.000':'▶ Test $1,000')}</button>
+      </div>
+    </div>
+    {paperSimulation&&<div className="paper-sim-results">
+      <div className="tool-stats">
+        <div><small>{pt?'Início':'Start'}</small><strong>{fmtMoney(paperSimulation.startingBalanceUsd)}</strong></div>
+        <div><small>{pt?'Final':'End'}</small><strong>{fmtMoney(paperSimulation.endingBalanceUsd)}</strong></div>
+        <div><small>{pt?'Lucro / Perda':'Profit / Loss'}</small><strong className={Number(paperSimulation.netProfitUsd)>=0?'sim-profit':'sim-loss'}>{Number(paperSimulation.netProfitUsd)>=0?'+':''}{fmtMoney(paperSimulation.netProfitUsd)}</strong></div>
+        <div><small>{pt?'Retorno':'Return'}</small><strong>{fmtPct(paperSimulation.netProfitPercent)}</strong></div>
+        <div><small>{pt?'Trades fechados':'Closed Trades'}</small><strong>{paperSimulation.closedTrades}</strong></div>
+        <div><small>{pt?'Taxa de acerto':'Win Rate'}</small><strong>{Number(paperSimulation.winRatePercent||0).toFixed(1)}%</strong></div>
+        <div><small>{pt?'Drawdown máximo':'Max Drawdown'}</small><strong>{Number(paperSimulation.maxDrawdownPercent||0).toFixed(2)}%</strong></div>
+        <div><small>{pt?'Tamanho por compra':'Buy Size'}</small><strong>{fmtMoney(paperSimulation.orderUsd)}</strong></div>
+      </div>
+      <div className="tool-json">{JSON.stringify({productId:paperSimulation.productId,mode:paperSimulation.simulation,candles:paperSimulation.candles,wins:paperSimulation.wins,losses:paperSimulation.losses,openPosition:paperSimulation.openPosition,feeRatePercent:paperSimulation.feeRatePercent,rules:paperSimulation.rules},null,2)}</div>
+    </div>}
+    <div className="paper-manual-divider"><span>{pt?'ORDENS PAPER MANUAIS':'MANUAL PAPER ORDERS'}</span></div>
     <div className="paper-form"><select value={paperSide} onChange={e=>setPaperSide(e.target.value as 'BUY'|'SELL')}><option>BUY</option><option>SELL</option></select><input value={paperSize} onChange={e=>setPaperSize(e.target.value)} placeholder="Size"/><input value={paperPrice} onChange={e=>setPaperPrice(e.target.value)} placeholder="Price"/><button onClick={()=>void sendPaper()} disabled={busy}>Place Paper Order</button></div>
     {error&&<div className="tool-error">{error}</div>}<div className="tool-table"><div className="tool-table-head"><span>Coin</span><span>Side</span><span>Size</span><span>Price</span><span>Status</span><span>P/L</span></div>{paper.slice(0,50).map((r:any)=><div key={r.id}><strong>{r.product_id}</strong><span>{r.side}</span><span>{r.size}</span><span>{fmtMoney(r.price,4)}</span><em>{r.status}</em><span>{r.pnl==null?'—':fmtMoney(r.pnl)}</span></div>)}</div>
   </PageShell>
