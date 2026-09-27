@@ -4,6 +4,9 @@ import { publish } from './events.js'
 
 export const LOSS_GUARD_AGENT_ID='loss_guard'
 
+let monitorTimer:NodeJS.Timeout|null=null
+let monitorInFlight=false
+
 const isoMs=(value:string)=>{
   const ms=new Date(value).getTime()
   return Number.isFinite(ms)?ms:0
@@ -90,6 +93,38 @@ export const resetLossGuard=()=>{
   return getLossGuardState()
 }
 
+const findLossAfterReset=()=>{
+  const resetAtMs=isoMs(getSetting('loss_guard_reset_at',''))
+  return livePlacedOrders(5000).find((event:any)=>{
+    const p:any=event.payload||{}
+    if(String(p.side||'').toUpperCase()!=='SELL')return false
+    const pnl=Number(p.realizedNetProfitUsd)
+    if(!Number.isFinite(pnl)||pnl>=0)return false
+    const eventMs=isoMs(String(event.createdAt||p.placedAt||''))
+    return eventMs>resetAtMs
+  })
+}
+
+const auditLossGuard=async()=>{
+  if(monitorInFlight||getSetting('loss_guard_active','false')==='true')return
+  monitorInFlight=true
+  try{
+    const latestLoss=findLossAfterReset()
+    if(!latestLoss)return
+    const p:any=latestLoss.payload||{}
+    await triggerLossGuard({
+      productId:String(p.productId||'UNKNOWN'),
+      realizedNetProfitUsd:Number(p.realizedNetProfitUsd),
+      realizedNetProfitPercent:Number.isFinite(Number(p.realizedNetProfitPercent))
+        ?Number(p.realizedNetProfitPercent)
+        :null,
+      triggeredAt:String(latestLoss.createdAt||p.placedAt||new Date().toISOString())
+    })
+  }finally{
+    monitorInFlight=false
+  }
+}
+
 export const initializeLossGuard=async()=>{
   if(getSetting('loss_guard_active','false')==='true'){
     setSetting('emergency_stop','true')
@@ -98,34 +133,25 @@ export const initializeLossGuard=async()=>{
       state:'STOPPED',
       message:'Loss Guard remains latched from a realized loss. Global emergency stop is active.'
     },LOSS_GUARD_AGENT_ID)
-    return getLossGuardState()
+  }else{
+    await auditLossGuard()
+    if(getSetting('loss_guard_active','false')!=='true'){
+      publish('loss_guard_waiting',{
+        state:'ARMED',
+        message:'Loss Guard is armed and waiting. Any realized loss will stop all live execution.'
+      },LOSS_GUARD_AGENT_ID)
+    }
   }
 
-  const resetAtMs=isoMs(getSetting('loss_guard_reset_at',''))
-  const latestLoss=livePlacedOrders(5000).find((event:any)=>{
-    const p:any=event.payload||{}
-    if(String(p.side||'').toUpperCase()!=='SELL')return false
-    const pnl=Number(p.realizedNetProfitUsd)
-    if(!Number.isFinite(pnl)||pnl>=0)return false
-    const eventMs=isoMs(String(event.createdAt||p.placedAt||''))
-    return eventMs>resetAtMs
-  })
+  if(monitorTimer)clearInterval(monitorTimer)
+  monitorTimer=setInterval(()=>{void auditLossGuard()},2000)
 
-  if(latestLoss){
-    const p:any=latestLoss.payload||{}
-    return triggerLossGuard({
-      productId:String(p.productId||'UNKNOWN'),
-      realizedNetProfitUsd:Number(p.realizedNetProfitUsd),
-      realizedNetProfitPercent:Number.isFinite(Number(p.realizedNetProfitPercent))
-        ?Number(p.realizedNetProfitPercent)
-        :null,
-      triggeredAt:String(latestLoss.createdAt||p.placedAt||new Date().toISOString())
-    })
-  }
-
-  publish('loss_guard_waiting',{
-    state:'ARMED',
-    message:'Loss Guard is armed and waiting. Any realized loss will stop all live execution.'
-  },LOSS_GUARD_AGENT_ID)
   return getLossGuardState()
+}
+
+export const stopLossGuard=()=>{
+  if(monitorTimer){
+    clearInterval(monitorTimer)
+    monitorTimer=null
+  }
 }
