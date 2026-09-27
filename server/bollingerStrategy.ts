@@ -1,7 +1,6 @@
 import { config } from './config.js'
 import { getCandles, getProduct } from './coinbase.js'
 import { livePlacedOrders } from './db.js'
-import { validateMeanReversionEntry } from './entryConfirmation.js'
 
 type Candle={start:number;low:number;high:number;open:number;close:number;volume:number}
 
@@ -75,65 +74,40 @@ export const confirmedMeanReversionEntryDecision=(params:{
   currentVolume:number
   averageVolume:number
 })=>{
-  const base=smallAccountEntryDecision({
-    rsiValue:params.rsiValue,
-    closeVsLowerPct:params.closeVsLowerPct,
-    crossedBelowLower:params.crossedBelowLower
-  })
+  const volumeRatio=params.averageVolume>0
+    ? params.currentVolume/params.averageVolume
+    : 0
+  const closeBelowLowerBand=params.currentClose<params.currentLower
+  const rsiStrictlyOversold=params.rsiValue<config.entryRsiStrictlyBelow
+  const volumeConfirmed=volumeRatio>=config.entryMinimumVolumeRatio
 
-  const syntheticVolumes=params.averageVolume>0
-    ? Array.from({length:20},()=>params.averageVolume)
-    : []
-
-  const confirmation=validateMeanReversionEntry({
-    currentRsi:params.rsiValue,
-    previousRsi:params.previousRsiValue,
-    currentClose:params.currentClose,
-    previousClose:params.previousClose,
-    previousHigh:params.previousHigh,
-    currentLowerBand:params.currentLower,
-    previousLowerBand:params.previousLower,
-    threeCandleReturnPercent:params.threeCandleReturnPct,
-    currentVolume:params.currentVolume,
-    previousVolumes:syntheticVolumes,
-    rsiExtremeThreshold:config.entryPreviousRsiMax,
-    rsiRecoveryThreshold:config.entryCurrentRsiMinExclusive,
-    rsiMax:config.entryCurrentRsiMax,
-    minimumRsiRecoveryPoints:config.entryMinimumRsiRecoveryPoints,
-    minimumVolumeRatio:config.entryMinimumVolumeRatio,
-    maximumThreeCandleDropPercent:0.5
-  })
-
-  const previousWasBelow=params.previousClose<params.previousLower
-  const reclaimedLowerBand=previousWasBelow&&params.currentClose>=params.currentLower
-  const candleRecovered=params.currentClose>params.previousClose
-  const brokePreviousHigh=params.currentClose>params.previousHigh
-  const notFallingFast=params.threeCandleReturnPct>-0.5
-  const insideSafeReclaimZone=params.closeVsLowerPct>=0&&params.closeVsLowerPct<=config.smallAccountStrongProximityPercent
-  const volumeRatio=confirmation.volumeRatio
-  const volumeRebound=volumeRatio>=config.entryMinimumVolumeRatio
-  const ready=Boolean(confirmation.approved&&insideSafeReclaimZone)
-
-  const blockers=[...confirmation.blockers]
-  if(!insideSafeReclaimZone)blockers.push('OUTSIDE_SAFE_RECLAIM_ZONE')
+  const blockers:string[]=[]
+  if(!closeBelowLowerBand)blockers.push('CLOSE_NOT_BELOW_LOWER_BOLLINGER')
+  if(!rsiStrictlyOversold)blockers.push('RSI_NOT_STRICTLY_BELOW_30')
+  if(!volumeConfirmed)blockers.push('VMA20_VOLUME_BELOW_REQUIRED_RATIO')
 
   return {
-    ...base,
-    ready,
-    strongOversold:false,
+    ready:blockers.length===0,
+    oversold:rsiStrictlyOversold,
+    nearLowerBand:closeBelowLowerBand,
+    proximityThresholdPercent:0,
+    mode:'DETERMINISTIC_DUAL_TIMEFRAME',
+    strongOversold:rsiStrictlyOversold,
     previousRsiValue:params.previousRsiValue,
-    rsiRecoveryPoints:confirmation.rsiRecoveryPoints,
-    rsiRecoveryConfirmed:!confirmation.blockers.includes('RSI_RECOVERY_NOT_CONFIRMED'),
-    rsiReboundedAboveOversold:params.rsiValue>config.entryCurrentRsiMinExclusive&&params.rsiValue<=config.entryCurrentRsiMax,
-    previousWasBelow,
-    reclaimedLowerBand,
-    candleRecovered,
-    brokePreviousHigh,
-    notFallingFast,
-    insideSafeReclaimZone,
+    rsiRecoveryPoints:params.rsiValue-params.previousRsiValue,
+    rsiRecoveryConfirmed:false,
+    rsiReboundedAboveOversold:false,
+    previousWasBelow:params.previousClose<params.previousLower,
+    reclaimedLowerBand:false,
+    candleRecovered:params.currentClose>params.previousClose,
+    brokePreviousHigh:params.currentClose>params.previousHigh,
+    notFallingFast:true,
+    insideSafeReclaimZone:closeBelowLowerBand,
     volumeRatio,
-    volumeRebound,
+    volumeRebound:volumeConfirmed,
     threeCandleReturnPct:params.threeCandleReturnPct,
+    closeBelowLowerBand,
+    rsiStrictlyOversold,
     blockers
   }
 }
