@@ -97,9 +97,9 @@ export const confirmedMeanReversionEntryDecision=(params:{
     currentVolume:params.currentVolume,
     previousVolumes:syntheticVolumes,
     rsiExtremeThreshold:config.smallAccountStrongRsi,
-    rsiRecoveryThreshold:config.rsiOversold,
-    rsiMax:45,
-    minimumRsiRecoveryPoints:5,
+    rsiRecoveryThreshold:30,
+    rsiMax:36,
+    minimumRsiRecoveryPoints:1,
     minimumVolumeRatio:1.5,
     maximumThreeCandleDropPercent:0.5
   })
@@ -124,7 +124,7 @@ export const confirmedMeanReversionEntryDecision=(params:{
     previousRsiValue:params.previousRsiValue,
     rsiRecoveryPoints:confirmation.rsiRecoveryPoints,
     rsiRecoveryConfirmed:!confirmation.blockers.includes('RSI_RECOVERY_NOT_CONFIRMED'),
-    rsiReboundedAboveOversold:params.rsiValue>config.rsiOversold&&params.rsiValue<=45,
+    rsiReboundedAboveOversold:params.rsiValue>30&&params.rsiValue<=36,
     previousWasBelow,
     reclaimedLowerBand,
     candleRecovered,
