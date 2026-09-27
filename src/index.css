@@ -321,3 +321,38 @@ body{font-size:14px;line-height:1.45}
 .stress-test-card{margin:12px 0;padding:14px;border:1px solid #245d72;background:linear-gradient(180deg,#0b202b,#08171f);border-radius:10px;display:flex;justify-content:space-between;gap:16px;align-items:center}.stress-test-card h3{margin:4px 0 5px;color:#d6f3ff}.stress-test-card p{margin:0;color:#86a6b5;font-size:10px;max-width:760px}.stress-results{display:grid;gap:10px;margin-bottom:14px}.stress-results .tool-stats{grid-template-columns:repeat(6,minmax(0,1fr))}.stress-patterns{border:1px solid #563a1c;background:#1d1509;border-radius:8px;padding:10px}.stress-patterns h3{margin:0 0 7px;font-size:11px;color:#f1c766}.stress-patterns>div{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #3a2a15;padding:6px 0;font-size:10px}.stress-patterns span{color:#d7a85f}.sim-profit{color:var(--green)!important}.sim-loss{color:var(--red)!important}.stress-divider{display:flex;align-items:center;gap:8px;margin:14px 0 8px;color:#607d8e;font-size:8px;letter-spacing:.1em}.stress-divider:before,.stress-divider:after{content:"";height:1px;background:#173044;flex:1}
 @media(max-width:900px){.stress-results .tool-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.stress-test-card{display:block}.stress-test-card .tool-primary{margin-top:10px}}
 @media(max-width:600px){.stress-results .tool-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Profit/loss emphasis for realized SELLs */
+.journal-row.profit-row{
+  background:linear-gradient(90deg,rgba(24,227,155,.10),rgba(24,227,155,.035));
+  border-bottom-color:#1d6a55;
+}
+.journal-row.profit-row:hover{
+  background:linear-gradient(90deg,rgba(24,227,155,.16),rgba(24,227,155,.055));
+}
+.journal-row.loss-row{
+  background:linear-gradient(90deg,rgba(255,94,104,.08),rgba(255,94,104,.025));
+  border-bottom-color:#6d2e36;
+}
+.journal-side-pill.profit{
+  background:#0d3c30;
+  color:#7ef0cb;
+  border:1px solid #1c6d5a;
+}
+.journal-net-pnl.positive{
+  color:var(--green);
+}
+.journal-net-pnl.negative{
+  color:var(--red);
+}
+.journal-net-pnl.positive b,
+.journal-net-pnl.positive small,
+.journal-context.profit-context{
+  color:var(--green);
+}
+.journal-net-pnl.negative b,
+.journal-net-pnl.negative small,
+.journal-context.loss-context{
+  color:var(--red);
+}
