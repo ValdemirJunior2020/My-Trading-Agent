@@ -30,13 +30,16 @@ export function AgentDetails({agent,t}:Props){
   },[])
 
   const isLossGuard=agent.id==='loss_guard'
-  const lossGuard=system?.safety?.lossGuard
+  const safety:any=system?.safety||{}
+  const rollingRisk:any=safety.rollingRisk||{}
+  const deterministicRunning=Boolean((system as any)?.meanReversion?.running)
+  const rollingLocked=Boolean(rollingRisk.locked||rollingRisk.blocked)
   const pipelineRunning=pipeline?.status==='running'
   const isCurrent=pipelineRunning&&pipeline?.currentAgent===agent.id
   const isCompleted=Boolean(pipeline?.completedAgents?.includes(agent.id))
 
   const liveStatus:AgentStatus=isLossGuard
-    ? (lossGuard?.active?'approved':'waiting')
+    ? (rollingLocked?'approved':'waiting')
     : isCurrent
       ? (agent.id==='critic'?'reviewing':'working')
       : pipelineRunning
@@ -44,40 +47,49 @@ export function AgentDetails({agent,t}:Props){
         : 'idle'
 
   const currentTask=isLossGuard
-    ? (lossGuard?.active
-        ? 'GLOBAL STOP ACTIVE - all live BUY and SELL execution blocked'
-        : 'Waiting for any realized loss')
+    ? (rollingLocked
+        ? '3% / 24h EMERGENCY LOCKDOWN ACTIVE'
+        : 'Monitoring rolling 24-hour account equity')
     : isCurrent
-      ? 'Processing live pipeline step'
+      ? 'Processing optional AI analysis'
       : pipelineRunning
-        ? 'Waiting for current pipeline step'
-        : 'Waiting for agent pipeline'
+        ? 'Optional AI pipeline running in background'
+        : deterministicRunning
+          ? 'Deterministic strategy monitoring live market'
+          : 'Waiting for live strategy engine'
 
   const lastCompleted=isLossGuard
-    ? (lossGuard?.active
-        ? 'Stopped trading after '+String(lossGuard.productId||'a trade')+' lost $'+Math.abs(Number(lossGuard.lossUsd||0)).toFixed(2)
-        : 'Armed - no new realized loss since last reset')
+    ? (rollingLocked
+        ? 'Kill switch triggered — manual reset required'
+        : '24h equity protection armed')
     : isCompleted
-      ? 'Completed in current pipeline'
+      ? 'Completed optional AI analysis'
       : pipeline?.status==='completed'
-        ? 'Pipeline completed'
-        : 'No current completed step'
+        ? 'Optional AI pipeline completed'
+        : deterministicRunning
+          ? 'Live deterministic engine is active'
+          : 'No current completed step'
 
   const reasoning=isLossGuard
-    ? (lossGuard?.active
-        ? 'A realized losing SELL was detected. This dedicated safety agent activated the global emergency stop. Live execution remains blocked until you manually reset the stop.'
-        : 'This dedicated safety agent watches realized SELL results. The first realized loss immediately activates the global emergency stop.')
+    ? (rollingLocked
+        ? 'Rolling account equity reached the 3% drawdown limit. Open orders are canceled, bot-managed positions are liquidated, and automated trading remains locked until manual reset.'
+        : 'This safety monitor tracks rolling 24-hour account equity. It triggers only when drawdown reaches 3%, then performs the full manual-reset lockdown.')
     : isCurrent
-      ? 'This agent is actively processing the live backend pipeline.'
+      ? 'This AI agent is analyzing in the background. It cannot approve, reject, modify, or override deterministic live trades.'
       : pipelineRunning
-        ? 'Another agent is currently processing the live backend pipeline.'
-        : 'No agent pipeline is running right now.'
+        ? 'Another optional AI agent is analyzing in the background. Live execution continues to be controlled only by deterministic strategy and risk rules.'
+        : deterministicRunning
+          ? 'No AI approval is required. The live engine is evaluating closed 10m/5m candles, Bollinger Bands, RSI, volume, position availability, slippage, exits, and the rolling equity kill switch.'
+          : 'The deterministic live strategy engine is not currently reporting as running.'
 
   const startedAt=isLossGuard
-    ? (lossGuard?.triggeredAt?new Date(lossGuard.triggeredAt).toLocaleTimeString():'Armed now')
-    : pipeline?.startedAt
+    ? (rollingRisk?.pauseStartedAt?new Date(rollingRisk.pauseStartedAt).toLocaleTimeString():(rollingLocked?'Locked':'Monitoring now'))
+    : isCurrent&&pipeline?.startedAt
       ? new Date(pipeline.startedAt).toLocaleTimeString()
-      : '-'
+      : deterministicRunning
+        ? 'Live now'
+        : '-'
+
 
   return <section className="panel details-panel">
     <header className="mini-heading">
@@ -88,7 +100,7 @@ export function AgentDetails({agent,t}:Props){
       <div className="agent-avatar"><PixelPerson status={liveStatus}/></div>
       <dl>
         <div><dt>{t('currentTask')}</dt><dd>{currentTask}</dd></div>
-        <div><dt>Asset</dt><dd>{isLossGuard?(lossGuard?.productId||agent.asset):(pipeline?.productId||agent.asset)}</dd></div>
+        <div><dt>Asset</dt><dd>{isLossGuard?'ACCOUNT EQUITY':(pipeline?.productId||agent.asset)}</dd></div>
         <div><dt>{t('lastCompleted')}</dt><dd>{lastCompleted}</dd></div>
         <div className="wide"><dt>{t('reasoning')}</dt><dd>{reasoning}</dd></div>
         <div><dt>{t('timeStarted')}</dt><dd>{startedAt}</dd></div>
