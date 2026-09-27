@@ -9,6 +9,7 @@ import { handleApiRequest } from './routes/api.js'
 import { log,serverLogFile } from './logger.js'
 import { initializeSingleLossStopModel,migrateLegacyLossHaltEmergencyStop } from './risk.js'
 import { initializeLossGuard,stopLossGuard } from './lossGuard.js'
+import { runLiveStrategyStressTest } from './liveStrategyStress.js'
 
 const distDir=resolve(process.cwd(),'dist')
 const pidFile=join(config.dataDir,'server.pid')
@@ -130,6 +131,19 @@ server.listen(config.port,config.host,()=>{
   })
   startAutoRun()
   setTimeout(()=>void startMeanReversionEngine(),15000)
+  setTimeout(()=>{
+    void runLiveStrategyStressTest().then(result=>{
+      log.info('automatic_stress_test',{
+        scenarioCount:result.scenarioCount,
+        wins:result.wins,
+        losses:result.losses,
+        winRatePercent:result.winRatePercent,
+        lossPatterns:result.lossPatterns
+      })
+    }).catch(error=>{
+      log.warn('automatic_stress_test_failed',{error:error instanceof Error?error.message:String(error)})
+    })
+  },30000)
 })
 
 const shutdown=()=>{
