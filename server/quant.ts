@@ -47,7 +47,7 @@ export const quantStatus=async()=>{
   return {...native,rdAgent}
 }
 
-const runVectorbtCommand=async(command:'vectorbt-sma'|'vectorbt-validate'|'mean-reversion-validate',payload:unknown)=>{
+const runVectorbtCommand=async(command:'vectorbt-sma'|'vectorbt-validate'|'mean-reversion-validate'|'mean-reversion-optimize',payload:unknown)=>{
   if(!existsSync(pythonPath)) throw new Error('Quant environment is not installed. Run INSTALL-QUANT-ENGINES.bat.')
   const child=spawn(pythonPath,[bridgePath,command],{windowsHide:true,stdio:['pipe','pipe','pipe']})
   const output:string[]=[]
@@ -67,6 +67,7 @@ const runVectorbtCommand=async(command:'vectorbt-sma'|'vectorbt-validate'|'mean-
 export const runVectorbtSma=(payload:unknown)=>runVectorbtCommand('vectorbt-sma',payload)
 export const runVectorbtValidation=(payload:unknown)=>runVectorbtCommand('vectorbt-validate',payload)
 export const runMeanReversionValidation=(payload:unknown)=>runVectorbtCommand('mean-reversion-validate',payload)
+export const runMeanReversionOptimization=(payload:unknown)=>runVectorbtCommand('mean-reversion-optimize',payload)
 
 export const runNautilusSmoke=async()=>{
   if(!existsSync(pythonPath)) throw new Error('Quant environment is not installed. Run INSTALL-QUANT-ENGINES.bat.')
