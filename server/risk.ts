@@ -46,6 +46,35 @@ export const saveRuntimeRiskLimits = (input: Partial<RuntimeRiskLimits>) => {
 export const emergencyStopActive = () => getSetting('emergency_stop', 'false') === 'true'
 export const rollingRiskPauseActive = () => getSetting('rolling_risk_pause', 'false') === 'true'
 
+export const initializeSingleLossStopModel=()=>{
+  if(getSetting('single_loss_stop_model_v1_initialized','false')==='true')return false
+
+  const hadLossHalt=getSetting('loss_halt_active','false')==='true'
+  const hadEmergency=emergencyStopActive()
+  const previousReason=getSetting('emergency_stop_reason','')
+
+  // One-time cleanup of the old persisted stop state. From this version onward,
+  // a NEW realized losing SELL sets loss_halt_active and blocks NEW BUYs only.
+  setSetting('loss_halt_active','false')
+  setSetting('loss_halt_triggered_at','')
+  setSetting('loss_halt_product','')
+  setSetting('loss_halt_amount_usd','')
+
+  if(hadLossHalt){
+    setSetting('emergency_stop','false')
+    setSetting('emergency_stop_reason','')
+  }
+
+  setSetting('single_loss_stop_model_v1_initialized','true')
+  publish('single_loss_stop_model_initialized',{
+    clearedLegacyLossHalt:hadLossHalt,
+    clearedLegacyEmergency:hadLossHalt&&hadEmergency,
+    previousEmergencyStopReason:previousReason||null,
+    behavior:'NEXT realized loss blocks new BUYs; existing SELL exits stay enabled.'
+  },'risk')
+  return true
+}
+
 export const migrateLegacyLossHaltEmergencyStop=()=>{
   const lossHaltActive=getSetting('loss_halt_active','false')==='true'
   const lossHaltTriggeredAt=getSetting('loss_halt_triggered_at','')
