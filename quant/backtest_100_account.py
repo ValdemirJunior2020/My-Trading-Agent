@@ -12,12 +12,12 @@ PRODUCTS = ["SOL-USD", "XRP-USD", "BTC-USD"]
 GRANULARITY = "FIVE_MINUTE"
 
 INITIAL_CASH = 100.0
-POSITION_USD = 20.0
-MAX_CONCURRENT = 5
+POSITION_USD = 100.0
+MAX_CONCURRENT = 1
 FEE_RATE = 0.006
 VOLUME_MULTIPLIER = 1.5
 HARD_STOP_PERCENT = 1.5
-TRAILING_ACTIVATION_NET_PERCENT = 4.0
+TRAILING_ACTIVATION_NET_PERCENT = 8.0
 TRAILING_DISTANCE_PERCENT = 1.5
 
 def load_candles(conn, product_id):
@@ -33,16 +33,38 @@ def load_candles(conn, product_id):
 def prepare_signals(frame):
     close = frame["close"].astype(float)
     volume = frame["volume"].astype(float)
+
     bb = vbt.BBANDS.run(close, window=20, alpha=2)
     lower = pd.Series(bb.lower, index=frame.index, dtype=float)
     vma20 = volume.rolling(20).mean()
+
+    delta = close.diff()
+    gains = delta.clip(lower=0.0).rolling(14).mean()
+    losses = (-delta.clip(upper=0.0)).rolling(14).mean()
+    rs = gains / losses.replace(0.0, np.nan)
+    rsi = (100.0 - (100.0 / (1.0 + rs))).fillna(100.0)
+
     previous_below = close.shift(1) < lower.shift(1)
     reclaimed_lower = previous_below & (close >= lower)
     volume_confirmed = volume >= (vma20 * VOLUME_MULTIPLIER)
+
+    previous_rsi_extreme = rsi.shift(1) <= 30.0
+    rsi_low_bound_rebound = (
+        (rsi > 30.0) &
+        (rsi <= 36.0) &
+        ((rsi - rsi.shift(1)) >= 1.0)
+    )
+
     out = frame.copy()
     out["lower_bb"] = lower
     out["vma20"] = vma20
-    out["entry"] = (reclaimed_lower & volume_confirmed).fillna(False)
+    out["rsi14"] = rsi
+    out["entry"] = (
+        reclaimed_lower &
+        volume_confirmed &
+        previous_rsi_extreme &
+        rsi_low_bound_rebound
+    ).fillna(False)
     return out
 
 def net_exit_value(price, qty):
@@ -153,6 +175,11 @@ def run_simulation(frames):
         "hardStopPercent": HARD_STOP_PERCENT,
         "trailingActivationNetPercent": TRAILING_ACTIVATION_NET_PERCENT,
         "trailingDistancePercent": TRAILING_DISTANCE_PERCENT,
+        "previousRsiAtOrBelow": 30.0,
+        "currentRsiAbove": 30.0,
+        "currentRsiMax": 36.0,
+        "minimumRsiRecoveryPoints": 1.0,
+        "volumeMultiplier": VOLUME_MULTIPLIER,
         "finalPortfolioEquityUsd": final_equity,
         "netProfitUsd": final_equity - INITIAL_CASH,
         "maxDrawdownPercent": max_drawdown,
@@ -187,6 +214,10 @@ def main():
     print("Final equity:             $%.2f" % result["finalPortfolioEquityUsd"])
     print("Net profit:               $%.2f" % result["netProfitUsd"])
     print("Max drawdown:             %.2f%%" % result["maxDrawdownPercent"])
+    print("Position size:            $%.2f" % result["positionSizeUsd"])
+    print("RSI entry:                prev <=30, current >30 and <=36")
+    print("Trailing activation:      %.2f%% net" % result["trailingActivationNetPercent"])
+    print("Hard stop:                %.2f%%" % result["hardStopPercent"])
     print("Closed trades:            %d" % result["closedTrades"])
     print("Win rate:                 %.2f%%" % result["winRatePercent"])
     print("Average win:              $%.4f" % result["averageWinUsd"])
