@@ -1,6 +1,7 @@
 import { config } from './config.js'
 import { getCandles, getProduct } from './coinbase.js'
 import { livePlacedOrders } from './db.js'
+import { validateMeanReversionEntry } from './entryConfirmation.js'
 
 type Candle={start:number;low:number;high:number;open:number;close:number;volume:number}
 
@@ -79,45 +80,51 @@ export const confirmedMeanReversionEntryDecision=(params:{
     closeVsLowerPct:params.closeVsLowerPct,
     crossedBelowLower:params.crossedBelowLower
   })
-  const wasExtremeOversold=params.previousRsiValue<=config.smallAccountStrongRsi
-  const rsiReboundedAboveOversold=params.rsiValue>config.rsiOversold&&params.rsiValue<=45
-  const rsiRecoveryPoints=params.rsiValue-params.previousRsiValue
-  const rsiRecoveryConfirmed=wasExtremeOversold&&rsiReboundedAboveOversold&&rsiRecoveryPoints>=5
+
+  const syntheticVolumes=params.averageVolume>0
+    ? Array.from({length:20},()=>params.averageVolume)
+    : []
+
+  const confirmation=validateMeanReversionEntry({
+    currentRsi:params.rsiValue,
+    previousRsi:params.previousRsiValue,
+    currentClose:params.currentClose,
+    previousClose:params.previousClose,
+    previousHigh:params.previousHigh,
+    currentLowerBand:params.currentLower,
+    previousLowerBand:params.previousLower,
+    threeCandleReturnPercent:params.threeCandleReturnPct,
+    currentVolume:params.currentVolume,
+    previousVolumes:syntheticVolumes,
+    rsiExtremeThreshold:config.smallAccountStrongRsi,
+    rsiRecoveryThreshold:config.rsiOversold,
+    rsiMax:45,
+    minimumRsiRecoveryPoints:5,
+    minimumVolumeRatio:1.5,
+    maximumThreeCandleDropPercent:0.5
+  })
+
   const previousWasBelow=params.previousClose<params.previousLower
   const reclaimedLowerBand=previousWasBelow&&params.currentClose>=params.currentLower
   const candleRecovered=params.currentClose>params.previousClose
   const brokePreviousHigh=params.currentClose>params.previousHigh
   const notFallingFast=params.threeCandleReturnPct>-0.5
   const insideSafeReclaimZone=params.closeVsLowerPct>=0&&params.closeVsLowerPct<=config.smallAccountStrongProximityPercent
-  const volumeRatio=params.averageVolume>0?params.currentVolume/params.averageVolume:0
+  const volumeRatio=confirmation.volumeRatio
   const volumeRebound=volumeRatio>=1.5
-  const ready=Boolean(
-    rsiRecoveryConfirmed &&
-    reclaimedLowerBand &&
-    candleRecovered &&
-    brokePreviousHigh &&
-    notFallingFast &&
-    insideSafeReclaimZone &&
-    volumeRebound
-  )
-  const blockers:string[]=[]
-  if(!wasExtremeOversold)blockers.push('PREVIOUS_RSI_NOT_EXTREME_OVERSOLD')
-  if(!rsiReboundedAboveOversold)blockers.push('RSI_NOT_REBOUNDED_ABOVE_35')
-  if(rsiRecoveryPoints<5)blockers.push('RSI_RECOVERY_TOO_WEAK')
-  if(!reclaimedLowerBand)blockers.push('LOWER_BAND_NOT_RECLAIMED')
-  if(!candleRecovered)blockers.push('NO_PRICE_RECOVERY')
-  if(!brokePreviousHigh)blockers.push('NO_BULLISH_BREAK_ABOVE_PREVIOUS_HIGH')
-  if(!notFallingFast)blockers.push('FAST_DROP_3_CANDLES')
+  const ready=Boolean(confirmation.approved&&insideSafeReclaimZone)
+
+  const blockers=[...confirmation.blockers]
   if(!insideSafeReclaimZone)blockers.push('OUTSIDE_SAFE_RECLAIM_ZONE')
-  if(!volumeRebound)blockers.push('VOLUME_REBOUND_BELOW_1_5X')
+
   return {
     ...base,
     ready,
     strongOversold:false,
     previousRsiValue:params.previousRsiValue,
-    rsiRecoveryPoints,
-    rsiRecoveryConfirmed,
-    rsiReboundedAboveOversold,
+    rsiRecoveryPoints:confirmation.rsiRecoveryPoints,
+    rsiRecoveryConfirmed:!confirmation.blockers.includes('RSI_RECOVERY_NOT_CONFIRMED'),
+    rsiReboundedAboveOversold:params.rsiValue>config.rsiOversold&&params.rsiValue<=45,
     previousWasBelow,
     reclaimedLowerBand,
     candleRecovered,
