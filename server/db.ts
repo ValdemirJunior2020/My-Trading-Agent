@@ -36,6 +36,20 @@ CREATE TABLE IF NOT EXISTS equity_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_equity_snapshots_created_at ON equity_snapshots(created_at);
 CREATE INDEX IF NOT EXISTS idx_agent_events_type_id ON agent_events(type,id);
+CREATE TABLE IF NOT EXISTS market_candles (
+  product_id TEXT NOT NULL,
+  granularity TEXT NOT NULL,
+  start INTEGER NOT NULL,
+  low REAL NOT NULL,
+  high REAL NOT NULL,
+  open REAL NOT NULL,
+  close REAL NOT NULL,
+  volume REAL NOT NULL,
+  ingested_at TEXT NOT NULL,
+  PRIMARY KEY (product_id,granularity,start)
+);
+CREATE INDEX IF NOT EXISTS idx_market_candles_product_start
+  ON market_candles(product_id,granularity,start);
 `)
 
 export const setSetting = (key: string, value: string) => {
@@ -321,4 +335,56 @@ export const pruneEquitySnapshots=(beforeIso:string)=>{
 export const equitySnapshotsSince=(sinceIso:string)=>{
   const rows=db.prepare('SELECT id,equity_usd,created_at FROM equity_snapshots WHERE created_at >= ? ORDER BY created_at ASC').all(sinceIso) as Array<any>
   return rows.map(row=>({id:Number(row.id),equityUsd:Number(row.equity_usd),createdAt:String(row.created_at)}))
+}
+
+
+export type HistoricalCandleRow={
+  productId:string
+  granularity:string
+  start:number
+  low:number
+  high:number
+  open:number
+  close:number
+  volume:number
+}
+
+export const insertHistoricalCandles=(rows:HistoricalCandleRow[])=>{
+  if(!rows.length)return {inserted:0,attempted:0}
+  const stmt=db.prepare(`
+    INSERT OR IGNORE INTO market_candles
+      (product_id,granularity,start,low,high,open,close,volume,ingested_at)
+    VALUES (?,?,?,?,?,?,?,?,?)
+  `)
+  let inserted=0
+  db.exec('BEGIN IMMEDIATE')
+  try{
+    const ingestedAt=new Date().toISOString()
+    for(const row of rows){
+      const result=stmt.run(
+        row.productId.toUpperCase(),
+        row.granularity,
+        Math.floor(row.start),
+        Number(row.low),
+        Number(row.high),
+        Number(row.open),
+        Number(row.close),
+        Number(row.volume),
+        ingestedAt
+      )
+      inserted+=Number(result.changes||0)
+    }
+    db.exec('COMMIT')
+  }catch(error){
+    db.exec('ROLLBACK')
+    throw error
+  }
+  return {inserted,attempted:rows.length}
+}
+
+export const historicalCandleCount=(productId:string,granularity='FIVE_MINUTE')=>{
+  const row=db.prepare(
+    'SELECT COUNT(*) AS count FROM market_candles WHERE product_id=? AND granularity=?'
+  ).get(productId.toUpperCase(),granularity) as {count:number}|undefined
+  return Number(row?.count||0)
 }
