@@ -62,9 +62,11 @@ export const smallAccountEntryDecision=(params:{
 
 export const confirmedMeanReversionEntryDecision=(params:{
   rsiValue:number
+  previousRsiValue:number
   closeVsLowerPct:number
   crossedBelowLower:boolean
   previousClose:number
+  previousHigh:number
   previousLower:number
   currentClose:number
   currentLower:number
@@ -75,34 +77,46 @@ export const confirmedMeanReversionEntryDecision=(params:{
     closeVsLowerPct:params.closeVsLowerPct,
     crossedBelowLower:params.crossedBelowLower
   })
-  const strongOversold=params.rsiValue<=config.smallAccountStrongRsi
+  const wasExtremeOversold=params.previousRsiValue<=config.smallAccountStrongRsi
+  const rsiReboundedAboveExtreme=params.rsiValue>config.smallAccountStrongRsi&&params.rsiValue<=config.rsiOversold
+  const rsiRecoveryPoints=params.rsiValue-params.previousRsiValue
+  const rsiRecoveryConfirmed=wasExtremeOversold&&rsiReboundedAboveExtreme&&rsiRecoveryPoints>=2
   const previousWasBelow=params.previousClose<params.previousLower
   const reclaimedLowerBand=previousWasBelow&&params.currentClose>=params.currentLower
   const candleRecovered=params.currentClose>params.previousClose
-  const notFallingFast=params.threeCandleReturnPct>-1
+  const brokePreviousHigh=params.currentClose>params.previousHigh
+  const notFallingFast=params.threeCandleReturnPct>-0.5
   const insideSafeReclaimZone=params.closeVsLowerPct>=0&&params.closeVsLowerPct<=config.smallAccountStrongProximityPercent
   const ready=Boolean(
     base.oversold &&
-    strongOversold &&
+    rsiRecoveryConfirmed &&
     reclaimedLowerBand &&
     candleRecovered &&
+    brokePreviousHigh &&
     notFallingFast &&
     insideSafeReclaimZone
   )
   const blockers:string[]=[]
   if(!base.oversold)blockers.push('RSI_NOT_OVERSOLD')
-  if(!strongOversold)blockers.push('RSI_NOT_STRONG_OVERSOLD')
+  if(!wasExtremeOversold)blockers.push('PREVIOUS_RSI_NOT_EXTREME_OVERSOLD')
+  if(!rsiReboundedAboveExtreme)blockers.push('RSI_NOT_REBOUNDED_ABOVE_30')
+  if(rsiRecoveryPoints<2)blockers.push('RSI_RECOVERY_TOO_WEAK')
   if(!reclaimedLowerBand)blockers.push('LOWER_BAND_NOT_RECLAIMED')
   if(!candleRecovered)blockers.push('NO_PRICE_RECOVERY')
+  if(!brokePreviousHigh)blockers.push('NO_BULLISH_BREAK_ABOVE_PREVIOUS_HIGH')
   if(!notFallingFast)blockers.push('FAST_DROP_3_CANDLES')
   if(!insideSafeReclaimZone)blockers.push('OUTSIDE_SAFE_RECLAIM_ZONE')
   return {
     ...base,
     ready,
-    strongOversold,
+    strongOversold:false,
+    previousRsiValue:params.previousRsiValue,
+    rsiRecoveryPoints,
+    rsiRecoveryConfirmed,
     previousWasBelow,
     reclaimedLowerBand,
     candleRecovered,
+    brokePreviousHigh,
     notFallingFast,
     insideSafeReclaimZone,
     threeCandleReturnPct:params.threeCandleReturnPct,
@@ -197,11 +211,12 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
   const latestBands=bandsAt(closes,closes.length,config.bbPeriod,config.bbStdDev)
   const prevBands=bandsAt(closes,closes.length-1,config.bbPeriod,config.bbStdDev)
   const latestRsi=rsi(closes,config.rsiPeriod)
+  const previousRsi=rsi(closes.slice(0,-1),config.rsiPeriod)
   const product:any=await getProduct(productId)
   const livePrice=Number(product?.price||latest.close)
   const position=getBotManagedPosition(productId)
 
-  if(!latestBands||!prevBands||latestRsi==null){
+  if(!latestBands||!prevBands||latestRsi==null||previousRsi==null){
     return {action:'NONE',reason:'Indicators unavailable',productId}
   }
 
@@ -216,9 +231,11 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
   const threeCandleReturnPct=threeLookbackClose>0?((latest.close-threeLookbackClose)/threeLookbackClose)*100:0
   const entryDecision=confirmedMeanReversionEntryDecision({
     rsiValue:latestRsi,
+    previousRsiValue:previousRsi,
     closeVsLowerPct,
     crossedBelowLower,
     previousClose:previous.close,
+    previousHigh:previous.high,
     previousLower:prevBands.lower,
     currentClose:latest.close,
     currentLower:latestBands.lower,
