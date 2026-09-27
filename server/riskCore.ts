@@ -200,3 +200,25 @@ export const assessCapitalPreservationBuy=(input:{
   }
   return {approved:reasons.length===0,reasons}
 }
+
+
+export const shouldClearLegacyLossHaltEmergency=(input:{
+  emergencyStop:boolean
+  lossHaltActive:boolean
+  emergencyStopReason?:string
+  lossHaltTriggeredAt?:string
+  latestManualEmergencyAt?:string
+})=>{
+  if(!input.emergencyStop||!input.lossHaltActive)return false
+  const reason=String(input.emergencyStopReason||'').toUpperCase()
+  if(reason!=='MANUAL')return true
+
+  const lossAt=new Date(String(input.lossHaltTriggeredAt||'')).getTime()
+  const manualAt=new Date(String(input.latestManualEmergencyAt||'')).getTime()
+
+  // A MANUAL reason is considered stale when there is no confirmed manual
+  // stop after the loss-halt event.
+  if(!Number.isFinite(manualAt))return true
+  if(!Number.isFinite(lossAt))return false
+  return manualAt<=lossAt
+}
