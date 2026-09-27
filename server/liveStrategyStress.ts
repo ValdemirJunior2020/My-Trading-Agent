@@ -135,12 +135,21 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
       const trailingStopPrice=peakPrice*(1-config.trailingDistancePercent/100)
 
       const stopHit=candle.low<=stopPrice
+      const microProfitPrice=
+        (costBasisUsd+config.smallAccountMinNetProfitUsd)/
+        Math.max(1e-12,qty*(1-feeRate))
+      const microProfitHit=candle.high>=microProfitPrice
       const trailingHit=trailingActive&&candle.low<=trailingStopPrice
 
-      // Conservative replay: if both levels were touched inside one 5-minute candle,
-      // assume the hard stop happened first because candle ordering is unknown.
-      if(stopHit||trailingHit){
-        const sellPrice=stopHit?stopPrice:trailingStopPrice
+      // Conservative replay: if a stop and a profitable exit are both touched
+      // inside the same 5-minute candle, assume the stop happened first because
+      // intrabar ordering is unknown.
+      if(stopHit||microProfitHit||trailingHit){
+        const sellPrice=stopHit
+          ?stopPrice
+          :microProfitHit
+            ?microProfitPrice
+            :trailingStopPrice
         const sellGross=qty*sellPrice
         const sellFee=sellGross*feeRate
         const netProceeds=sellGross-sellFee
@@ -153,14 +162,20 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
           entryThreeCandleReturnPct:entryMeta?.threeCandleReturnPct,crossedBelowLower:entryMeta?.crossedBelowLower
         })
         netPnlUsd+=pnl
-        if(pnl<0)losses+=1
-        else wins+=1
+        cashUsd+=netProceeds
+        if(pnl<0){
+          losses+=1
+          stoppedByLossGuard=true
+        }else{
+          wins+=1
+        }
         qty=0
         peakPrice=0
         costBasisUsd=0
         avgEntryPrice=0
         fillEntryPrice=0
         entryMeta=null
+        if(stoppedByLossGuard)break
       }
       continue
     }
