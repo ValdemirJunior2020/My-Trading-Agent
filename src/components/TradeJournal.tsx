@@ -482,9 +482,9 @@ export function TradeJournal({language}:Props){
                 Number.isFinite(Number(p.volumeRatio))
                   ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / needs ≥1.50× VMA20')
                   : '',
-                p.globalSlotOccupied===true
-                  ? ('GLOBAL SLOT: OCCUPIED'+(Array.isArray(p.globalSlotProductIds)&&p.globalSlotProductIds.length?' — '+p.globalSlotProductIds.join(', '):''))
-                  : 'GLOBAL SLOT: AVAILABLE',
+                Array.isArray(p.openBotProductIds)&&p.openBotProductIds.length
+                  ? ('OPEN BOT POSITIONS: '+p.openBotProductIds.join(', '))
+                  : 'OPEN BOT POSITIONS: NONE',
                 p.deterministicReady===true?'DETERMINISTIC BUY SETUP READY':'No deterministic entry trigger'
               ]
               return parts.filter(Boolean).join(' • ')
