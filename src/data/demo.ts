@@ -11,7 +11,8 @@ export const agents: Agent[] = [
   { id:'portfolio', icon:'▤', nameKey:'portfolioManager', roomKey:'portfolioRoom', taskKey:'checkExposure', asset:'PORTFOLIO', status:'working', detailKey:'portfolioDetail', lastKey:'lastPortfolio', startedAt:'14:30:57', ollama:true, gridArea:'portfolio' },
   { id:'paper', icon:'◫', nameKey:'paperTrader', roomKey:'paperRoom', taskKey:'simulateExecution', asset:'ETH-USD', status:'approved', detailKey:'paperDetail', lastKey:'lastPaper', startedAt:'14:31:20', ollama:false, gridArea:'paper' },
   { id:'decision', icon:'★', nameKey:'finalDecisionAgent', roomKey:'decisionRoom', taskKey:'compareReports', asset:'BTC-USD', status:'waiting', detailKey:'decisionDetail', lastKey:'lastDecision', startedAt:'14:31:33', ollama:true, gridArea:'decision' },
-  { id:'execution', icon:'⇄', nameKey:'executionAgent', roomKey:'executionRoom', taskKey:'readyOrders', asset:'PAPER', status:'idle', detailKey:'executionDetail', lastKey:'lastExecution', startedAt:'14:25:11', ollama:false, gridArea:'execution' }
+  { id:'execution', icon:'⇄', nameKey:'executionAgent', roomKey:'executionRoom', taskKey:'readyOrders', asset:'PAPER', status:'idle', detailKey:'executionDetail', lastKey:'lastExecution', startedAt:'14:25:11', ollama:false, gridArea:'execution' },
+  { id:'loss_guard', icon:'✚', nameKey:'lossGuardAgent', roomKey:'lossGuardRoom', taskKey:'lossGuardWaiting', asset:'ALL LIVE TRADING', status:'waiting', detailKey:'lossGuardDetail', lastKey:'lastLossGuard', startedAt:'—', ollama:false, gridArea:'lossguard' }
 ]
 
 export const watchlist = [
