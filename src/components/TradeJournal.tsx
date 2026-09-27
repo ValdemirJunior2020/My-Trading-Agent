@@ -26,6 +26,12 @@ const journalStatus=(event:any)=>{
   if(type==='live_order_preview_rejected')return 'COINBASE PREVIEW FAILED'
   if(type==='live_order_rejected')return reason.includes('risk')?'BLOCKED BY RISK':'ORDER BLOCKED'
   if(type==='live_order_preview_approved')return 'PREVIEW OK'
+  if(type==='mean_reversion_buy_signal')return 'BUY SIGNAL'
+  if(type==='mean_reversion_entry_result')return p.result?.executed?'ORDER PLACED':'ORDER BLOCKED'
+  if(type==='mean_reversion_exit_signal')return 'EXIT SIGNAL'
+  if(type==='mean_reversion_candle_closed')return p.deterministicReady?'SETUP READY':'WAIT'
+  if(type==='rolling_kill_switch_triggered')return 'KILL SWITCH'
+  if(type==='rolling_kill_switch_liquidation_fill')return 'EMERGENCY SELL'
   if(type==='capital_rotation_plan')return p.rotationReady?'ROTATION READY':'FUNDING NEEDED'
   if(type==='capital_rotation_plan_failed')return 'ROTATION CHECK FAILED'
 
@@ -48,8 +54,8 @@ const journalStatus=(event:any)=>{
 const statusGroup=(status:string):JournalFilter=>{
   if(status==='ORDER PLACED')return 'ORDER PLACED'
   if(status==='REJECTED BY AGENTS')return 'REJECTED'
-  if(status==='WAIT'||status==='NO TRADE'||status==='AGENT APPROVED')return 'WAIT'
-  if(status.includes('BLOCKED')||status.includes('PREVIEW')||status==='FUNDING NEEDED'||status==='ROTATION READY'||status==='ROTATION CHECK FAILED')return 'BLOCKED'
+  if(status==='WAIT'||status==='NO TRADE'||status==='AGENT APPROVED'||status==='SETUP READY'||status==='BUY SIGNAL'||status==='EXIT SIGNAL')return 'WAIT'
+  if(status.includes('BLOCKED')||status.includes('PREVIEW')||status==='FUNDING NEEDED'||status==='ROTATION READY'||status==='ROTATION CHECK FAILED'||status==='KILL SWITCH')return 'BLOCKED'
   if(status.includes('FAILED'))return 'FAILED'
   return 'ALL'
 }
@@ -62,6 +68,12 @@ const JOURNAL_TYPES=new Set([
   'live_order_preview_rejected',
   'live_order_preview_approved',
   'live_execution_cycle',
+  'mean_reversion_candle_closed',
+  'mean_reversion_buy_signal',
+  'mean_reversion_entry_result',
+  'mean_reversion_exit_signal',
+  'rolling_kill_switch_triggered',
+  'rolling_kill_switch_liquidation_fill',
   'capital_rotation_plan',
   'capital_rotation_plan_failed'
 ])
@@ -149,6 +161,9 @@ const statusClass=(status:string)=>{
   if(status==='REJECTED BY AGENTS')return 'rejected'
   if(status==='WAIT'||status==='NO TRADE')return 'wait'
   if(status==='AGENT APPROVED')return 'placed'
+  if(status==='BUY SIGNAL'||status==='SETUP READY')return 'placed'
+  if(status==='EXIT SIGNAL'||status==='EMERGENCY SELL')return 'placed'
+  if(status==='KILL SWITCH')return 'blocked'
   if(status.includes('BLOCKED'))return 'blocked'
   if(status.includes('PREVIEW'))return 'preview-failed'
   if(status==='ROTATION READY')return 'placed'
@@ -158,45 +173,38 @@ const statusClass=(status:string)=>{
   return 'neutral'
 }
 
-const strategyHoverHelp=(ds:any,pt:boolean)=>{
-  if(!ds||Object.keys(ds).length===0){
+const strategyHoverHelp=(event:any,pt:boolean)=>{
+  const p=event?.payload||{}
+  if(event?.type==='mean_reversion_candle_closed'){
+    const macro=p.macro10m||{}
+    const rsi=Number(p.rsi)
+    const ratio=Number(p.volumeRatio)
+    const lowerPass=p.closeBelowLowerBand===true
+    const macroPass=macro.ready===true
     return pt
-      ? 'Passe o mouse aqui para entender esta linha. RSI mede se o preço caiu ou subiu rápido demais. BB significa Bandas de Bollinger, uma faixa que mostra onde o preço está em relação ao seu movimento recente.'
-      : 'Hover here to understand this row. RSI measures whether price has fallen or risen too fast. BB means Bollinger Bands, a price range that shows where the coin is compared with its recent movement.'
+      ? [
+          'Regra atual determinística.',
+          '10m macro: '+(macroPass?'PASSOU':'BLOQUEOU')+' — último candle fechado de 10m deve fechar acima da banda média/SMA20.',
+          '5m Bollinger: '+(lowerPass?'PASSOU':'BLOQUEOU')+' — o fechamento deve ficar estritamente abaixo da banda inferior.',
+          Number.isFinite(rsi)?'RSI14: '+rsi.toFixed(1)+' — precisa ser <30.':'',
+          Number.isFinite(ratio)?'Volume: '+ratio.toFixed(2)+'× VMA20 — precisa ser ≥1.50×.':''
+        ].filter(Boolean).join(' ')
+      : [
+          'Current deterministic rule set.',
+          '10m macro: '+(macroPass?'PASS':'BLOCK')+' — latest fully closed 10m candle must close above Bollinger middle/SMA20.',
+          '5m Bollinger: '+(lowerPass?'PASS':'BLOCK')+' — the 5m close must be strictly below the lower band.',
+          Number.isFinite(rsi)?'RSI14: '+rsi.toFixed(1)+' — must be <30.':'',
+          Number.isFinite(ratio)?'Volume: '+ratio.toFixed(2)+'× VMA20 — must be ≥1.50×.':''
+        ].filter(Boolean).join(' ')
   }
-
-  const rsi=Number(ds.rsi)
-  const threshold=Number(ds.rsiThreshold||35)
-  const hasRsi=Number.isFinite(rsi)
-  const closePct=Number(ds.closeVsLowerPct)
-  const hasClosePct=Number.isFinite(closePct)
-  const near=ds.nearLowerBand===true
-  const crossed=ds.crossedBelowLower===true
-  const oversold=ds.oversold===true
-  const open=ds.positionAlreadyOpen===true
-  const ready=ds.rawEntrySignal===true && !open
-
-  if(pt){
-    const pieces=[
-      'RSI = força do movimento do preço. Abaixo de '+threshold.toFixed(0)+' significa que a moeda pode estar sobrevendida e é uma condição que o bot procura para comprar.',
-      'BB = Bandas de Bollinger. A banda inferior é a parte baixa da faixa recente de preço; ficar perto dela pode indicar uma possível entrada.',
-      hasRsi?'Agora: RSI '+rsi.toFixed(1)+(oversold?' — está abaixo do limite.':' — ainda está acima do limite.'):'',
-      hasClosePct?'Preço: '+Math.abs(closePct).toFixed(2)+'% '+(closePct>=0?'acima':'abaixo')+' da banda inferior.':'',
-      crossed?'O preço cruzou a banda inferior.':near?'O preço está perto da banda inferior, mas não cruzou.':'O preço não está perto da banda inferior.',
-      open?'Já existe uma posição aberta, então o bot está monitorando a saída.':ready?'As condições básicas de compra estão presentes; os outros controles ainda precisam aprovar.':'O bot está esperando uma configuração melhor antes de comprar.'
-    ].filter(Boolean)
-    return pieces.join(' ')
+  if(event?.type==='live_execution_cycle'){
+    return pt
+      ? 'Registro legado do pipeline de agentes. Ele não representa mais as regras atuais de entrada ao vivo.'
+      : 'Legacy agent-pipeline record. It no longer represents the current live-entry rules.'
   }
-
-  const pieces=[
-    'RSI = price momentum. Below '+threshold.toFixed(0)+' means the coin may be oversold, which is one condition the bot looks for before buying.',
-    'BB = Bollinger Bands. The lower BB is the bottom of the coin’s recent price range; being near it can signal a possible entry.',
-    hasRsi?'Right now: RSI '+rsi.toFixed(1)+(oversold?' — below the limit.':' — still above the limit.'):'',
-    hasClosePct?'Price is '+Math.abs(closePct).toFixed(2)+'% '+(closePct>=0?'above':'below')+' the lower BB.':'',
-    crossed?'Price crossed below the lower BB.':near?'Price is near the lower BB, but it did not cross it.':'Price is not near the lower BB.',
-    open?'A bot position is already open, so it is monitoring for an exit.':ready?'The basic buy setup is present; the remaining safety and execution checks still have to approve it.':'The bot is waiting for a better setup before buying.'
-  ].filter(Boolean)
-  return pieces.join(' ')
+  return pt
+    ? 'Este evento pertence ao motor determinístico atual: $100 fixos, stop de 0,8% baseado no fill, trailing ativa em +8% líquido com callback de 1,5%, e kill switch de 3%/24h.'
+    : 'This event belongs to the current deterministic engine: fixed $100 entry, 0.8% fill-based stop, trailing activation at +8% net with 1.5% callback, and a 3%/24h kill switch.'
 }
 
 export function TradeJournal({language}:Props){
@@ -455,24 +463,64 @@ export function TradeJournal({language}:Props){
               ' • Approval required'
             : ''
           const ds=p.deterministicStrategy||{}
-          const strategyDetail=event.type==='live_execution_cycle' && p.attempted===false && ds
-            ? [
-                Number.isFinite(Number(ds.closeVsLowerPct))
-                  ? ('Close ' + (Number(ds.closeVsLowerPct)>=0?'+':'') + Number(ds.closeVsLowerPct).toFixed(2) + '% vs lower BB')
+          const strategyDetail=(()=>{
+            if(event.type==='mean_reversion_candle_closed'){
+              const macro=p.macro10m||{}
+              const parts=[
+                '10m Macro '+(macro.ready===true?'PASS':'FAIL'),
+                Number.isFinite(Number(macro.latestClose))&&Number.isFinite(Number(macro.middleBand))
+                  ? ('Close '+Number(macro.latestClose).toFixed(6)+' vs SMA20 '+Number(macro.middleBand).toFixed(6))
                   : '',
-                Number.isFinite(Number(ds.rsi))
-                  ? ('RSI ' + Number(ds.rsi).toFixed(1) + ' / needs < ' + Number(ds.rsiThreshold||30).toFixed(0))
+                '5m BB '+(p.closeBelowLowerBand===true?'PASS':'FAIL'),
+                Number.isFinite(Number(p.rsi))
+                  ? ('RSI '+Number(p.rsi).toFixed(1)+' / needs <30')
                   : '',
-                ds.crossedBelowLower===true?'BB cross YES':'BB cross NO',
-                ds.nearLowerBand===true?'Near lower BB YES':'Near lower BB NO',
-                ds.oversold===true?'RSI oversold YES':'RSI oversold NO',
-                ds.positionAlreadyOpen===true&&ds.rawEntrySignal===true
-                  ? 'VALID BUY SETUP • existing bot lot already open'
-                  : ds.positionAlreadyOpen===true
-                    ? 'Existing bot lot open • monitoring for exit'
-                    : String(ds.reason||'No deterministic entry trigger')
+                Number.isFinite(Number(p.volumeRatio))
+                  ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / needs ≥1.50× VMA20')
+                  : '',
+                p.positionOpen===true?'1 global slot occupied':'1 global slot available',
+                p.deterministicReady===true?'DETERMINISTIC BUY SETUP READY':'No deterministic entry trigger'
+              ]
+              return parts.filter(Boolean).join(' • ')
+            }
+            if(event.type==='mean_reversion_buy_signal'){
+              return [
+                'DETERMINISTIC BUY SIGNAL',
+                '10m Macro PASS',
+                '5m close < lower BB',
+                Number.isFinite(Number(p.rsi))?('RSI '+Number(p.rsi).toFixed(1)+' <30'):'',
+                Number.isFinite(Number(p.volumeRatio))?('Volume '+Number(p.volumeRatio).toFixed(2)+'× VMA20'):'',
+                '$100 fixed allocation',
+                'Max slippage 0.10%'
               ].filter(Boolean).join(' • ')
-            : ''
+            }
+            if(event.type==='mean_reversion_entry_result'){
+              const result=p.result||{}
+              return result.executed
+                ? 'DETERMINISTIC ENTRY EXECUTED • $100 fixed allocation'
+                : 'DETERMINISTIC ENTRY BLOCKED • '+String(result.reason||'execution gate rejected')
+            }
+            if(event.type==='mean_reversion_exit_signal'){
+              return [
+                String(p.reason||'EXIT').replace(/_/g,' '),
+                Number.isFinite(Number(p.stopLossPercent))?('Hard stop '+Number(p.stopLossPercent).toFixed(2)+'% from fill'):'',
+                Number.isFinite(Number(p.trailingActivationNetPercent))?('Trailing active at +'+Number(p.trailingActivationNetPercent).toFixed(2)+'% net'):'',
+                Number.isFinite(Number(p.trailingDistancePercent))?('Callback '+Number(p.trailingDistancePercent).toFixed(2)+'% from peak'):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='rolling_kill_switch_triggered'){
+              return '3%/24h KILL SWITCH • open orders canceled • bot positions liquidated • manual reset required'
+            }
+            if(event.type==='rolling_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • rolling 24h equity kill switch'
+            }
+            if(event.type==='live_execution_cycle'){
+              return pt
+                ? 'LEGACY STRATEGY RECORD • ciclo antigo dos agentes; não representa as regras atuais ao vivo'
+                : 'LEGACY STRATEGY RECORD • old agent-cycle logic; not the current live-entry rules'
+            }
+            return ''
+          })()
           const generatedDetail=[
             decision?('Decision: '+decision):'',
             confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
@@ -493,7 +541,7 @@ export function TradeJournal({language}:Props){
               : ([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
           )
           const hoverHelp=strategyDetail
-            ? strategyHoverHelp(ds,pt)
+            ? strategyHoverHelp(event,pt)
             : (pt
                 ? 'Esta linha mostra o que o bot decidiu ou tentou fazer. RSI mede a força recente do preço. BB significa Bandas de Bollinger, uma faixa usada para comparar o preço atual com seu movimento recente.'
                 : 'This row shows what the bot decided or tried to do. RSI measures recent price momentum. BB means Bollinger Bands, a range used to compare the current price with its recent movement.')
