@@ -91,6 +91,12 @@ export const liveTradeHistory=(limit=200)=>{
         'live_order_preview_rejected',
         'live_order_preview_approved',
         'live_execution_cycle',
+        'mean_reversion_candle_closed',
+        'mean_reversion_buy_signal',
+        'mean_reversion_entry_result',
+        'mean_reversion_exit_signal',
+        'rolling_kill_switch_triggered',
+        'rolling_kill_switch_liquidation_fill',
         'capital_rotation_plan',
         'capital_rotation_plan_failed'
       )
@@ -250,6 +256,12 @@ export const restoreLiveTradeHistory=()=>{
       'live_order_preview_rejected',
       'live_order_preview_approved',
       'live_execution_cycle',
+      'mean_reversion_candle_closed',
+      'mean_reversion_buy_signal',
+      'mean_reversion_entry_result',
+      'mean_reversion_exit_signal',
+      'rolling_kill_switch_triggered',
+      'rolling_kill_switch_liquidation_fill',
       'capital_rotation_plan',
       'capital_rotation_plan_failed'
     )
@@ -270,6 +282,12 @@ export const clearLiveTradeHistory=()=>{
       'live_order_preview_rejected',
       'live_order_preview_approved',
       'live_execution_cycle',
+      'mean_reversion_candle_closed',
+      'mean_reversion_buy_signal',
+      'mean_reversion_entry_result',
+      'mean_reversion_exit_signal',
+      'rolling_kill_switch_triggered',
+      'rolling_kill_switch_liquidation_fill',
       'capital_rotation_plan',
       'capital_rotation_plan_failed'
     )
