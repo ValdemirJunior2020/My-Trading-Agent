@@ -349,37 +349,45 @@ export type HistoricalCandleRow={
   volume:number
 }
 
-export const insertHistoricalCandles=(rows:HistoricalCandleRow[])=>{
-  if(!rows.length)return {inserted:0,attempted:0}
+export const insertHistoricalCandles=(rows:HistoricalCandleRow[],chunkSize=2000)=>{
+  if(!rows.length)return {inserted:0,attempted:0,chunks:0}
   const stmt=db.prepare(`
     INSERT OR IGNORE INTO market_candles
       (product_id,granularity,start,low,high,open,close,volume,ingested_at)
     VALUES (?,?,?,?,?,?,?,?,?)
   `)
+  const boundedChunkSize=Math.max(250,Math.min(5000,Math.floor(chunkSize)||2000))
   let inserted=0
-  db.exec('BEGIN IMMEDIATE')
-  try{
-    const ingestedAt=new Date().toISOString()
-    for(const row of rows){
-      const result=stmt.run(
-        row.productId.toUpperCase(),
-        row.granularity,
-        Math.floor(row.start),
-        Number(row.low),
-        Number(row.high),
-        Number(row.open),
-        Number(row.close),
-        Number(row.volume),
-        ingestedAt
-      )
-      inserted+=Number(result.changes||0)
+  let chunks=0
+
+  for(let offset=0;offset<rows.length;offset+=boundedChunkSize){
+    const chunk=rows.slice(offset,offset+boundedChunkSize)
+    db.exec('BEGIN IMMEDIATE')
+    try{
+      const ingestedAt=new Date().toISOString()
+      for(const row of chunk){
+        const result=stmt.run(
+          row.productId.toUpperCase(),
+          row.granularity,
+          Math.floor(row.start),
+          Number(row.low),
+          Number(row.high),
+          Number(row.open),
+          Number(row.close),
+          Number(row.volume),
+          ingestedAt
+        )
+        inserted+=Number(result.changes||0)
+      }
+      db.exec('COMMIT')
+      chunks+=1
+    }catch(error){
+      db.exec('ROLLBACK')
+      throw error
     }
-    db.exec('COMMIT')
-  }catch(error){
-    db.exec('ROLLBACK')
-    throw error
   }
-  return {inserted,attempted:rows.length}
+
+  return {inserted,attempted:rows.length,chunks}
 }
 
 export const historicalCandleCount=(productId:string,granularity='FIVE_MINUTE')=>{
