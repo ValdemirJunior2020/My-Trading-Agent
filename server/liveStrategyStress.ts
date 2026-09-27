@@ -77,6 +77,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
   let qty=0
   let costBasisUsd=0
   let avgEntryPrice=0
+  let fillEntryPrice=0
   let entryMeta:{rsi:number;closeVsLowerPct:number;threeCandleReturnPct:number;crossedBelowLower:boolean}|null=null
   let wins=0
   let losses=0
@@ -89,7 +90,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     const candle=history.at(-1)!
 
     if(qty>0&&avgEntryPrice>0){
-      const stopPrice=avgEntryPrice*(1-config.fixedStopLossPercent/100)
+      const stopPrice=fillEntryPrice*(1-config.fixedStopLossPercent/100)
       const requiredNetProfitUsd=Math.max(config.smallAccountMinNetProfitUsd,costBasisUsd*(config.takeProfitPercent/100))
       const targetNetProceeds=costBasisUsd+requiredNetProfitUsd
       const takeProfitPrice=targetNetProceeds/(Math.max(1e-12,qty*(1-feeRate)))
@@ -124,6 +125,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
         qty=0
         costBasisUsd=0
         avgEntryPrice=0
+        fillEntryPrice=0
         entryMeta=null
       }
       continue
@@ -157,6 +159,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     qty=filledValue/candle.close
     costBasisUsd=orderUsd
     avgEntryPrice=costBasisUsd/qty
+    fillEntryPrice=candle.close
     entryMeta={rsi:currentRsi,closeVsLowerPct,threeCandleReturnPct,crossedBelowLower}
     trades.push({
       side:'BUY',time:candle.start,price:candle.close,
@@ -266,7 +269,8 @@ export const runLiveStrategyStressTest=async(input?:{productIds?:string[];candle
       minNetProfitUsd:config.smallAccountMinNetProfitUsd,
       assumedMarketFeeRatePercent:Number((config.backtestMarketFeeRate*100).toFixed(4)),
       sameLossGuardBehavior:'STOP SCENARIO AFTER FIRST REALIZED LOSS',
-      entryConfirmation:'RSI <= strong threshold + lower-Bollinger reclaim + rising close + no >1% three-candle drop'
+      entryConfirmation:'RSI <= strong threshold + lower-Bollinger reclaim + rising close + no >1% three-candle drop',
+      stopLossBasis:'ACTUAL_FILL_PRICE_NOT_FEE_LOADED_COST_BASIS'
     }
   }
   setSetting('live_strategy_stress_last',JSON.stringify(result))
