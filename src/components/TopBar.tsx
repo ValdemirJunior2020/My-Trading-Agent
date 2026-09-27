@@ -74,12 +74,14 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
   :'Paper Trading'
  const liveModeDetail=system?.safety.liveTradingEnabled
   ?(lossGuard
-    ?'REALIZED LOSS • ALL live BUY and SELL execution stopped'
+    ?'REALIZED LOSS - ALL live BUY and SELL execution stopped'
     :lossHalt
-      ?'new buys stopped after realized loss • sell exits active'
+      ?'new buys stopped after realized loss - sell exits active'
       :safePause
-      ?'new buys paused • protective sells active'
-      :system?.safety.automaticTradingEnabled?'auto live':system?.safety.manualApprovalRequired?'manual live':'live'))
+        ?'new buys paused - protective sells active'
+        :system?.safety.automaticTradingEnabled
+          ?'auto live'
+          :system?.safety.manualApprovalRequired?'manual live':'live')
   :(system?.safety.mode||t('simulatedExecution'))
  const lastLiveLabel=(()=>{
   if(!lastLiveEvent)return 'NO LIVE ORDER YET'
