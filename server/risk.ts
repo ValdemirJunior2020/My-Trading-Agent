@@ -599,8 +599,8 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
     productId, side, notionalUsd, totalPortfolioUsd, availableUsd, currentAssetUsd
   } = input
   const availableAssetUsd = Number(input.availableAssetUsd ?? currentAssetUsd)
-  const maxPositionUsd = config.maxLiveOrderUsd
-  const maxExposureUsd = config.maxLiveOrderUsd
+  const maxPositionUsd = totalPortfolioUsd * (limits.maxPositionPercent / 100)
+  const maxExposureUsd = totalPortfolioUsd * (limits.maxTotalExposurePercent / 100)
   const daily = getDailyEquityGuard(totalPortfolioUsd)
   const botExposure=getOpenBotExposureSummary()
   const productAlreadyOpen=botExposure.positions.some(row=>row.productId===productId.toUpperCase())
@@ -816,10 +816,20 @@ export const tryLimitedLiveExecution = async (opts: {
   let quoteSizeUsd: number | undefined
 
   if (side === 'BUY') {
-    const strategyPositionUsd=config.maxLiveOrderUsd
     const quoteMin=Math.max(config.minLiveOrderUsd,Number(productInfo?.quote_min_size||0))
     const quoteMax=Number(productInfo?.quote_max_size||Infinity)
-    const quoteIncrement=productInfo?.quote_increment||0.01
+    const quoteIncrement=Number(productInfo?.quote_increment||0.01)
+    const buyStepUsd=Math.max(0.01,Number(config.buyStepUsd||5))
+    const requestedBuyUsd=Number(opts.requestedBuyUsd||availableUsd)
+    const remainingExposureUsd=Math.max(0,maxExposureUsd-botExposure.totalBotExposureUsd)
+    const rawAffordableUsd=Math.min(
+      availableUsd,
+      requestedBuyUsd>0?requestedBuyUsd:availableUsd,
+      maxFromPercent,
+      remainingExposureUsd,
+      quoteMax
+    )
+    const steppedUsd=Math.floor((rawAffordableUsd+1e-9)/buyStepUsd)*buyStepUsd
 
     if(productAlreadyOpen||botExposure.openBotPositions>0){
       return {
@@ -830,37 +840,36 @@ export const tryLimitedLiveExecution = async (opts: {
       }
     }
 
-    if(availableUsd+1e-8<strategyPositionUsd){
+    if(steppedUsd+1e-8<quoteMin||!(steppedUsd>0)){
       return {
         executed:false,
-        reason:'Fixed $100 production allocation requires at least $100 of available USD.',
-        requiredUsd:strategyPositionUsd,
-        availableUsd
-      }
-    }
-
-    if(strategyPositionUsd+1e-8<quoteMin||strategyPositionUsd>quoteMax+1e-8){
-      return {
-        executed:false,
-        reason:'Fixed $100 production allocation is outside Coinbase order-size limits for this product.',
-        requiredUsd:strategyPositionUsd,
+        reason:'Available cash or risk allowance is below the minimum executable $5-step buy size.',
+        availableUsd,
+        requestedBuyUsd,
+        rawAffordableUsd,
+        steppedUsd,
+        buyStepUsd,
         quoteMin,
-        quoteMax
+        quoteMax,
+        maxPositionUsd:maxFromPercent,
+        remainingExposureUsd
       }
     }
 
-    quoteSizeUsd=floorToIncrement(strategyPositionUsd,quoteIncrement)
-    if(Math.abs(quoteSizeUsd-strategyPositionUsd)>1e-8){
+    quoteSizeUsd=floorToIncrement(steppedUsd,quoteIncrement)
+    if(quoteSizeUsd+1e-8<quoteMin||!(quoteSizeUsd>0)){
       return {
         executed:false,
-        reason:'Coinbase quote increment cannot represent the fixed $100 allocation exactly.',
-        requiredUsd:strategyPositionUsd,
-        roundedUsd:quoteSizeUsd,
-        quoteIncrement
+        reason:'Coinbase quote increment cannot produce an executable dynamic buy size.',
+        availableUsd,
+        steppedUsd,
+        quoteSizeUsd,
+        quoteIncrement,
+        quoteMin
       }
     }
 
-    notionalUsd=strategyPositionUsd
+    notionalUsd=quoteSizeUsd
   } else {
     const baseIncrement = productInfo?.base_increment || 0.00000001
     const baseMin = Number(productInfo?.base_min_size || 0)
