@@ -6,7 +6,7 @@ echo ============================================================
 echo   MY TRADING AGENT - 30D DATA + $100 MICRO BACKTEST
 echo ============================================================
 echo.
-echo [1/2] Downloading 30 days of 5-minute Coinbase candles...
+echo [1/2] Downloading 30 days of 5-minute Coinbase candles for 15 products...
 call npx tsx scripts\ingest-30d-candles.ts
 if errorlevel 1 goto :fail
 
