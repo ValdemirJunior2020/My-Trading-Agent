@@ -164,7 +164,7 @@ export const getProduct=async(productId:string,priority=0)=>{
 
 
 export const getCandles=async(productId:string,granularity='ONE_HOUR',limit=120)=>{
-  const requested=Math.max(20,Math.min(3000,Math.floor(limit)))
+  const requested=Math.max(20,Math.min(15000,Math.floor(limit)))
   const key=productId.toUpperCase()+'|'+granularity+'|'+requested
   const cached=candleCache.get(key)
   if(cached&&cached.expiresAt>Date.now())return cached.value
