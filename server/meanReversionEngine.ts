@@ -161,13 +161,17 @@ const smallAccountBuyIsExecutable=async(productId:string)=>{
     const availableUsd=Number(usdAccount?.availableBalance?.value??usdAccount?.availableBalance??0)||0
     const quoteMin=Math.max(config.minLiveOrderUsd,Number((product as any)?.quote_min_size||0))
     const quoteMax=Number((product as any)?.quote_max_size||Infinity)
-    const requiredUsd=config.maxLiveOrderUsd
+    const step=Math.max(0.01,Number(config.buyStepUsd||5))
+    const affordable=Math.floor((Math.min(availableUsd,quoteMax)+1e-9)/step)*step
+    const requestedUsd=Number(affordable.toFixed(2))
+
     return {
-      ok:availableUsd+1e-8>=requiredUsd&&requiredUsd+1e-8>=quoteMin&&requiredUsd<=quoteMax+1e-8,
-      requiredUsd,
+      ok:requestedUsd+1e-8>=quoteMin&&requestedUsd>0,
+      requestedUsd,
       availableUsd,
       quoteMin,
-      quoteMax
+      quoteMax,
+      buyStepUsd:step
     }
   }catch(error){
     return {ok:false,error:error instanceof Error?error.message:String(error)}
@@ -286,7 +290,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
       productId,
       timestampIso:new Date().toISOString(),
       monotonicNs:process.hrtime.bigint().toString(),
-      reason:'EXACT_100_USD_ALLOCATION_NOT_EXECUTABLE',
+      reason:'NO_AFFORDABLE_COINBASE_BUY_SIZE',
       ...executable
     },'strategy')
     return
@@ -308,7 +312,8 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
       currentRsiStrictlyBelow:config.entryRsiStrictlyBelow,
       minimumVolumeRatio:config.entryMinimumVolumeRatio,
       volumeLookbackCandles:config.entryVolumeLookbackCandles,
-      positionSizeUsd:config.maxLiveOrderUsd,
+      requestedBuyUsd:executable.requestedUsd,
+      buyStepUsd:config.buyStepUsd,
       maxEntrySlippagePercent:config.maxSlippagePercent
     }
   },'strategy')
@@ -322,7 +327,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
       decision:'BUY_CANDIDATE',
       confidence:1,
       triggerPrice:candle.close,
-      requestedBuyUsd:config.maxLiveOrderUsd,
+      requestedBuyUsd:executable.requestedUsd,
       executionSource:'MEAN_REVERSION'
     })
     publish('mean_reversion_entry_result',{
@@ -741,7 +746,7 @@ export const startMeanReversionEngine=async()=>{
       trailingDistancePercent:config.trailingDistancePercent,
       minimumVolumeRatio:config.entryMinimumVolumeRatio,
       maxConcurrentPositions:config.maxOpenBotPositions,
-      positionSizeUsd:config.maxLiveOrderUsd,
+      buyStepUsd:config.buyStepUsd,
       maxSlippagePercent:config.maxSlippagePercent,
       rollingKillSwitchPercent:config.rollingKillSwitchPercent
     },'strategy')
