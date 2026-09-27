@@ -38,8 +38,8 @@ export function BottomPanels({t,backendOnline}:Props){
 
  const latestVectorbt=useMemo(()=>liveEvents.find(event=>event.agentId==='backtest'&&event.payload?.engine==='vectorbt'&&event.payload?.result)?.payload?.result,[liveEvents])
  const completedCount=pipeline?.completedAgents.length||0
- const doneCount=Math.min(7,pipeline?.status==='completed'?7:completedCount)
- const flowKeys=['data','analysis','signal','risk','backtesting','paperTrade','approval']
+ const doneCount=Math.min(6,pipeline?.status==='completed'?6:completedCount)
+ const flowKeys=['data','analysis','signal','risk','backtesting','approval']
  const statusLabel=pipeline?.status==='running'
   ?('RUNNING • '+(pipeline.currentAgent||'manager'))
   :pipeline?.status==='completed'
@@ -59,7 +59,7 @@ export function BottomPanels({t,backendOnline}:Props){
   <section className="panel compact-panel">
    <header className="mini-heading"><h3>{t('decisionFlow')}</h3><span>{statusLabel}</span></header>
    <div className="flow">{flowKeys.map((k,i)=><div className={'flow-step '+(i<doneCount?'done':'')} key={k}><b>{i<doneCount?'✓':'○'}</b><span>{t(k)}</span></div>)}</div>
-   <div className="paper-summary">
+   <div className="pipeline-summary">
     <div><small>Pipeline</small><strong>{pipeline?.status==='completed'?(pipeline.decision||'DONE'):pipeline?.status?.toUpperCase()||'IDLE'}</strong></div>
     <div><small>Agents</small><strong>{completedCount}/7</strong></div>
     <div><small>Current</small><strong>{pipeline?.currentAgent||'—'}</strong></div>
