@@ -37,10 +37,10 @@ test('live strategy stress simulation never submits orders and returns determini
 })
 
 
-test('entry confirmation blocks buying while RSI is still <=30',()=>{
+test('entry confirmation blocks buying while RSI is still in the 30-35 recovery zone',()=>{
   const result=confirmedMeanReversionEntryDecision({
-    rsiValue:29,
-    previousRsiValue:27,
+    rsiValue:36,
+    previousRsiValue:29,
     closeVsLowerPct:0.2,
     crossedBelowLower:false,
     previousClose:99,
@@ -51,7 +51,7 @@ test('entry confirmation blocks buying while RSI is still <=30',()=>{
     threeCandleReturnPct:-0.2
   })
   assert.equal(result.ready,false)
-  assert.ok(result.blockers.includes('RSI_NOT_REBOUNDED_ABOVE_30'))
+  assert.ok(result.blockers.includes('RSI_NOT_REBOUNDED_ABOVE_35'))
 })
 
 test('entry confirmation allows only a strong rebound setup',()=>{
@@ -69,5 +69,6 @@ test('entry confirmation allows only a strong rebound setup',()=>{
   })
   assert.equal(result.ready,true)
   assert.equal(result.rsiRecoveryConfirmed,true)
+  assert.ok(result.rsiRecoveryPoints>=5)
   assert.equal(result.brokePreviousHigh,true)
 })
