@@ -3,39 +3,60 @@ import { publish } from './events.js'
 
 export const LOSS_GUARD_AGENT_ID='loss_guard'
 
-export const getLossGuardState=()=>({
-  active:getSetting('rolling_kill_switch_locked','false')==='true',
-  armed:getSetting('rolling_kill_switch_locked','false')!=='true',
-  triggeredAt:getSetting('rolling_risk_pause_started_at','')||null,
-  productId:null,
-  lossUsd:0,
-  lossPercent:Number(getSetting('rolling_risk_last_state','')
-    ?(()=>{
-        try{return JSON.parse(getSetting('rolling_risk_last_state','{}')).drawdownPercent||0}catch{return 0}
-      })()
-    :0),
-  resetAt:getSetting('rolling_kill_switch_reset_at','')||null,
-  behavior:'The only production equity lockdown is the latched 3% rolling 24-hour kill switch. Manual reset is required.'
-})
+export const getLossGuardState=()=>{
+  const singleLossLocked=getSetting('single_loss_kill_switch_locked','false')==='true'
+  const rollingLocked=getSetting('rolling_kill_switch_locked','false')==='true'
+  const singleLossUsd=Number(getSetting('single_loss_kill_switch_loss_usd','0')||0)
+  const singleLossPercent=Number(getSetting('single_loss_kill_switch_loss_percent','0')||0)
 
-// Kept only for API/backward compatibility. A single losing SELL no longer
-// activates a global stop; production lockdown is controlled by rolling equity.
+  return {
+    active:singleLossLocked||rollingLocked,
+    armed:!singleLossLocked&&!rollingLocked,
+    singleLossLocked,
+    rollingLocked,
+    triggeredAt:singleLossLocked
+      ?getSetting('single_loss_kill_switch_triggered_at','')||null
+      :getSetting('rolling_risk_pause_started_at','')||null,
+    productId:singleLossLocked
+      ?getSetting('single_loss_kill_switch_product','')||null
+      :null,
+    lossUsd:singleLossLocked?singleLossUsd:0,
+    lossPercent:singleLossLocked
+      ?singleLossPercent
+      :Number(getSetting('rolling_risk_last_state','')
+        ?(()=>{
+            try{return JSON.parse(getSetting('rolling_risk_last_state','{}')).drawdownPercent||0}catch{return 0}
+          })()
+        :0),
+    resetAt:getSetting('loss_guard_reset_at','')||getSetting('rolling_kill_switch_reset_at','')||null,
+    behavior:'First realized losing SELL triggers full lockdown: cancel open orders, liquidate all remaining bot-managed positions, block automation, manual reset required. The 3% rolling 24-hour equity kill switch remains active as a second protection layer.'
+  }
+}
+
+// Backward-compatible entry point. The production trigger now lives in the
+// execution layer so every realized bot SELL is checked at the fill boundary.
 export const triggerLossGuard=async(input:{
   productId:string
   realizedNetProfitUsd:number
   realizedNetProfitPercent:number|null
   triggeredAt?:string
 })=>{
-  publish('legacy_single_loss_guard_ignored',{
+  publish('loss_guard_observed_realized_sell',{
     ...input,
-    timestampIso:new Date().toISOString(),
-    message:'Single-loss guard is disabled by the deterministic production profile.'
+    timestampIso:new Date().toISOString()
   },LOSS_GUARD_AGENT_ID)
   return getLossGuardState()
 }
 
 export const resetLossGuard=()=>{
   const resetAt=new Date().toISOString()
+
+  setSetting('single_loss_kill_switch_locked','false')
+  setSetting('single_loss_kill_switch_triggered_at','')
+  setSetting('single_loss_kill_switch_product','')
+  setSetting('single_loss_kill_switch_loss_usd','0')
+  setSetting('single_loss_kill_switch_loss_percent','0')
+
   setSetting('loss_guard_active','false')
   setSetting('loss_guard_reset_at',resetAt)
   setSetting('loss_guard_triggered_at','')
@@ -46,26 +67,38 @@ export const resetLossGuard=()=>{
   setSetting('loss_halt_triggered_at','')
   setSetting('loss_halt_product','')
   setSetting('loss_halt_amount_usd','')
-  if(getSetting('emergency_stop_reason','')==='LOSS_GUARD'){
+
+  if(['LOSS_GUARD','SINGLE_REALIZED_LOSS'].includes(getSetting('emergency_stop_reason',''))){
     setSetting('emergency_stop','false')
     setSetting('emergency_stop_reason','')
   }
-  publish('legacy_loss_guard_reset',{
+
+  publish('single_loss_kill_switch_manual_reset',{
     resetAt,
-    message:'Legacy single-loss guard state cleared.'
+    message:'Single-loss emergency lockdown manually reset.'
   },LOSS_GUARD_AGENT_ID)
+
   return getLossGuardState()
 }
 
 export const initializeLossGuard=async()=>{
-  // Migrate away from the previous "any realized loss" global stop model.
-  if(getSetting('loss_guard_active','false')==='true'||getSetting('loss_halt_active','false')==='true'){
-    resetLossGuard()
+  const state=getLossGuardState()
+
+  // Never auto-clear a latched single-loss or rolling-equity shutdown at startup.
+  if(state.singleLossLocked){
+    setSetting('loss_guard_active','true')
+    setSetting('loss_halt_active','true')
+    setSetting('emergency_stop','true')
+    setSetting('emergency_stop_reason','SINGLE_REALIZED_LOSS')
   }
-  publish('loss_guard_compatibility_mode',{
-    state:'DISABLED',
-    message:'Single-loss shutdown is disabled. Production protection uses the 3% rolling 24-hour kill switch.'
+
+  publish('loss_guard_ready',{
+    state:state.active?'LOCKED':'ARMED',
+    singleLossLocked:state.singleLossLocked,
+    rollingLocked:state.rollingLocked,
+    behavior:state.behavior
   },LOSS_GUARD_AGENT_ID)
+
   return getLossGuardState()
 }
 
