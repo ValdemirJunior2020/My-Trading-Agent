@@ -12,12 +12,8 @@ export function AgentDetails({agent,t}:Props){
   useEffect(()=>{
     let active=true
     const refresh=()=>{
-      api.getPipelineStatus().then(status=>{
-        if(active)setPipeline(status)
-      }).catch(()=>{})
-      api.getStatus().then(status=>{
-        if(active)setSystem(status)
-      }).catch(()=>{})
+      api.getPipelineStatus().then(status=>{if(active)setPipeline(status)}).catch(()=>{})
+      api.getStatus().then(status=>{if(active)setSystem(status)}).catch(()=>{})
     }
 
     refresh()
@@ -38,6 +34,7 @@ export function AgentDetails({agent,t}:Props){
   const pipelineRunning=pipeline?.status==='running'
   const isCurrent=pipelineRunning&&pipeline?.currentAgent===agent.id
   const isCompleted=Boolean(pipeline?.completedAgents?.includes(agent.id))
+
   const liveStatus:AgentStatus=isLossGuard
     ? (lossGuard?.active?'approved':'waiting')
     : isCurrent
@@ -47,7 +44,9 @@ export function AgentDetails({agent,t}:Props){
         : 'idle'
 
   const currentTask=isLossGuard
-    ? (lossGuard?.active?'GLOBAL STOP ACTIVE — all live BUY and SELL execution blocked':'Waiting for any realized loss')
+    ? (lossGuard?.active
+        ? 'GLOBAL STOP ACTIVE - all live BUY and SELL execution blocked'
+        : 'Waiting for any realized loss')
     : isCurrent
       ? 'Processing live pipeline step'
       : pipelineRunning
@@ -56,11 +55,17 @@ export function AgentDetails({agent,t}:Props){
 
   const lastCompleted=isLossGuard
     ? (lossGuard?.active
-        ? 'Stopped trading after '+String(lossGuard.productId||'a trade')+' lost 
+        ? 'Stopped trading after '+String(lossGuard.productId||'a trade')+' lost $'+Math.abs(Number(lossGuard.lossUsd||0)).toFixed(2)
+        : 'Armed - no new realized loss since last reset')
+    : isCompleted
+      ? 'Completed in current pipeline'
+      : pipeline?.status==='completed'
+        ? 'Pipeline completed'
+        : 'No current completed step'
 
   const reasoning=isLossGuard
     ? (lossGuard?.active
-        ? 'A realized losing SELL was detected. This dedicated safety agent latched the global emergency stop. Nothing can execute live until you manually reset the stop.'
+        ? 'A realized losing SELL was detected. This dedicated safety agent activated the global emergency stop. Live execution remains blocked until you manually reset the stop.'
         : 'This dedicated safety agent watches realized SELL results. The first realized loss immediately activates the global emergency stop.')
     : isCurrent
       ? 'This agent is actively processing the live backend pipeline.'
@@ -72,7 +77,7 @@ export function AgentDetails({agent,t}:Props){
     ? (lossGuard?.triggeredAt?new Date(lossGuard.triggeredAt).toLocaleTimeString():'Armed now')
     : pipeline?.startedAt
       ? new Date(pipeline.startedAt).toLocaleTimeString()
-      : '—'
+      : '-'
 
   return <section className="panel details-panel">
     <header className="mini-heading">
@@ -88,42 +93,6 @@ export function AgentDetails({agent,t}:Props){
         <div className="wide"><dt>{t('reasoning')}</dt><dd>{reasoning}</dd></div>
         <div><dt>{t('timeStarted')}</dt><dd>{startedAt}</dd></div>
         <div><dt>{t('ollamaProcessing')}</dt><dd>{isLossGuard?t('no'):(isCurrent?t('yes'):t('no'))}</dd></div>
-      </dl>
-    </div>
-  </section>
-}
-+Math.abs(Number(lossGuard.lossUsd||0)).toFixed(2)
-        : 'Armed — no new realized loss since last reset')
-    : isCompleted
-      ? 'Completed in current pipeline'
-      : pipeline?.status==='completed'
-        ? 'Pipeline completed'
-        : 'No current completed step'
-
-  const reasoning=isCurrent
-    ? 'This agent is actively processing the live backend pipeline.'
-    : pipelineRunning
-      ? 'Another agent is currently processing the live backend pipeline.'
-      : 'No agent pipeline is running right now.'
-
-  const startedAt=pipeline?.startedAt
-    ? new Date(pipeline.startedAt).toLocaleTimeString()
-    : '—'
-
-  return <section className="panel details-panel">
-    <header className="mini-heading">
-      <h3>{t('agentDetails')}</h3>
-      <span className={`status-badge ${liveStatus}`}>{t(liveStatus)}</span>
-    </header>
-    <div className="agent-details-grid">
-      <div className="agent-avatar"><PixelPerson status={liveStatus}/></div>
-      <dl>
-        <div><dt>{t('currentTask')}</dt><dd>{currentTask}</dd></div>
-        <div><dt>Asset</dt><dd>{pipeline?.productId||agent.asset}</dd></div>
-        <div><dt>{t('lastCompleted')}</dt><dd>{lastCompleted}</dd></div>
-        <div className="wide"><dt>{t('reasoning')}</dt><dd>{reasoning}</dd></div>
-        <div><dt>{t('timeStarted')}</dt><dd>{startedAt}</dd></div>
-        <div><dt>{t('ollamaProcessing')}</dt><dd>{isCurrent?t('yes'):t('no')}</dd></div>
       </dl>
     </div>
   </section>
