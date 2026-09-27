@@ -10,6 +10,11 @@ type RuntimeState={status:AgentStatus;task?:string}
 const stateFromEvent=(event:any):RuntimeState|undefined=>{
   if(!event?.agentId)return
   const type=String(event.type||'')
+  if(event.agentId==='loss_guard'){
+    if(type==='loss_guard_triggered')return {status:'approved',task:'LOSS DETECTED • GLOBAL STOP ACTIVE'}
+    if(type==='loss_guard_reset'||type==='loss_guard_waiting')return {status:'waiting',task:'Waiting for any realized loss'}
+    if(type==='loss_guard_cancel_failed')return {status:'reviewing',task:'Stop active • reviewing open-order cancel'}
+  }
   if(type==='agent_started'||type==='pipeline_started')return {status:'working',task:type.replace(/_/g,' ')}
   if(type==='agent_completed'||type==='pipeline_completed'||type==='nautilus_validation_completed')return {status:'approved',task:type.replace(/_/g,' ')}
   if(type==='agent_failed'||type.includes('rejected')||type.includes('emergency'))return {status:'waiting',task:type.replace(/_/g,' ')}
