@@ -162,11 +162,7 @@ const smallAccountBuyIsExecutable=async(productId:string)=>{
     const quoteMin=Math.max(config.minLiveOrderUsd,Number((product as any)?.quote_min_size||0))
     const quoteMax=Number((product as any)?.quote_max_size||Infinity)
     const step=Math.max(0.01,Number(config.buyStepUsd||5))
-    const targetUsd=Math.max(
-      step,
-      Math.floor(((availableUsd*(config.targetBuyPercent/100))+1e-9)/step)*step
-    )
-    const affordable=Math.floor((Math.min(availableUsd,targetUsd,quoteMax)+1e-9)/step)*step
+    const affordable=Math.floor((Math.min(availableUsd,quoteMax)+1e-9)/step)*step
     const requestedUsd=Number(affordable.toFixed(2))
 
     return {
