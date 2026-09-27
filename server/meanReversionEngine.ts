@@ -2,7 +2,7 @@ import { config, coinbaseConfigured } from './config.js'
 import { getCandles, getProduct, listAccounts } from './coinbase.js'
 import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
-import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive } from './risk.js'
+import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive, getOpenBotExposureSummary } from './risk.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { confirmedMeanReversionEntryDecision, getBotManagedLots, getBotManagedPosition } from './bollingerStrategy.js'
 import { NEXT_WEEK_BREAKOUT,breakoutHardStopPrice,breakoutTrailingActivationPrice,breakoutTrailingStopPrice,evaluateBreakoutConfirmation,nextWeekBreakoutActive } from './velocityBreakout.js'
@@ -244,7 +244,10 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
   })
   const macro=tenMinuteMacroContext(state.closed)
   const position=refreshPosition(productId,state,true)
-  const deterministicReady=Boolean(entryDecision.ready&&macro.ready)
+  const globalExposure=getOpenBotExposureSummary()
+  const globalSlotOccupied=globalExposure.openBotPositions>=config.maxOpenBotPositions
+  const globalSlotProductIds=globalExposure.positions.map(row=>row.productId)
+  const deterministicReady=Boolean(entryDecision.ready&&macro.ready&&!globalSlotOccupied)
 
   publish('mean_reversion_candle_closed',{
     productId,
@@ -258,6 +261,10 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     rsi:currentRsi,
     rsiThresholdExclusive:config.entryRsiStrictlyBelow,
     positionOpen:position.qty>0,
+    globalSlotOccupied,
+    globalSlotProductIds,
+    globalOpenBotPositions:globalExposure.openBotPositions,
+    globalMaxOpenBotPositions:config.maxOpenBotPositions,
     currentVolume:Number(candle.volume||0),
     averageVolume20:averageVolume,
     volumeRatio:entryDecision.volumeRatio,
@@ -266,7 +273,8 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     deterministicReady,
     entryBlockers:[
       ...entryDecision.blockers,
-      ...(macro.ready?[]:['TEN_MINUTE_MACRO_FILTER_BLOCKED'])
+      ...(macro.ready?[]:['TEN_MINUTE_MACRO_FILTER_BLOCKED']),
+      ...(globalSlotOccupied?['GLOBAL_POSITION_SLOT_OCCUPIED']:[])
     ]
   },'strategy')
 
