@@ -132,10 +132,10 @@ export function WorkspacePage({page,language,system}:Props){
 
   if(page==='strategies')return <PageShell title={pt?'Estratégias':'Strategies'} subtitle={pt?'Estratégias e regras que o pipeline realmente utiliza.':'Strategies and rules actually used by the pipeline.'}>
     <div className="tool-card-grid">
+      <article><h3>Production Rule Set</h3><p>$100 allocation • 1 global position • 2.50% hard stop • 8.00% net trailing activation.</p></article>
+      <article><h3>Entry Confirmation</h3><p>Previous RSI ≤30 • current RSI &gt;30 and ≤36 • rebound volume ≥1.5× prior VMA20.</p></article>
       <article><h3>Short-Term Opportunity Scanner</h3><p>Momentum 6h/24h, volume acceleration, volatility quality, liquidity/spread and breakout proximity.</p></article>
-      <article><h3>SMA Validation</h3><p>VectorBT tests 5/20, 10/30, 20/50 and 30/100 moving-average parameter sets.</p></article>
-      <article><h3>Risk Gate</h3><p>Position cap, total exposure, daily-loss guard, confidence threshold and Coinbase preview remain authoritative.</p></article>
-      <article><h3>Decision Pipeline</h3><p>Market → Strategy → Sentiment → Portfolio → Risk → Critic → Final Decision.</p></article>
+      <article><h3>Risk Gate</h3><p>Single global slot, daily-loss guard, slippage checks and Coinbase preview remain authoritative.</p></article>
     </div>
     <div className="tool-json">{pipeline?JSON.stringify(pipeline,null,2):'Pipeline status unavailable.'}</div>
   </PageShell>
