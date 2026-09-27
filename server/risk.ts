@@ -472,7 +472,23 @@ export const tryLimitedLiveExecution = async (opts: {
 
   const side = opts.decision === 'BUY_CANDIDATE' ? 'BUY' : 'SELL'
   const lossHaltActive=getSetting('loss_halt_active','false')==='true'
-  const emergencyStopReason=getSetting('emergency_stop_reason','')
+  let emergencyStopReason=getSetting('emergency_stop_reason','')
+
+  // Migrate the legacy automatic-loss state that also set the global emergency stop.
+  // Automatic loss halt should block NEW BUYs only; existing positions must remain sellable.
+  if(
+    emergencyStopActive() &&
+    lossHaltActive &&
+    (emergencyStopReason===''||emergencyStopReason==='LOSS_HALT')
+  ){
+    setSetting('emergency_stop','false')
+    setSetting('emergency_stop_reason','')
+    emergencyStopReason=''
+    publish('legacy_loss_halt_emergency_migrated',{
+      message:'Cleared legacy global emergency flag; loss halt remains active for new BUYs while SELL exits stay enabled.'
+    },'risk')
+  }
+
   const executionGate=assessEmergencyExecutionGate({
     emergencyStop:emergencyStopActive(),
     tradingMode:config.tradingMode,
@@ -880,8 +896,6 @@ export const tryLimitedLiveExecution = async (opts: {
       realizedNetProfitUsd<0
     ){
       setSetting('loss_halt_active','true')
-      setSetting('emergency_stop','true')
-      setSetting('emergency_stop_reason','LOSS_HALT')
       setSetting('loss_halt_triggered_at',placedAt)
       setSetting('loss_halt_product',productId)
       setSetting('loss_halt_amount_usd',String(realizedNetProfitUsd))
