@@ -30,6 +30,8 @@ const journalStatus=(event:any)=>{
   if(type==='mean_reversion_entry_result')return p.result?.executed?'ORDER PLACED':'ORDER BLOCKED'
   if(type==='mean_reversion_exit_signal')return 'EXIT SIGNAL'
   if(type==='mean_reversion_candle_closed')return p.deterministicReady?'SETUP READY':'WAIT'
+  if(type==='single_loss_kill_switch_triggered')return 'FIRST LOSS STOP'
+  if(type==='single_loss_kill_switch_liquidation_fill')return 'EMERGENCY SELL'
   if(type==='rolling_kill_switch_triggered')return 'KILL SWITCH'
   if(type==='rolling_kill_switch_liquidation_fill')return 'EMERGENCY SELL'
   if(type==='capital_rotation_plan')return p.rotationReady?'ROTATION READY':'FUNDING NEEDED'
@@ -55,7 +57,7 @@ const statusGroup=(status:string):JournalFilter=>{
   if(status==='ORDER PLACED')return 'ORDER PLACED'
   if(status==='REJECTED BY AGENTS')return 'REJECTED'
   if(status==='WAIT'||status==='NO TRADE'||status==='AGENT APPROVED'||status==='SETUP READY'||status==='BUY SIGNAL'||status==='EXIT SIGNAL')return 'WAIT'
-  if(status.includes('BLOCKED')||status.includes('PREVIEW')||status==='FUNDING NEEDED'||status==='ROTATION READY'||status==='ROTATION CHECK FAILED'||status==='KILL SWITCH')return 'BLOCKED'
+  if(status.includes('BLOCKED')||status.includes('PREVIEW')||status==='FUNDING NEEDED'||status==='ROTATION READY'||status==='ROTATION CHECK FAILED'||status==='KILL SWITCH'||status==='FIRST LOSS STOP')return 'BLOCKED'
   if(status.includes('FAILED'))return 'FAILED'
   return 'ALL'
 }
@@ -72,6 +74,8 @@ const JOURNAL_TYPES=new Set([
   'mean_reversion_buy_signal',
   'mean_reversion_entry_result',
   'mean_reversion_exit_signal',
+  'single_loss_kill_switch_triggered',
+  'single_loss_kill_switch_liquidation_fill',
   'rolling_kill_switch_triggered',
   'rolling_kill_switch_liquidation_fill',
   'capital_rotation_plan',
@@ -163,7 +167,7 @@ const statusClass=(status:string)=>{
   if(status==='AGENT APPROVED')return 'placed'
   if(status==='BUY SIGNAL'||status==='SETUP READY')return 'placed'
   if(status==='EXIT SIGNAL'||status==='EMERGENCY SELL')return 'placed'
-  if(status==='KILL SWITCH')return 'blocked'
+  if(status==='KILL SWITCH'||status==='FIRST LOSS STOP')return 'blocked'
   if(status.includes('BLOCKED'))return 'blocked'
   if(status.includes('PREVIEW'))return 'preview-failed'
   if(status==='ROTATION READY')return 'placed'
@@ -508,6 +512,12 @@ export function TradeJournal({language}:Props){
                 Number.isFinite(Number(p.stopLossPercent))?('Hard stop '+Number(p.stopLossPercent).toFixed(2)+'% from fill'):'',
                 Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net profit 
               ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='single_loss_kill_switch_triggered'){
+              return 'FIRST REALIZED LOSS • open orders canceled • remaining bot positions liquidated • automation locked • manual reset required'
+            }
+            if(event.type==='single_loss_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • first-loss shutdown'
             }
             if(event.type==='rolling_kill_switch_triggered'){
               return '3%/24h KILL SWITCH • open orders canceled • bot positions liquidated • manual reset required'
