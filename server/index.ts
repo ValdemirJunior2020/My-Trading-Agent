@@ -8,7 +8,7 @@ import { startMeanReversionEngine,stopMeanReversionEngine } from './meanReversio
 import { handleApiRequest } from './routes/api.js'
 import { log,serverLogFile } from './logger.js'
 import { initializeSingleLossStopModel,migrateLegacyLossHaltEmergencyStop } from './risk.js'
-import { initializeLossGuard } from './lossGuard.js'
+import { initializeLossGuard,stopLossGuard } from './lossGuard.js'
 
 const distDir=resolve(process.cwd(),'dist')
 const pidFile=join(config.dataDir,'server.pid')
@@ -136,6 +136,7 @@ const shutdown=()=>{
   log.info('server_stopping')
   stopAutoRun()
   stopMeanReversionEngine()
+  stopLossGuard()
   try{if(existsSync(pidFile))rmSync(pidFile)}catch{}
   server.close(()=>process.exit(0))
 }
