@@ -211,6 +211,7 @@ export const shouldClearLegacyLossHaltEmergency=(input:{
 })=>{
   if(!input.emergencyStop||!input.lossHaltActive)return false
   const reason=String(input.emergencyStopReason||'').toUpperCase()
+  if(reason==='LOSS_GUARD')return false
   if(reason!=='MANUAL')return true
 
   const lossAt=new Date(String(input.lossHaltTriggeredAt||'')).getTime()
