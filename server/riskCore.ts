@@ -172,3 +172,22 @@ export const assessProfitFirstEntryEconomics=(input:{
     maxRequiredGrossProfitPercent
   }
 }
+
+
+export const assessCapitalPreservationBuy=(input:{
+  enabled:boolean
+  realizedPnlTodayUsd:number
+  realizedLossTodayUsd:number
+  openBotPositions:number
+})=>{
+  const reasons:string[]=[]
+  if(input.enabled){
+    if(Number(input.realizedLossTodayUsd)>0||Number(input.realizedPnlTodayUsd)<0){
+      reasons.push('Capital preservation lock: a realized bot loss already occurred today.')
+    }
+    if(Number(input.openBotPositions)>0){
+      reasons.push('Capital preservation lock: only one bot position may be open at a time.')
+    }
+  }
+  return {approved:reasons.length===0,reasons}
+}
