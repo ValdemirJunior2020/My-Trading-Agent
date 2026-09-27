@@ -211,7 +211,11 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     })
     if(!decision.ready||!tenMinuteMacroReady(history))continue
 
-    const orderUsd=Math.floor((cashUsd+1e-9)/buyStepUsd)*buyStepUsd
+    const targetBuyUsd=Math.max(
+      buyStepUsd,
+      Math.floor(((100*(config.targetBuyPercent/100))+1e-9)/buyStepUsd)*buyStepUsd
+    )
+    const orderUsd=Math.floor((Math.min(cashUsd,targetBuyUsd)+1e-9)/buyStepUsd)*buyStepUsd
     if(!(orderUsd>0))continue
     const buyFee=orderUsd*feeRate
     const filledValue=Math.max(0,orderUsd-buyFee)
