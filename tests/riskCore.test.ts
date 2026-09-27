@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics } from '../server/riskCore.js'
+import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from '../server/riskCore.js'
 
 test('blocks a BUY that would exceed total bot exposure',()=>{
   const result=assessExposureLimits({
@@ -293,4 +293,25 @@ test('manual emergency reason still blocks sell exits even during loss halt',()=
     emergencyStopReason:'MANUAL'
   })
   assert.equal(result.approved,false)
+})
+
+
+test('stale MANUAL reason older than loss halt is cleared',()=>{
+  assert.equal(shouldClearLegacyLossHaltEmergency({
+    emergencyStop:true,
+    lossHaltActive:true,
+    emergencyStopReason:'MANUAL',
+    lossHaltTriggeredAt:'2026-09-27T00:20:00.000Z',
+    latestManualEmergencyAt:'2026-09-27T00:10:00.000Z'
+  }),true)
+})
+
+test('newer real MANUAL emergency stop is preserved',()=>{
+  assert.equal(shouldClearLegacyLossHaltEmergency({
+    emergencyStop:true,
+    lossHaltActive:true,
+    emergencyStopReason:'MANUAL',
+    lossHaltTriggeredAt:'2026-09-27T00:20:00.000Z',
+    latestManualEmergencyAt:'2026-09-27T00:25:00.000Z'
+  }),false)
 })
