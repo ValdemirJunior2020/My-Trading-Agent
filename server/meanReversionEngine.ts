@@ -4,7 +4,7 @@ import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
 import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive, getRuntimeRiskLimits } from './risk.js'
 import { getChallengeSnapshot } from './challenge.js'
-import { getBotManagedLots, getBotManagedPosition, smallAccountEntryDecision } from './bollingerStrategy.js'
+import { confirmedMeanReversionEntryDecision, getBotManagedLots, getBotManagedPosition } from './bollingerStrategy.js'
 import { getPipelineStatus, runFullAgentPipeline } from './pipeline.js'
 
 type Candle={
@@ -198,10 +198,17 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
   const closeVsLowerPct=currentLower>0
     ? ((candle.close-currentLower)/currentLower)*100
     : Infinity
-  const entryDecision=smallAccountEntryDecision({
+  const threeLookbackClose=closes.at(-4)??previousClose
+  const threeCandleReturnPct=threeLookbackClose>0?((candle.close-threeLookbackClose)/threeLookbackClose)*100:0
+  const entryDecision=confirmedMeanReversionEntryDecision({
     rsiValue:currentRsi,
     closeVsLowerPct,
-    crossedBelowLower:crossedBelow
+    crossedBelowLower:crossedBelow,
+    previousClose,
+    previousLower,
+    currentClose:candle.close,
+    currentLower,
+    threeCandleReturnPct
   })
   const oversold=entryDecision.oversold
   const position=refreshPosition(productId,state,true)
@@ -219,7 +226,11 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     crossedBelowLowerBand:crossedBelow,
     nearLowerBand:entryDecision.nearLowerBand,
     rsiOversold:oversold,
-    positionOpen:position.qty>0
+    positionOpen:position.qty>0,
+    confirmedReclaim:entryDecision.reclaimedLowerBand,
+    candleRecovered:entryDecision.candleRecovered,
+    threeCandleReturnPct,
+    entryBlockers:entryDecision.blockers
   },'strategy')
 
   if(position.qty>0||!entryDecision.ready)return
@@ -246,7 +257,10 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
       closeBelowLowerBand:crossedBelow,
       nearLowerBand:entryDecision.nearLowerBand,
       proximityThresholdPercent:entryDecision.proximityThresholdPercent,
-      rsiThreshold:config.rsiOversold
+      rsiThreshold:config.smallAccountStrongRsi,
+      confirmedLowerBandReclaim:true,
+      priceRecoveryRequired:true,
+      maxThreeCandleDropPercent:1
     }
   },'strategy')
 
@@ -257,7 +271,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     const approval=await getAgentApproval(
       productId,
       'BUY',
-      'Closed 5-minute candle met RSI/Bollinger entry rules.'
+      'Closed 5-minute candle confirmed a strong-RSI lower-Bollinger reclaim with price recovery.'
     )
     if(!approval.approved){
       publish('mean_reversion_buy_blocked_by_agents',{
