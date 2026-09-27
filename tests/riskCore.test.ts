@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessMarketEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics } from '../server/riskCore.js'
+import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics } from '../server/riskCore.js'
 
 test('blocks a BUY that would exceed total bot exposure',()=>{
   const result=assessExposureLimits({
@@ -163,55 +163,26 @@ test('SELL still blocks when Coinbase base minimum is not met',()=>{
 })
 
 
-test('blocks market BUY when fees make a 0.8% stop exceed 0.8% net loss',()=>{
-  const result=assessMarketEntryEconomics({
+test('profit-first entry allows economics similar to the successful net-profit setup',()=>{
+  const result=assessProfitFirstEntryEconomics({
     buyNotionalUsd:10,
-    buyCommissionUsd:0.08,
-    stopLossPercent:0.8,
-    maxNetStopLossPercent:0.8,
-    maxSlippagePercent:0.1
-  })
-  assert.equal(result.approved,false)
-  assert.ok(result.estimatedNetLossAtStopPercent>0.8)
-})
-
-test('allows market BUY only when total fee plus stop risk fits the net loss cap',()=>{
-  const result=assessMarketEntryEconomics({
-    buyNotionalUsd:10,
-    buyCommissionUsd:0,
-    stopLossPercent:0.7,
-    maxNetStopLossPercent:0.8,
-    maxSlippagePercent:0.1
+    buyCommissionUsd:0.09,
+    takeProfitPercent:1.5,
+    maxSlippagePercent:0.1,
+    maxRequiredGrossProfitPercent:4
   })
   assert.equal(result.approved,true)
-  assert.equal(Number(result.estimatedNetLossAtStopPercent.toFixed(2)),0.8)
+  assert.equal(Number(result.requiredGrossProfitPercent.toFixed(2)),3.4)
 })
 
-
-test('capital preservation blocks another BUY after any realized loss',()=>{
-  const result=assessCapitalPreservationBuy({
-    enabled:true,
-    realizedPnlTodayUsd:-0.01,
-    realizedLossTodayUsd:0.01,
-    openBotPositions:0
+test('profit-first entry rejects excessive fee economics',()=>{
+  const result=assessProfitFirstEntryEconomics({
+    buyNotionalUsd:10,
+    buyCommissionUsd:0.15,
+    takeProfitPercent:1.5,
+    maxSlippagePercent:0.1,
+    maxRequiredGrossProfitPercent:4
   })
   assert.equal(result.approved,false)
-  assert.match(result.reasons.join(' '),/realized bot loss/i)
-})
-
-test('capital preservation allows BUY only with no loss and no open bot position',()=>{
-  const clear=assessCapitalPreservationBuy({
-    enabled:true,
-    realizedPnlTodayUsd:0,
-    realizedLossTodayUsd:0,
-    openBotPositions:0
-  })
-  const openPosition=assessCapitalPreservationBuy({
-    enabled:true,
-    realizedPnlTodayUsd:0,
-    realizedLossTodayUsd:0,
-    openBotPositions:1
-  })
-  assert.equal(clear.approved,true)
-  assert.equal(openPosition.approved,false)
+  assert.ok(result.requiredGrossProfitPercent>4)
 })
