@@ -55,6 +55,41 @@ const lowerBand=(closes:number[],period:number,mult:number)=>{
   const middle=avg(slice)
   return middle-(mult*std(slice))
 }
+
+const buildClosedTenMinuteBars=(fiveMinuteCandles:StressCandle[])=>{
+  const buckets=new Map<number,StressCandle[]>()
+  for(const candle of fiveMinuteCandles){
+    const bucketStart=Math.floor(candle.start/600)*600
+    const rows=buckets.get(bucketStart)||[]
+    rows.push(candle)
+    buckets.set(bucketStart,rows)
+  }
+  const result:StressCandle[]=[]
+  for(const [bucketStart,rows] of [...buckets.entries()].sort((a,b)=>a[0]-b[0])){
+    const ordered=rows.sort((a,b)=>a.start-b.start)
+    const first=ordered.find(row=>row.start===bucketStart)
+    const second=ordered.find(row=>row.start===bucketStart+300)
+    if(!first||!second)continue
+    result.push({
+      start:bucketStart,
+      open:first.open,
+      high:Math.max(first.high,second.high),
+      low:Math.min(first.low,second.low),
+      close:second.close,
+      volume:first.volume+second.volume
+    })
+  }
+  return result
+}
+
+const tenMinuteMacroReady=(history:StressCandle[])=>{
+  const bars=buildClosedTenMinuteBars(history)
+  if(bars.length<config.macroBollingerPeriod)return false
+  const closes=bars.map(row=>row.close)
+  const latestClose=closes.at(-1)!
+  const middle=avg(closes.slice(-config.macroBollingerPeriod))
+  return latestClose>middle
+}
 const pct=(from:number,to:number)=>from>0?((to-from)/from)*100:0
 
 export const buildStressWindows=(candles:StressCandle[],windowSize=120,step=40)=>{
@@ -73,7 +108,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
   }
 
   const feeRate=config.backtestMarketFeeRate
-  const orderUsd=Math.max(1,config.smallAccountMaxBuyUsd)
+  const orderUsd=config.maxLiveOrderUsd
   let qty=0
   let costBasisUsd=0
   let avgEntryPrice=0
@@ -117,14 +152,8 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
           entryThreeCandleReturnPct:entryMeta?.threeCandleReturnPct,crossedBelowLower:entryMeta?.crossedBelowLower
         })
         netPnlUsd+=pnl
-        if(pnl<0){
-          losses+=1
-          stoppedByLossGuard=true
-          // Mirror the real Loss Guard: after the first realized loss, this scenario stops.
-          break
-        }else{
-          wins+=1
-        }
+        if(pnl<0)losses+=1
+        else wins+=1
         qty=0
         peakPrice=0
         costBasisUsd=0
@@ -144,12 +173,12 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     const previousCandle=candles[i-1]
     if(lower==null||prevLower==null||currentRsi==null||previousRsi==null||previousClose==null||!previousCandle)continue
 
-    const crossedBelowLower=previousClose>=prevLower&&candle.close<lower
+    const crossedBelowLower=candle.close<lower
     const closeVsLowerPct=((candle.close-lower)/lower)*100
     const lookback=Math.max(0,i-3)
     const threeCandleReturnPct=pct(candles[lookback].close,candle.close)
-    const priorVolumes=candles.slice(Math.max(0,i-20),i).map(x=>Number(x.volume||0)).filter(v=>v>0)
-    const averageVolume=priorVolumes.length?avg(priorVolumes):0
+    const priorVolumes=candles.slice(Math.max(0,i-config.entryVolumeLookbackCandles),i).map(x=>Number(x.volume||0)).filter(v=>v>0)
+    const averageVolume=priorVolumes.length===config.entryVolumeLookbackCandles?avg(priorVolumes):0
     const decision=confirmedMeanReversionEntryDecision({
       rsiValue:currentRsi,
       previousRsiValue:previousRsi,
@@ -164,7 +193,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
       currentVolume:Number(candle.volume||0),
       averageVolume
     })
-    if(!decision.ready)continue
+    if(!decision.ready||!tenMinuteMacroReady(history))continue
 
     const buyFee=orderUsd*feeRate
     const filledValue=Math.max(0,orderUsd-buyFee)
@@ -190,7 +219,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     wins,
     losses,
     netPnlUsd,
-    stoppedByLossGuard,
+    stoppedByLossGuard:false,
     noTrade:trades.every(t=>t.side!=='BUY')
   }
 }
@@ -274,15 +303,15 @@ export const runLiveStrategyStressTest=async(input?:{productIds?:string[];candle
       bbPeriod:config.bbPeriod,
       bbStdDev:config.bbStdDev,
       rsiPeriod:config.rsiPeriod,
-      rsiOversold:config.rsiOversold,
-      strongRsi:config.smallAccountStrongRsi,
+      rsiStrictlyBelow:config.entryRsiStrictlyBelow,
+      macro10mCloseAboveBollingerMiddle:true,
       trailingActivationNetPercent:config.trailingActivationNetPercent,
       trailingDistancePercent:config.trailingDistancePercent,
       stopLossPercent:config.fixedStopLossPercent,
       minNetProfitUsd:config.smallAccountMinNetProfitUsd,
       assumedMarketFeeRatePercent:Number((config.backtestMarketFeeRate*100).toFixed(4)),
-      sameLossGuardBehavior:'STOP SCENARIO AFTER FIRST REALIZED LOSS',
-      entryConfirmation:'Previous RSI <=30, current RSI rebounds >30 and <=36, lower-Bollinger reclaim, close above previous high, and rebound volume >=1.5x prior 20-candle average',
+      rollingKillSwitchPercent:config.rollingKillSwitchPercent,
+      entryConfirmation:'Latest closed 10m candle above Bollinger middle/SMA20; closed 5m close below lower Bollinger; RSI14 <30; 5m volume >=1.5x prior VMA20',
       stopLossBasis:'ACTUAL_FILL_PRICE_NOT_FEE_LOADED_COST_BASIS'
     }
   }
