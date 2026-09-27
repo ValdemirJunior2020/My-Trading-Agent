@@ -96,11 +96,11 @@ export const confirmedMeanReversionEntryDecision=(params:{
     threeCandleReturnPercent:params.threeCandleReturnPct,
     currentVolume:params.currentVolume,
     previousVolumes:syntheticVolumes,
-    rsiExtremeThreshold:config.smallAccountStrongRsi,
-    rsiRecoveryThreshold:30,
-    rsiMax:36,
-    minimumRsiRecoveryPoints:1,
-    minimumVolumeRatio:1.5,
+    rsiExtremeThreshold:config.entryPreviousRsiMax,
+    rsiRecoveryThreshold:config.entryCurrentRsiMinExclusive,
+    rsiMax:config.entryCurrentRsiMax,
+    minimumRsiRecoveryPoints:config.entryMinimumRsiRecoveryPoints,
+    minimumVolumeRatio:config.entryMinimumVolumeRatio,
     maximumThreeCandleDropPercent:0.5
   })
 
@@ -111,7 +111,7 @@ export const confirmedMeanReversionEntryDecision=(params:{
   const notFallingFast=params.threeCandleReturnPct>-0.5
   const insideSafeReclaimZone=params.closeVsLowerPct>=0&&params.closeVsLowerPct<=config.smallAccountStrongProximityPercent
   const volumeRatio=confirmation.volumeRatio
-  const volumeRebound=volumeRatio>=1.5
+  const volumeRebound=volumeRatio>=config.entryMinimumVolumeRatio
   const ready=Boolean(confirmation.approved&&insideSafeReclaimZone)
 
   const blockers=[...confirmation.blockers]
@@ -124,7 +124,7 @@ export const confirmedMeanReversionEntryDecision=(params:{
     previousRsiValue:params.previousRsiValue,
     rsiRecoveryPoints:confirmation.rsiRecoveryPoints,
     rsiRecoveryConfirmed:!confirmation.blockers.includes('RSI_RECOVERY_NOT_CONFIRMED'),
-    rsiReboundedAboveOversold:params.rsiValue>30&&params.rsiValue<=36,
+    rsiReboundedAboveOversold:params.rsiValue>config.entryCurrentRsiMinExclusive&&params.rsiValue<=config.entryCurrentRsiMax,
     previousWasBelow,
     reclaimedLowerBand,
     candleRecovered,
@@ -265,16 +265,17 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
   const nearLowerBand=entryDecision.nearLowerBand
 
   let stopPrice:number|null=null
-  let takeProfitPrice:number|null=null
+  let trailingActivationPrice:number|null=null
   let exitReason:string|null=null
 
   if(position.qty>0&&position.avgEntryPrice>0){
     const stopBasis=position.lots[0]?.fillEntryPrice||position.avgEntryPrice
     stopPrice=stopBasis*(1-config.fixedStopLossPercent/100)
-    takeProfitPrice=position.avgEntryPrice*(1+config.takeProfitPercent/100)
+    trailingActivationPrice=
+      position.avgEntryPrice*(1+config.trailingActivationNetPercent/100)/
+      Math.max(1e-12,1-config.backtestMarketFeeRate)
 
-    if(livePrice>=takeProfitPrice)exitReason='FIXED_TAKE_PROFIT'
-    else if(livePrice<=stopPrice)exitReason='STOP_LOSS'
+    if(livePrice<=stopPrice)exitReason='STOP_LOSS'
   }
 
   const rawEntrySignal=Boolean(entryDecision.ready)
@@ -358,12 +359,12 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
       openLotCount:lotProfitability.length,
       bestOpenLot,
       lots:lotProfitability,
-      requiredNetProfitPercent:config.takeProfitPercent,
+      requiredNetProfitPercent:config.trailingActivationNetPercent,
       finalNetAfterFeesCheck:'COINBASE_PREVIEW_AT_SELL_TRIGGER'
     },
     exits:{
-      takeProfitPrice,
-      takeProfitPercent:config.takeProfitPercent,
+      takeProfitPrice:trailingActivationPrice,
+      takeProfitPercent:config.trailingActivationNetPercent,
       stopLossPercent:config.fixedStopLossPercent,
       stopPrice,
       exitReason
