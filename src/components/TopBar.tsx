@@ -14,7 +14,6 @@ const friendlyAgent=(id:string|null)=>{
   risk:'Risk Manager',
   critic:'Trade Critic',
   decision:'Final Decision',
-  paper:'Paper Trader',
   execution:'Execution Agent',
   backtest:'Backtesting Lab'
  }
@@ -71,7 +70,7 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
  const lossHalt=Boolean(system?.safety?.lossHaltActive)
  const liveModeLabel=system?.safety.liveTradingEnabled
   ?(lossGuard?'LOSS GUARD STOP':lossHalt?'LOSS HALT':safePause?'AUTO SAFE PAUSE':system?.safety.automaticTradingEnabled?'Auto Live Trading':'Live Trading')
-  :'Paper Trading'
+  :'LIVE DISABLED'
  const liveModeDetail=system?.safety.liveTradingEnabled
   ?(lossGuard
     ?'REALIZED LOSS - ALL live BUY and SELL execution stopped'
@@ -82,7 +81,7 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
         :system?.safety.automaticTradingEnabled
           ?'auto live'
           :system?.safety.manualApprovalRequired?'manual live':'live')
-  :(system?.safety.mode||t('simulatedExecution'))
+  :'live execution disabled'
  const lastLiveLabel=(()=>{
   if(!lastLiveEvent)return 'NO LIVE ORDER YET'
   const payload=lastLiveEvent.payload||{}
@@ -107,7 +106,7 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
   <div className="top-chips">
    <div className="status-chip"><b>{system?'●':'○'}</b><span><strong>{system?t('serverConnected'):t('serverOffline')}</strong><small>{system?('v'+system.server.version):t('startBatHint')}</small></span></div>
    <div className="status-chip"><b>{ollama?'◎':'○'}</b><span><strong>{ollama?t('ollamaConnected'):t('ollamaOffline')}</strong><small>{system?.ollama.chatModel||system?.ollama.models?.[0]||'local'}</small></span></div>
-   <div className="status-chip paper"><b>◫</b><span><strong>{liveModeLabel}</strong><small>{liveModeDetail}</small></span></div>
+   <div className="status-chip mode"><b>◫</b><span><strong>{liveModeLabel}</strong><small>{liveModeDetail}</small></span></div>
    <div className="simulation-chip">QUANT {quantCount}/3</div>
    <div className="simulation-chip">AUTO {system?.autoAgents?.enabled?'ON':'OFF'}{system?.autoAgents?.enabled?' • '+system.autoAgents.intervalSeconds+'s':''}</div>
    <div className="simulation-chip">{system?.coinbase.configured?t('coinbaseReady'):t('simulation')}</div>
