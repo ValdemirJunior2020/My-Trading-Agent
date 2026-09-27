@@ -16,6 +16,7 @@ const shouldStructuredLog=(type:string)=>
   type.startsWith('mean_reversion_') ||
   type.startsWith('rolling_') ||
   type.startsWith('emergency_') ||
+  type.startsWith('loss_guard_') ||
   type==='hybrid_decision_resolved'
 
 export const publish=(type:string,payload:unknown,agentId?:string)=>{
