@@ -1,5 +1,5 @@
 import { config } from './config.js'
-import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,calculateRealizedSellMetrics } from './riskCore.js'
+import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from './riskCore.js'
 import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
@@ -50,17 +50,25 @@ export const migrateLegacyLossHaltEmergencyStop=()=>{
   const lossHaltActive=getSetting('loss_halt_active','false')==='true'
   const lossHaltTriggeredAt=getSetting('loss_halt_triggered_at','')
   const emergencyStopReason=getSetting('emergency_stop_reason','').toUpperCase()
+  const latestManualEmergency=recentEvents(500)
+    .find((event:any)=>String(event.type)==='emergency_stop_activated'&&String(event.agentId||'')==='manager')
+  const latestManualEmergencyAt=String(latestManualEmergency?.createdAt||'')
 
-  if(
-    emergencyStopActive() &&
-    lossHaltActive &&
-    emergencyStopReason!=='MANUAL'
-  ){
+  const shouldClear=shouldClearLegacyLossHaltEmergency({
+    emergencyStop:emergencyStopActive(),
+    lossHaltActive,
+    emergencyStopReason,
+    lossHaltTriggeredAt,
+    latestManualEmergencyAt
+  })
+
+  if(shouldClear){
     setSetting('emergency_stop','false')
     setSetting('emergency_stop_reason','')
     publish('legacy_loss_halt_emergency_migrated',{
       lossHaltTriggeredAt:lossHaltTriggeredAt||null,
       previousEmergencyStopReason:emergencyStopReason||null,
+      latestManualEmergencyAt:latestManualEmergencyAt||null,
       message:'Cleared stale global emergency flag; loss halt remains active for new BUYs while SELL exits stay enabled.'
     },'risk')
     return true
