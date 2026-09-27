@@ -478,7 +478,9 @@ export function TradeJournal({language}:Props){
                 Number.isFinite(Number(p.volumeRatio))
                   ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / needs ≥1.50× VMA20')
                   : '',
-                p.positionOpen===true?'1 global slot occupied':'1 global slot available',
+                p.globalSlotOccupied===true
+                  ? ('GLOBAL SLOT: OCCUPIED'+(Array.isArray(p.globalSlotProductIds)&&p.globalSlotProductIds.length?' — '+p.globalSlotProductIds.join(', '):''))
+                  : 'GLOBAL SLOT: AVAILABLE',
                 p.deterministicReady===true?'DETERMINISTIC BUY SETUP READY':'No deterministic entry trigger'
               ]
               return parts.filter(Boolean).join(' • ')
