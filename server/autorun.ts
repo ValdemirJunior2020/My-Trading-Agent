@@ -46,6 +46,7 @@ export const saveAutoRunSettings = (input: Partial<AutoRunSettings>) => {
 
 let timer: NodeJS.Timeout | null = null
 let lastAttemptAt = 0
+let tickInFlight = false
 const ANALYSIS_COOLDOWN_MS=10*60*1000
 
 const analysisKey=(productId:string)=>'auto_last_analyzed_'+productId.toUpperCase().replace(/[^A-Z0-9]/g,'_')
@@ -290,7 +291,7 @@ const chooseAutoProduct = async () => {
   }
 }
 
-const tick = async () => {
+const tickInternal = async () => {
   if (!shouldRunNow()) return
   if (!coinbaseConfigured()) return
 
@@ -371,6 +372,20 @@ const tick = async () => {
     const message = error instanceof Error ? error.message : String(error)
     publish('auto_agents_cycle_failed', { error: message }, 'manager')
   })
+}
+
+const tick = async () => {
+  // The timer polls every 5s so settings changes are picked up quickly, but the
+  // scan/selection work itself must never overlap. Without this guard, a slow
+  // Coinbase/Ollama scan can let a second tick reach the pipeline and create a
+  // false "Agent pipeline is already running" failure.
+  if (tickInFlight) return
+  tickInFlight = true
+  try {
+    await tickInternal()
+  } finally {
+    tickInFlight = false
+  }
 }
 
 export const startAutoRun = () => {
