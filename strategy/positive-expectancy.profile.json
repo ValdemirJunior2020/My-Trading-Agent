@@ -1,0 +1,27 @@
+{
+  "profileName": "positive-expectancy-research-v1",
+  "mode": "RESEARCH_ONLY",
+  "granularity": "FIVE_MINUTE",
+  "fees": {
+    "assumedMarketFeeRatePerSide": 0.006,
+    "assumedRoundTripFeeRate": 0.012
+  },
+  "entryConfirmation": {
+    "previousRsiAtOrBelow": 30,
+    "currentRsiAbove": 35,
+    "currentRsiMax": 45,
+    "minimumRsiRecoveryPoints": 5,
+    "requireLowerBollingerReclaim": true,
+    "requireCloseAbovePreviousHigh": true,
+    "maxThreeCandleDropPercent": 0.5,
+    "volumeLookbackCandles": 20,
+    "minimumVolumeRatio": 1.5
+  },
+  "riskRewardResearch": {
+    "stopLossPercentGrid": [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5],
+    "takeProfitNetPercentGrid": [2.5, 3.5, 4.5, 5.5, 6.5, 7.5],
+    "minimumHistoricalCandles": 10000,
+    "targetNetRewardRiskRatios": [1.5, 2.0, 3.0]
+  },
+  "promotionRule": "DO_NOT_APPLY_TO_LIVE_UNLESS_OUT_OF_SAMPLE_AND_WALK_FORWARD_RESULTS_ARE_POSITIVE_WITH_ADEQUATE_TRADE_COUNT"
+}
