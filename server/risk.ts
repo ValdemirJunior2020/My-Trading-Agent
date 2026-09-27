@@ -54,14 +54,14 @@ export const migrateLegacyLossHaltEmergencyStop=()=>{
   if(
     emergencyStopActive() &&
     lossHaltActive &&
-    Boolean(lossHaltTriggeredAt) &&
-    (emergencyStopReason===''||emergencyStopReason==='LOSS_HALT')
+    emergencyStopReason!=='MANUAL'
   ){
     setSetting('emergency_stop','false')
     setSetting('emergency_stop_reason','')
     publish('legacy_loss_halt_emergency_migrated',{
-      lossHaltTriggeredAt,
-      message:'Cleared legacy global emergency flag at startup; loss halt remains active for new BUYs while SELL exits stay enabled.'
+      lossHaltTriggeredAt:lossHaltTriggeredAt||null,
+      previousEmergencyStopReason:emergencyStopReason||null,
+      message:'Cleared stale global emergency flag; loss halt remains active for new BUYs while SELL exits stay enabled.'
     },'risk')
     return true
   }
