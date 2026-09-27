@@ -31,13 +31,9 @@ export const assessExposureLimits=(input:ExposureAssessmentInput)=>{
   if(input.side==='BUY'&&projectedTotalBotExposureUsd>input.maxTotalExposureUsd+1e-8){
     reasons.push('Projected total bot exposure exceeds the live portfolio exposure cap.')
   }
-  if(
-    input.side==='BUY' &&
-    !input.productAlreadyOpen &&
-    projectedOpenBotPositions>input.maxOpenBotPositions
-  ){
-    reasons.push('Maximum number of open bot positions has been reached.')
-  }
+  // No global position-count gate in production. Multiple different coins may
+  // be open at once; cash, per-asset exposure, total exposure, and emergency
+  // protection remain the limiting controls.
 
   return {
     approved:reasons.length===0,
@@ -194,9 +190,8 @@ export const assessCapitalPreservationBuy=(input:{
     if(Number(input.realizedLossTodayUsd)>0||Number(input.realizedPnlTodayUsd)<0){
       reasons.push('Capital preservation lock: a realized bot loss already occurred today.')
     }
-    if(Number(input.openBotPositions)>0){
-      reasons.push('Capital preservation lock: only one bot position may be open at a time.')
-    }
+    // Multiple different bot positions are allowed. Capital preservation no
+    // longer turns "another open coin" into a blanket BUY rejection.
   }
   return {approved:reasons.length===0,reasons}
 }
