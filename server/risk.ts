@@ -505,6 +505,7 @@ export const tryLimitedLiveExecution = async (opts: {
   avgEntryPrice?: number
   sourceLotOrderId?: string
   requiredNetProfitPercent?: number
+  requestedBuyUsd?: number
   executionSource?: string
 }) => {
   if (!['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(opts.decision)) {
@@ -669,7 +670,9 @@ export const tryLimitedLiveExecution = async (opts: {
     const quoteIncrement = productInfo?.quote_increment || 0.01
     const minExecutableQuoteUsd = ceilToIncrement(quoteMin, quoteIncrement)
 
-    quoteSizeUsd = floorToIncrement(safeMaxBuyUsd, quoteIncrement)
+    const requestedBuyUsd=Number(opts.requestedBuyUsd||0)
+    const strategyRequestedCap=requestedBuyUsd>0?Math.min(requestedBuyUsd,safeMaxBuyUsd):safeMaxBuyUsd
+    quoteSizeUsd = floorToIncrement(strategyRequestedCap, quoteIncrement)
 
     // If flooring an exactly-$10 style cap produces $9.99 because of the
     // exchange increment, snap up to the smallest valid Coinbase amount,
