@@ -101,29 +101,146 @@ export const migrateLegacyLossHaltEmergencyStop=()=>{
 
 export const getRollingRiskState=()=>{
   const raw=getSetting('rolling_risk_last_state','')
-  if(!raw)return {paused:rollingRiskPauseActive(),drawdownPercent:0,limitPercent:config.rollingKillSwitchPercent,rollingWindowHours:24}
-  try{return JSON.parse(raw)}catch{return {paused:rollingRiskPauseActive(),drawdownPercent:0,limitPercent:config.rollingKillSwitchPercent,rollingWindowHours:24}}
-}
-
-const migrateLegacyRollingEmergencyStop=()=>{
-  if(!emergencyStopActive())return
-  if(getSetting('rolling_pause_migration_done','false')==='true')return
-
-  const relevant=recentEvents(120).find((event:any)=>
-    ['rolling_kill_switch_triggered','emergency_stop_activated','emergency_stop_cleared'].includes(String(event.type))
-  )
-
-  if(relevant?.type==='rolling_kill_switch_triggered'){
-    setSetting('emergency_stop','false')
-    setSetting('rolling_risk_pause','true')
-    setSetting('rolling_pause_migration_done','true')
-    publish('legacy_rolling_stop_migrated',{
-      message:'Converted old rolling kill-switch emergency stop into AUTO SAFE PAUSE so protective SELL exits remain available.'
-    },'risk')
+  const locked=getSetting('rolling_kill_switch_locked','false')==='true'
+  if(!raw)return {
+    blocked:locked,
+    paused:locked,
+    locked,
+    drawdownPercent:0,
+    limitPercent:config.rollingKillSwitchPercent,
+    rollingWindowHours:24,
+    requiresManualReset:locked,
+    protectiveSellsAllowed:false
+  }
+  try{
+    const parsed=JSON.parse(raw)
+    return {...parsed,blocked:locked||Boolean(parsed.blocked),paused:locked||Boolean(parsed.paused),locked,requiresManualReset:locked}
+  }catch{
+    return {
+      blocked:locked,
+      paused:locked,
+      locked,
+      drawdownPercent:0,
+      limitPercent:config.rollingKillSwitchPercent,
+      rollingWindowHours:24,
+      requiresManualReset:locked,
+      protectiveSellsAllowed:false
+    }
   }
 }
 
+const currentBotInventoryForEmergency=()=>{
+  const inventory=new Map<string,{qty:number,costUsd:number}>()
+  for(const event of livePlacedOrders(5000)){
+    const p:any=event.payload||{}
+    const productId=String(p.productId||'').toUpperCase()
+    if(!productId)continue
+    const side=String(p.side||'').toUpperCase()
+    const fill:any=p.fill||{}
+    const preview:any=p.preview||{}
+    const price=Number(p.actualFillPrice||fill.filledPrice||preview.est_average_filled_price||0)
+    const notional=Number(p.notionalUsd||fill.filledValue||preview.order_total||0)
+    const qty=Number(p.executedQty||fill.executedQty||preview.base_size||(price>0&&notional>0?notional/price:0))
+    if(!(qty>0))continue
+    const row=inventory.get(productId)||{qty:0,costUsd:0}
+    if(side==='BUY'){
+      row.qty+=qty
+      row.costUsd+=Math.max(0,notional)
+    }else if(side==='SELL'&&row.qty>0){
+      const sold=Math.min(qty,row.qty)
+      const unitCost=row.qty>0?row.costUsd/row.qty:0
+      row.qty=Math.max(0,row.qty-sold)
+      row.costUsd=Math.max(0,row.costUsd-(unitCost*sold))
+    }
+    inventory.set(productId,row)
+  }
+  return [...inventory.entries()]
+    .filter(([,row])=>row.qty>1e-12)
+    .map(([productId,row])=>({productId,qty:row.qty,costUsd:row.costUsd}))
+}
+
+const liquidateBotInventoryForRollingKill=async()=>{
+  const results:any[]=[]
+  for(const position of currentBotInventoryForEmergency()){
+    try{
+      const product:any=await getProduct(position.productId)
+      const baseMin=Math.max(0,Number(product?.base_min_size||0))
+      if(position.qty+1e-12<baseMin){
+        results.push({productId:position.productId,executed:false,reason:'POSITION_BELOW_COINBASE_SELL_MINIMUM',qty:position.qty,baseMin})
+        continue
+      }
+      const preview=await previewMarketOrder({
+        productId:position.productId,
+        side:'SELL',
+        baseSize:position.qty
+      })
+      const previewErrors=Array.isArray(preview.errs)?preview.errs.filter(Boolean):[]
+      if(previewErrors.length||!preview.preview_id){
+        results.push({productId:position.productId,executed:false,reason:previewErrors.join(', ')||'NO_PREVIEW_ID'})
+        continue
+      }
+      const order=await createMarketOrder({
+        productId:position.productId,
+        side:'SELL',
+        baseSize:position.qty,
+        previewId:preview.preview_id
+      })
+      const orderId=String(order.success_response?.order_id||'')
+      const fill=await waitForOrderFill(orderId,10000)
+      const eventTimestamp=new Date().toISOString()
+      publish('rolling_kill_switch_liquidation_fill',{
+        timestampIso:eventTimestamp,
+        monotonicNs:process.hrtime.bigint().toString(),
+        productId:position.productId,
+        orderId,
+        requestedQty:position.qty,
+        actualFillPrice:Number(fill.filledPrice||0),
+        executedQty:Number(fill.executedQty||0),
+        executionSource:'ROLLING_24H_KILL_SWITCH'
+      },'risk')
+      results.push({
+        productId:position.productId,
+        executed:true,
+        orderId,
+        actualFillPrice:Number(fill.filledPrice||0),
+        executedQty:Number(fill.executedQty||0)
+      })
+    }catch(error){
+      const message=error instanceof Error?error.message:String(error)
+      publish('rolling_kill_switch_liquidation_failed',{
+        timestampIso:new Date().toISOString(),
+        monotonicNs:process.hrtime.bigint().toString(),
+        productId:position.productId,
+        error:message
+      },'risk')
+      results.push({productId:position.productId,executed:false,error:message})
+    }
+  }
+  return results
+}
+
 let lastRollingEquitySnapshotAt=0
+let rollingKillInFlight:Promise<any>|null=null
+
+export const resetRollingKillSwitchLock=()=>{
+  const resetAt=new Date().toISOString()
+  setSetting('rolling_kill_switch_locked','false')
+  setSetting('rolling_risk_pause','false')
+  setSetting('rolling_risk_pause_started_at','')
+  setSetting('rolling_risk_recovery_since','')
+  setSetting('rolling_kill_switch_reset_at',resetAt)
+  const previousReason=getSetting('emergency_stop_reason','')
+  if(previousReason==='ROLLING_24H_DRAWDOWN'){
+    setSetting('emergency_stop','false')
+    setSetting('emergency_stop_reason','')
+  }
+  publish('rolling_kill_switch_manual_reset',{
+    timestampIso:resetAt,
+    monotonicNs:process.hrtime.bigint().toString(),
+    message:'Rolling 24-hour kill switch manually reset.'
+  },'risk')
+  return getRollingRiskState()
+}
 
 export const checkRollingEquityKillSwitch=async(currentPortfolioUsd:number)=>{
   const now=Date.now()
@@ -132,97 +249,92 @@ export const checkRollingEquityKillSwitch=async(currentPortfolioUsd:number)=>{
 
   pruneEquitySnapshots(cutoff)
 
-  if(equity>0 && (now-lastRollingEquitySnapshotAt>=10000 || equitySnapshotsSince(cutoff).length===0)){
+  if(equity>0&&(now-lastRollingEquitySnapshotAt>=10000||equitySnapshotsSince(cutoff).length===0)){
     addEquitySnapshot(equity,new Date(now).toISOString())
     lastRollingEquitySnapshotAt=now
   }
 
   const snapshots=equitySnapshotsSince(cutoff)
   const peakEquityUsd=snapshots.length
-    ? Math.max(...snapshots.map(x=>x.equityUsd),equity)
-    : equity
+    ?Math.max(...snapshots.map(x=>x.equityUsd),equity)
+    :equity
   const drawdownPercent=peakEquityUsd>0
-    ? Math.max(0,((peakEquityUsd-equity)/peakEquityUsd)*100)
-    : 0
-  migrateLegacyRollingEmergencyStop()
-
+    ?Math.max(0,((peakEquityUsd-equity)/peakEquityUsd)*100)
+    :0
   const thresholdBreached=drawdownPercent>=config.rollingKillSwitchPercent
-  let paused=rollingRiskPauseActive()
-  const recoveryStableMs=30*60*1000
+  let locked=getSetting('rolling_kill_switch_locked','false')==='true'
   let canceledOrderIds:string[]=[]
+  let liquidationResults:any[]=[]
 
-  if(thresholdBreached){
-    const wasPaused=paused
-    paused=true
+  if(thresholdBreached&&!locked){
+    locked=true
+    setSetting('rolling_kill_switch_locked','true')
     setSetting('rolling_risk_pause','true')
-    setSetting('rolling_risk_recovery_since','')
+    setSetting('rolling_risk_pause_started_at',new Date(now).toISOString())
+    setSetting('emergency_stop','true')
+    setSetting('emergency_stop_reason','ROLLING_24H_DRAWDOWN')
 
-    if(!wasPaused){
-      setSetting('rolling_risk_pause_started_at',new Date(now).toISOString())
-      try{
-        const openOrders=await listOpenOrders()
-        const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
-        if(ids.length){
-          await cancelOrders(ids)
-          canceledOrderIds=ids
+    if(!rollingKillInFlight){
+      rollingKillInFlight=(async()=>{
+        try{
+          try{
+            const openOrders=await listOpenOrders()
+            const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
+            if(ids.length){
+              await cancelOrders(ids)
+              canceledOrderIds=ids
+            }
+          }catch(error){
+            publish('rolling_kill_switch_cancel_failed',{
+              timestampIso:new Date().toISOString(),
+              monotonicNs:process.hrtime.bigint().toString(),
+              error:error instanceof Error?error.message:String(error)
+            },'risk')
+          }
+
+          liquidationResults=await liquidateBotInventoryForRollingKill()
+
+          publish('rolling_kill_switch_triggered',{
+            timestampIso:new Date().toISOString(),
+            monotonicNs:process.hrtime.bigint().toString(),
+            mode:'FULL_MANUAL_RESET_LOCKDOWN',
+            currentEquityUsd:equity,
+            peakEquityUsd,
+            drawdownPercent,
+            limitPercent:config.rollingKillSwitchPercent,
+            rollingWindowHours:24,
+            canceledOrderIds,
+            liquidationResults,
+            entryBehavior:'ALL_NEW_ENTRIES_BLOCKED',
+            exitBehavior:'BOT_POSITIONS_MARKET_LIQUIDATED',
+            resetBehavior:'MANUAL_RESET_REQUIRED'
+          },'risk')
+        }finally{
+          rollingKillInFlight=null
         }
-      }catch(error){
-        publish('rolling_kill_switch_cancel_failed',{
-          error:error instanceof Error?error.message:String(error)
-        },'risk')
-      }
-
-      publish('rolling_kill_switch_triggered',{
-        mode:'AUTO_SAFE_PAUSE',
-        currentEquityUsd:equity,
-        peakEquityUsd,
-        drawdownPercent,
-        limitPercent:config.rollingKillSwitchPercent,
-        rollingWindowHours:24,
-        canceledOrderIds,
-        entryBehavior:'NEW_BUYS_BLOCKED',
-        exitBehavior:'PROTECTIVE_SELLS_ALLOWED'
-      },'risk')
+      })()
     }
-  }else if(paused){
-    let recoverySince=Number(getSetting('rolling_risk_recovery_since','0'))||0
-    if(!recoverySince){
-      recoverySince=now
-      setSetting('rolling_risk_recovery_since',String(recoverySince))
-      publish('rolling_safe_recovery_started',{
-        drawdownPercent,
-        requiredStableMinutes:30
-      },'risk')
-    }
-
-    if(now-recoverySince>=recoveryStableMs){
-      paused=false
-      setSetting('rolling_risk_pause','false')
-      setSetting('rolling_risk_recovery_since','')
-      publish('rolling_safe_pause_cleared',{
-        drawdownPercent,
-        stableMinutes:30,
-        message:'AUTO SAFE PAUSE cleared automatically. New entries may resume.'
-      },'risk')
-    }
+    await rollingKillInFlight
   }
 
   const state={
-    blocked:paused,
-    paused,
+    blocked:locked,
+    paused:locked,
+    locked,
     thresholdBreached,
     currentEquityUsd:equity,
     peakEquityUsd:Number(peakEquityUsd.toFixed(2)),
     drawdownPercent:Number(drawdownPercent.toFixed(4)),
     limitPercent:config.rollingKillSwitchPercent,
     rollingWindowHours:24,
-    recoveryStableMinutes:30,
-    recoverySince:getSetting('rolling_risk_recovery_since','')||null,
+    requiresManualReset:locked,
+    newBuysBlocked:locked,
+    protectiveSellsAllowed:false,
     pauseStartedAt:getSetting('rolling_risk_pause_started_at','')||null,
-    newBuysBlocked:paused,
-    protectiveSellsAllowed:true,
+    resetAt:getSetting('rolling_kill_switch_reset_at','')||null,
     snapshotCount:snapshots.length,
-    canceledOrderIds
+    canceledOrderIds,
+    liquidationResults
   }
   setSetting('rolling_risk_last_state',JSON.stringify(state))
   return state
