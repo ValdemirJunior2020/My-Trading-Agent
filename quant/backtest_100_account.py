@@ -28,7 +28,9 @@ def load_candles(conn, product_id):
     if frame.empty:
         return frame
     frame["timestamp"] = pd.to_datetime(frame["start"], unit="s", utc=True)
-    return frame.set_index("timestamp")
+    frame = frame.set_index("timestamp").sort_index()
+    # One candle per asset/timestamp keeps the global event stream deterministic.
+    return frame[~frame.index.duplicated(keep="last")]
 
 def prepare_signals(frame):
     close = frame["close"].astype(float)
@@ -71,13 +73,29 @@ def net_exit_value(price, qty):
     return price * qty * (1.0 - FEE_RATE)
 
 def run_simulation(frames):
-    timeline = sorted(set().union(*[set(df.index) for df in frames.values() if not df.empty]))
+    # Build one strictly chronological event stream across every asset.
+    # The one global slot rotates to the first valid setup seen after capital is released.
+    non_empty_indexes = [pd.Series(df.index) for df in frames.values() if not df.empty]
+    if non_empty_indexes:
+        merged_timestamps = pd.concat(non_empty_indexes, ignore_index=True)
+        timeline = pd.DatetimeIndex(merged_timestamps.drop_duplicates()).sort_values()
+    else:
+        timeline = pd.DatetimeIndex([])
+
     cash = INITIAL_CASH
     positions = {}
     closed = []
     equity_curve = []
+    first_close_time = None
+    scanned_timestamps_after_first_close = 0
+    eligible_signals_after_first_close = 0
+    trades_opened_after_first_close = 0
 
     for ts in timeline:
+        if first_close_time is not None and ts > first_close_time:
+            scanned_timestamps_after_first_close += 1
+
+        closed_this_timestamp = False
         for product_id in list(positions.keys()):
             frame = frames[product_id]
             if ts not in frame.index:
@@ -112,27 +130,44 @@ def run_simulation(frames):
                     "returnPercent": (pnl / float(pos["cost_basis"]) * 100.0) if pos["cost_basis"] else 0.0
                 })
                 del positions[product_id]
+                closed_this_timestamp = True
+                if first_close_time is None:
+                    first_close_time = ts
 
-        for product_id, frame in frames.items():
-            if len(positions) >= MAX_CONCURRENT or cash < POSITION_USD:
-                break
-            if product_id in positions or ts not in frame.index:
-                continue
-            row = frame.loc[ts]
-            if not bool(row["entry"]):
-                continue
-            close = float(row["close"])
-            if not (close > 0):
-                continue
-            gross_deployed = POSITION_USD
-            entry_fee = gross_deployed * FEE_RATE
-            net_asset_value = gross_deployed - entry_fee
-            qty = net_asset_value / close
-            cash -= gross_deployed
-            positions[product_id] = {
-                "entry_time": ts, "fill_price": close, "qty": qty,
-                "cost_basis": gross_deployed, "peak": close, "trailing_active": False
-            }
+        # A close releases proceeds immediately, but a new entry waits for the
+        # next timestamp/candle. Only one asset can own the global slot.
+        if not closed_this_timestamp:
+            for product_id in PRODUCTS:
+                frame = frames[product_id]
+                if len(positions) >= MAX_CONCURRENT or cash <= 0.0:
+                    break
+                if product_id in positions or ts not in frame.index:
+                    continue
+                row = frame.loc[ts]
+                if not bool(row["entry"]):
+                    continue
+                if first_close_time is not None and ts > first_close_time:
+                    eligible_signals_after_first_close += 1
+                close = float(row["close"])
+                if not (close > 0):
+                    continue
+
+                # POSITION_USD is a target/cap, not a minimum-cash gate.
+                # Recycle all available cash after fees/losses instead of
+                # permanently blocking future trades below exactly $100.
+                gross_deployed = min(POSITION_USD, cash)
+                if gross_deployed <= 0.0:
+                    continue
+                entry_fee = gross_deployed * FEE_RATE
+                net_asset_value = gross_deployed - entry_fee
+                qty = net_asset_value / close
+                cash -= gross_deployed
+                positions[product_id] = {
+                    "entry_time": ts, "fill_price": close, "qty": qty,
+                    "cost_basis": gross_deployed, "peak": close, "trailing_active": False
+                }
+                if first_close_time is not None and ts > first_close_time:
+                    trades_opened_after_first_close += 1
 
         marked_positions = 0.0
         for product_id, pos in positions.items():
@@ -166,6 +201,15 @@ def run_simulation(frames):
     loss_prob = len(losses) / total_trades if total_trades else 0.0
     expectancy = (win_prob * avg_win) - (loss_prob * avg_loss_abs)
 
+    if first_close_time is None:
+        scan_validation = "NOT_APPLICABLE"
+    elif scanned_timestamps_after_first_close <= 0:
+        scan_validation = "FAILED"
+    elif eligible_signals_after_first_close > 0 and total_trades <= 1:
+        scan_validation = "FAILED"
+    else:
+        scan_validation = "PASSED"
+
     return {
         "initialCapitalUsd": INITIAL_CASH,
         "positionSizeUsd": POSITION_USD,
@@ -191,6 +235,10 @@ def run_simulation(frames):
         "averageLossUsd": avg_loss_abs,
         "expectancyPerTradeUsd": expectancy,
         "openPositionsAtEnd": len(positions),
+        "scanValidation": scan_validation,
+        "timestampsScannedAfterFirstClose": scanned_timestamps_after_first_close,
+        "eligibleSignalsAfterFirstClose": eligible_signals_after_first_close,
+        "tradesOpenedAfterFirstClose": trades_opened_after_first_close,
         "sampleAdequacy": "ADEQUATE" if total_trades >= 30 else ("LIMITED" if total_trades >= 10 else "INSUFFICIENT"),
         "trades": closed
     }
@@ -225,6 +273,7 @@ def main():
     print("Expectancy E/trade:       $%.4f" % result["expectancyPerTradeUsd"])
     print("Sample adequacy:          " + result["sampleAdequacy"])
     print("Open positions at end:    %d" % result["openPositionsAtEnd"])
+    print("Scan validation:          " + result["scanValidation"])
     print("=" * 64)
 
 if __name__ == "__main__":
