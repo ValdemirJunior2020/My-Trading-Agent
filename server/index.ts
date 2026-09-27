@@ -7,6 +7,7 @@ import { getAutoRunSettings,startAutoRun,stopAutoRun } from './autorun.js'
 import { startMeanReversionEngine,stopMeanReversionEngine } from './meanReversionEngine.js'
 import { handleApiRequest } from './routes/api.js'
 import { log,serverLogFile } from './logger.js'
+import { migrateLegacyLossHaltEmergencyStop } from './risk.js'
 
 const distDir=resolve(process.cwd(),'dist')
 const pidFile=join(config.dataDir,'server.pid')
@@ -113,6 +114,7 @@ const server=createServer(async(req,res)=>{
 
 server.listen(config.port,config.host,()=>{
   writeFileSync(pidFile,String(process.pid),'utf8')
+  migrateLegacyLossHaltEmergencyStop()
   log.info('server_started',{
     host:config.host,
     port:config.port,
