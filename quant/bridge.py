@@ -218,8 +218,9 @@ def _run_mean_reversion(payload: dict, start_index: int = 0, end_index: int | No
     closes = [float(x) for x in (payload.get("closes") or payload.get("prices") or [])]
     highs = [float(x) for x in (payload.get("highs") or closes)]
     lows = [float(x) for x in (payload.get("lows") or closes)]
-    if not (len(closes) == len(highs) == len(lows)):
-        raise ValueError("closes/highs/lows must have matching lengths.")
+    volumes = [float(x) for x in (payload.get("volumes") or [1.0] * len(closes))]
+    if not (len(closes) == len(highs) == len(lows) == len(volumes)):
+        raise ValueError("closes/highs/lows/volumes must have matching lengths.")
 
     bb_period = int(payload.get("bbPeriod", 20))
     bb_std = float(payload.get("bbStdDev", 2.0))
@@ -243,6 +244,8 @@ def _run_mean_reversion(payload: dict, start_index: int = 0, end_index: int | No
     realized = 0.0
     wins = 0
     losses_count = 0
+    win_pnl_total = 0.0
+    loss_pnl_total = 0.0
     trades = 0
     position = None
     equity_curve = [cash]
@@ -281,19 +284,41 @@ def _run_mean_reversion(payload: dict, start_index: int = 0, end_index: int | No
                 trades += 1
                 if pnl > 0:
                     wins += 1
+                    win_pnl_total += pnl
                 elif pnl < 0:
                     losses_count += 1
+                    loss_pnl_total += abs(pnl)
                 position = None
 
-        if position is None and i > 0:
+        if position is None and i > 20:
             lower_now = _finite(lower.iloc[i], float("nan"))
             lower_prev = _finite(lower.iloc[i - 1], float("nan"))
             rsi_now = _finite(rsi_values.iloc[i], 100.0)
+            rsi_prev = _finite(rsi_values.iloc[i - 1], 100.0)
             if math.isfinite(lower_now) and math.isfinite(lower_prev) and lower_now > 0:
-                crossed_below = closes[i - 1] >= lower_prev and close < lower_now
                 close_vs_lower = ((close - lower_now) / lower_now) * 100.0
-                proximity = strong_proximity if rsi_now <= strong_rsi else normal_proximity
-                entry_ready = rsi_now <= rsi_oversold and (crossed_below or close_vs_lower <= proximity)
+                previous_was_extreme = rsi_prev <= strong_rsi
+                rsi_recovery_points = rsi_now - rsi_prev
+                rsi_recovered = rsi_now > rsi_oversold and rsi_now <= 45.0 and rsi_recovery_points >= 5.0
+                reclaimed_lower = closes[i - 1] < lower_prev and close >= lower_now
+                bullish_break = close > highs[i - 1]
+                three_candle_return = ((close - closes[i - 3]) / closes[i - 3]) * 100.0 if closes[i - 3] > 0 else -999.0
+                momentum_ok = three_candle_return > -0.5
+                prior_volume = volumes[max(0, i - 20):i]
+                average_volume = sum(prior_volume) / len(prior_volume) if prior_volume else 0.0
+                volume_ratio = (volumes[i] / average_volume) if average_volume > 0 else 0.0
+                volume_confirmed = volume_ratio >= 1.5
+                safe_reclaim_zone = close_vs_lower >= 0.0 and close_vs_lower <= strong_proximity
+
+                entry_ready = (
+                    previous_was_extreme and
+                    rsi_recovered and
+                    reclaimed_lower and
+                    bullish_break and
+                    momentum_ok and
+                    volume_confirmed and
+                    safe_reclaim_zone
+                )
                 if entry_ready:
                     notional = min(10.0, max(1.0, cash * 0.10))
                     qty = notional / close
@@ -342,6 +367,9 @@ def _run_mean_reversion(payload: dict, start_index: int = 0, end_index: int | No
         "winningTrades": wins,
         "losingTrades": losses_count,
         "winRatePercent": (wins / trades * 100.0) if trades else 0.0,
+        "averageWinPnl": (win_pnl_total / wins) if wins else 0.0,
+        "averageLossPnl": (loss_pnl_total / losses_count) if losses_count else 0.0,
+        "expectancyPerTrade": (realized / trades) if trades else 0.0,
         "openPosition": position is not None,
     }
 
@@ -390,6 +418,76 @@ def mean_reversion_validate(payload: dict) -> dict:
             else "NEEDS_MORE_EVIDENCE",
     }
 
+def mean_reversion_optimize(payload: dict) -> dict:
+    closes = payload.get("closes") or payload.get("prices") or []
+    if len(closes) < 10000:
+        raise ValueError("At least 10000 five-minute candles are required for stop-loss optimization.")
+
+    stop_grid = payload.get("stopLossPercentGrid") or [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5]
+    take_profit_grid = payload.get("takeProfitNetPercentGrid") or [2.5, 3.5, 4.5, 5.5, 6.5, 7.5]
+
+    n = len(closes)
+    split = int(n * 0.70)
+    results = []
+
+    for stop_loss in stop_grid:
+        for take_profit in take_profit_grid:
+            candidate = dict(payload)
+            candidate["stopLossPercent"] = float(stop_loss)
+            candidate["takeProfitPercent"] = float(take_profit)
+
+            train = _run_mean_reversion(candidate, 0, split)
+            out_of_sample = _run_mean_reversion(candidate, split, n)
+
+            avg_loss = float(out_of_sample.get("averageLossPnl", 0.0))
+            avg_win = float(out_of_sample.get("averageWinPnl", 0.0))
+            rr = (avg_win / avg_loss) if avg_loss > 0 else (999.0 if avg_win > 0 else 0.0)
+            closed = int(out_of_sample.get("totalTrades", 0))
+            expectancy = float(out_of_sample.get("expectancyPerTrade", 0.0))
+
+            results.append({
+                "stopLossPercent": float(stop_loss),
+                "takeProfitNetPercent": float(take_profit),
+                "roundTripFeeRate": float(payload.get("feeRate", 0.006)) * 2.0,
+                "trainReturnPercent": float(train.get("totalReturnPercent", 0.0)),
+                "outOfSampleReturnPercent": float(out_of_sample.get("totalReturnPercent", 0.0)),
+                "outOfSampleMaxDrawdownPercent": float(out_of_sample.get("maxDrawdownPercent", 0.0)),
+                "outOfSampleTrades": closed,
+                "outOfSampleWinRatePercent": float(out_of_sample.get("winRatePercent", 0.0)),
+                "averageWinPnl": avg_win,
+                "averageLossPnl": avg_loss,
+                "realizedRewardRiskRatio": rr,
+                "expectancyPerTrade": expectancy,
+                "sampleAdequacy": "ADEQUATE" if closed >= 30 else ("LIMITED" if closed >= 10 else "INSUFFICIENT"),
+            })
+
+    ranked = sorted(
+        results,
+        key=lambda x: (
+            x["sampleAdequacy"] == "ADEQUATE",
+            x["expectancyPerTrade"] > 0,
+            x["outOfSampleReturnPercent"],
+            -x["outOfSampleMaxDrawdownPercent"],
+        ),
+        reverse=True,
+    )
+
+    return {
+        "engine": "vectorbt-compatible",
+        "optimization": "MEAN_REVERSION_STOP_TAKE_PROFIT_GRID",
+        "candleCount": n,
+        "trainCandles": split,
+        "outOfSampleCandles": n - split,
+        "feeRatePerSide": float(payload.get("feeRate", 0.006)),
+        "roundTripFeeRate": float(payload.get("feeRate", 0.006)) * 2.0,
+        "stopLossGrid": [float(x) for x in stop_grid],
+        "takeProfitNetGrid": [float(x) for x in take_profit_grid],
+        "resultCount": len(ranked),
+        "topResults": ranked[:12],
+        "allResults": ranked,
+        "promotionRule": "Do not promote a parameter set to live trading unless out-of-sample expectancy is positive and sample adequacy is ADEQUATE.",
+    }
+
 def nautilus_smoke() -> dict:
     from nautilus_trader.backtest import BacktestEngine
     from nautilus_trader.config import BacktestEngineConfig
@@ -423,6 +521,9 @@ def main() -> None:
     elif command == "mean-reversion-validate":
         payload = json.loads(sys.stdin.read() or "{}")
         result = mean_reversion_validate(payload)
+    elif command == "mean-reversion-optimize":
+        payload = json.loads(sys.stdin.read() or "{}")
+        result = mean_reversion_optimize(payload)
     elif command == "nautilus-smoke":
         result = nautilus_smoke()
     else:
