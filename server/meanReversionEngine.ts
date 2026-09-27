@@ -672,8 +672,18 @@ const seedProduct=async(productId:string)=>{
 
 const seedUniverse=async()=>{
   const scan=await scanCryptoMarket()
-  const universe:string[] = Array.isArray(scan.universe) ? scan.universe.map((x:any)=>String(x).toUpperCase()) : []
-  products=[...new Set<string>(universe)].slice(0,28)
+  const rows:any[]=Array.isArray(scan.results)?scan.results:[]
+  const liquidRows=rows.filter((row:any)=>{
+    const dollarVolume24h=Number(row?.dollarVolume24h||0)
+    const spreadBps=row?.spreadBps==null?null:Number(row.spreadBps)
+    return dollarVolume24h>=config.smallAccountMinDollarVolume24h
+      &&(spreadBps==null||spreadBps<=50)
+  })
+  const liquidUniverse=liquidRows.map((row:any)=>String(row.productId||'').toUpperCase()).filter(Boolean)
+  const fallbackUniverse:string[]=Array.isArray(scan.universe)
+    ?scan.universe.map((x:any)=>String(x).toUpperCase())
+    :[]
+  products=[...new Set<string>(liquidUniverse.length?liquidUniverse:fallbackUniverse)].slice(0,28)
 
   for(let i=0;i<products.length;i+=4){
     const batch=products.slice(i,i+4)
