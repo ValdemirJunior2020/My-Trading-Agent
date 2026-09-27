@@ -153,6 +153,7 @@ export type BotManagedLot={
   costUsd:number
   avgEntryPrice:number
   fillEntryPrice:number
+  executionSource:string
 }
 
 export const getBotManagedLots=(productId:string):BotManagedLot[]=>{
@@ -178,7 +179,8 @@ export const getBotManagedLots=(productId:string):BotManagedLot[]=>{
         qty:base,
         costUsd,
         avgEntryPrice:costUsd/base,
-        fillEntryPrice:price
+        fillEntryPrice:price,
+        executionSource:String(p.executionSource||'UNKNOWN')
       })
       continue
     }
