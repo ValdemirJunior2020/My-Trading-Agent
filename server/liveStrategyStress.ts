@@ -108,7 +108,8 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
   }
 
   const feeRate=config.backtestMarketFeeRate
-  const orderUsd=config.maxLiveOrderUsd
+  const buyStepUsd=Math.max(0.01,Number(config.buyStepUsd||5))
+  let cashUsd=100
   let qty=0
   let costBasisUsd=0
   let avgEntryPrice=0
@@ -195,10 +196,13 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     })
     if(!decision.ready||!tenMinuteMacroReady(history))continue
 
+    const orderUsd=Math.floor((cashUsd+1e-9)/buyStepUsd)*buyStepUsd
+    if(!(orderUsd>0))continue
     const buyFee=orderUsd*feeRate
     const filledValue=Math.max(0,orderUsd-buyFee)
     qty=filledValue/candle.close
     costBasisUsd=orderUsd
+    cashUsd=Math.max(0,cashUsd-orderUsd)
     avgEntryPrice=costBasisUsd/qty
     fillEntryPrice=candle.close
     entryMeta={rsi:currentRsi,closeVsLowerPct,threeCandleReturnPct,crossedBelowLower}
