@@ -113,13 +113,22 @@ export const assessEmergencyExecutionGate=(input:{
   liveTradingEnabled:boolean
   autoTradingEnabled:boolean
   manualApprovalRequired?:boolean
+  lossHaltActive?:boolean
+  protectiveExit?:boolean
+  emergencyStopReason?:string
 })=>{
   const reasons:string[]=[]
-  if(input.emergencyStop)reasons.push('Emergency stop is active')
+  const stopReason=String(input.emergencyStopReason||'').toUpperCase()
+  const lossHaltExitAllowed=
+    Boolean(input.lossHaltActive) &&
+    Boolean(input.protectiveExit) &&
+    (stopReason===''||stopReason==='LOSS_HALT')
+
+  if(input.emergencyStop&&!lossHaltExitAllowed)reasons.push('Emergency stop is active')
   if(String(input.tradingMode).toLowerCase()!=='live')reasons.push('TRADING_MODE is not live')
   if(!input.liveTradingEnabled||!input.autoTradingEnabled)reasons.push('Live or auto trading is disabled in .env')
   if(input.manualApprovalRequired)reasons.push('Manual approval is required; automatic live execution is blocked')
-  return {approved:reasons.length===0,reasons}
+  return {approved:reasons.length===0,reasons,lossHaltExitAllowed}
 }
 
 
