@@ -265,9 +265,9 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
       nearLowerBand:entryDecision.nearLowerBand,
       proximityThresholdPercent:entryDecision.proximityThresholdPercent,
       previousRsiMustBeAtOrBelow:config.smallAccountStrongRsi,
-      currentRsiMustReboundAbove:config.smallAccountStrongRsi,
-      currentRsiMax:config.rsiOversold,
-      minimumRsiRecoveryPoints:2,
+      currentRsiMustReboundAbove:config.rsiOversold,
+      currentRsiMax:45,
+      minimumRsiRecoveryPoints:5,
       confirmedLowerBandReclaim:true,
       closeAbovePreviousHighRequired:true,
       maxThreeCandleDropPercent:0.5
@@ -281,7 +281,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     const approval=await getAgentApproval(
       productId,
       'BUY',
-      'Closed 5-minute candle confirmed RSI rebound out of extreme oversold, lower-Bollinger reclaim, and a close above the previous candle high.'
+      'Closed 5-minute candle confirmed RSI recovery above 35 after extreme oversold, lower-Bollinger reclaim, and a close above the previous candle high.'
     )
     if(!approval.approved){
       publish('mean_reversion_buy_blocked_by_agents',{
