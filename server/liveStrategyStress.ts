@@ -78,6 +78,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
   let costBasisUsd=0
   let avgEntryPrice=0
   let fillEntryPrice=0
+  let peakPrice=0
   let entryMeta:{rsi:number;closeVsLowerPct:number;threeCandleReturnPct:number;crossedBelowLower:boolean}|null=null
   let wins=0
   let losses=0
@@ -90,24 +91,26 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
     const candle=history.at(-1)!
 
     if(qty>0&&avgEntryPrice>0){
+      peakPrice=Math.max(peakPrice||fillEntryPrice,candle.high)
       const stopPrice=fillEntryPrice*(1-config.fixedStopLossPercent/100)
-      const requiredNetProfitUsd=Math.max(config.smallAccountMinNetProfitUsd,costBasisUsd*(config.takeProfitPercent/100))
-      const targetNetProceeds=costBasisUsd+requiredNetProfitUsd
-      const takeProfitPrice=targetNetProceeds/(Math.max(1e-12,qty*(1-feeRate)))
+      const activationNetValue=costBasisUsd*(1+config.trailingActivationNetPercent/100)
+      const trailingActivationPrice=activationNetValue/(Math.max(1e-12,qty*(1-feeRate)))
+      const trailingActive=peakPrice>=trailingActivationPrice
+      const trailingStopPrice=peakPrice*(1-config.trailingDistancePercent/100)
 
       const stopHit=candle.low<=stopPrice
-      const profitHit=candle.high>=takeProfitPrice
+      const trailingHit=trailingActive&&candle.low<=trailingStopPrice
 
-      // Conservative replay: if both prices were touched inside one 5-minute candle,
-      // assume the stop happened first because candle ordering is unknown.
-      if(stopHit||profitHit){
-        const sellPrice=stopHit?stopPrice:takeProfitPrice
+      // Conservative replay: if both levels were touched inside one 5-minute candle,
+      // assume the hard stop happened first because candle ordering is unknown.
+      if(stopHit||trailingHit){
+        const sellPrice=stopHit?stopPrice:trailingStopPrice
         const sellGross=qty*sellPrice
         const sellFee=sellGross*feeRate
         const netProceeds=sellGross-sellFee
         const pnl=netProceeds-costBasisUsd
         const pnlPercent=costBasisUsd>0?(pnl/costBasisUsd)*100:0
-        const reason=stopHit?'STOP_LOSS':'TAKE_PROFIT'
+        const reason=stopHit?'STOP_LOSS':'TRAILING_PROFIT'
         trades.push({
           side:'SELL',time:candle.start,price:sellPrice,pnlUsd:pnl,pnlPercent,reason,
           entryRsi:entryMeta?.rsi,entryCloseVsLowerPct:entryMeta?.closeVsLowerPct,
@@ -123,6 +126,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
           wins+=1
         }
         qty=0
+        peakPrice=0
         costBasisUsd=0
         avgEntryPrice=0
         fillEntryPrice=0
@@ -272,12 +276,13 @@ export const runLiveStrategyStressTest=async(input?:{productIds?:string[];candle
       rsiPeriod:config.rsiPeriod,
       rsiOversold:config.rsiOversold,
       strongRsi:config.smallAccountStrongRsi,
-      takeProfitPercent:config.takeProfitPercent,
+      trailingActivationNetPercent:config.trailingActivationNetPercent,
+      trailingDistancePercent:config.trailingDistancePercent,
       stopLossPercent:config.fixedStopLossPercent,
       minNetProfitUsd:config.smallAccountMinNetProfitUsd,
       assumedMarketFeeRatePercent:Number((config.backtestMarketFeeRate*100).toFixed(4)),
       sameLossGuardBehavior:'STOP SCENARIO AFTER FIRST REALIZED LOSS',
-      entryConfirmation:'Previous RSI <=30, current RSI rebounds above 35 by at least 5 points (max 45), lower-Bollinger reclaim, close above previous high, no >0.5% three-candle drop, and rebound volume >=1.5x prior 20-candle average',
+      entryConfirmation:'Previous RSI <=30, current RSI rebounds >30 and <=36, lower-Bollinger reclaim, close above previous high, and rebound volume >=1.5x prior 20-candle average',
       stopLossBasis:'ACTUAL_FILL_PRICE_NOT_FEE_LOADED_COST_BASIS'
     }
   }
