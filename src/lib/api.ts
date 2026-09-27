@@ -19,6 +19,7 @@ export interface SystemStatus {
   meanReversion?:{running?:boolean;halted?:boolean;safePause?:boolean;connected?:boolean;products?:string[];monitoredProducts?:number}
   safety:{
     emergencyStop:boolean
+    lossHaltActive?:boolean
     rollingRisk?:{
       paused?:boolean
       drawdownPercent?:number
