@@ -139,55 +139,36 @@ export const assessSellMinimum=(input:{
 }
 
 
-export const assessMarketEntryEconomics=(input:{
+export const assessProfitFirstEntryEconomics=(input:{
   buyNotionalUsd:number
   buyCommissionUsd:number
-  stopLossPercent:number
-  maxNetStopLossPercent:number
+  takeProfitPercent:number
   maxSlippagePercent:number
+  maxRequiredGrossProfitPercent:number
 })=>{
   const buyNotionalUsd=Math.max(0,Number(input.buyNotionalUsd)||0)
   const buyCommissionUsd=Math.max(0,Number(input.buyCommissionUsd)||0)
-  const stopLossPercent=Math.max(0,Number(input.stopLossPercent)||0)
-  const maxNetStopLossPercent=Math.max(0,Number(input.maxNetStopLossPercent)||0)
+  const takeProfitPercent=Math.max(0,Number(input.takeProfitPercent)||0)
   const maxSlippagePercent=Math.max(0,Number(input.maxSlippagePercent)||0)
+  const maxRequiredGrossProfitPercent=Math.max(0,Number(input.maxRequiredGrossProfitPercent)||0)
 
   const buyFeePercent=buyNotionalUsd>0?(buyCommissionUsd/buyNotionalUsd)*100:0
   const assumedSellFeePercent=buyFeePercent
-  const estimatedNetLossAtStopPercent=
+  const requiredGrossProfitPercent=
+    takeProfitPercent+
     buyFeePercent+
     assumedSellFeePercent+
-    stopLossPercent+
     maxSlippagePercent
 
   return {
     approved:
       buyNotionalUsd>0 &&
-      estimatedNetLossAtStopPercent<=maxNetStopLossPercent+1e-8,
+      requiredGrossProfitPercent<=maxRequiredGrossProfitPercent+1e-8,
     buyFeePercent,
     assumedSellFeePercent,
-    stopLossPercent,
+    takeProfitPercent,
     maxSlippagePercent,
-    estimatedNetLossAtStopPercent,
-    maxNetStopLossPercent
+    requiredGrossProfitPercent,
+    maxRequiredGrossProfitPercent
   }
-}
-
-
-export const assessCapitalPreservationBuy=(input:{
-  enabled:boolean
-  realizedPnlTodayUsd:number
-  realizedLossTodayUsd:number
-  openBotPositions:number
-})=>{
-  const reasons:string[]=[]
-  if(input.enabled){
-    if(Number(input.realizedLossTodayUsd)>0||Number(input.realizedPnlTodayUsd)<0){
-      reasons.push('Capital preservation lock: a realized bot loss already occurred today.')
-    }
-    if(Number(input.openBotPositions)>0){
-      reasons.push('Capital preservation lock: only one bot position may be open at a time.')
-    }
-  }
-  return {approved:reasons.length===0,reasons}
 }
