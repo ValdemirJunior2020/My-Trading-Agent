@@ -157,7 +157,7 @@ export function WorkspacePage({page,language,system}:Props){
       {Array.isArray(stressTest.lossPatterns)&&stressTest.lossPatterns.length>0&&<div className="stress-patterns"><h3>{pt?'Padrões das perdas encontradas':'Loss patterns found'}</h3>{stressTest.lossPatterns.map((p:any)=><div key={p.id}><strong>{p.label}</strong><span>{p.losses} {pt?'perdas':'losses'}</span></div>)}</div>}
       <div className="tool-json">{JSON.stringify({generatedAt:stressTest.generatedAt,products:stressTest.products?.map((p:any)=>({productId:p.productId,scenarios:p.scenarios,wins:p.wins,losses:p.losses,winRatePercent:p.winRatePercent})),rules:stressTest.rules,caution:stressTest.caution},null,2)}</div>
     </div>}
-    <div className="paper-manual-divider"><span>{pt?'TESTE QUANT ADICIONAL':'ADDITIONAL QUANT TEST'}</span></div>
+    <div className="stress-divider"><span>{pt?'TESTE QUANT ADICIONAL':'ADDITIONAL QUANT TEST'}</span></div>
     {marketSelector}<button className="tool-primary" disabled={busy||candles.length<40} onClick={()=>void runBacktest()}>{busy?'Running...':'Run SMA 10/30 Backtest'}</button>
     {error&&<div className="tool-error">{error}</div>}{backtest&&<div className="tool-json">{JSON.stringify(backtest,null,2)}</div>}
   </PageShell>
