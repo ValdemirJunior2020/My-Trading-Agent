@@ -838,6 +838,7 @@ export const tryLimitedLiveExecution = async (opts: {
       const previewCostBasis=feeLoadedEntry*previewQty
       const previewNetProfitUsd=previewNetProceeds-previewCostBasis
       const requiredNetProfitUsd=Number(opts.requiredNetProfitUsd||0)
+
       if(
         !(estimatedFillPrice>0)||
         !(previewQty>0)||
@@ -845,7 +846,7 @@ export const tryLimitedLiveExecution = async (opts: {
         previewNetProfitUsd+1e-9<requiredNetProfitUsd
       ){
         const reason=
-          'SELL preview net profit  Legacy static take-profit
+          'SELL preview net profit 
     // economics gates are intentionally bypassed because this strategy has no
     // fixed take-profit; it uses an 8% net trailing activation milestone.
     const adverseSlippagePercent =
@@ -983,7 +984,7 @@ export const tryLimitedLiveExecution = async (opts: {
 }
 +
           (Number.isFinite(previewNetProfitUsd)?previewNetProfitUsd.toFixed(4):'0.0000')+
-          ' is below required  Legacy static take-profit
+          ' is below required 
     // economics gates are intentionally bypassed because this strategy has no
     // fixed take-profit; it uses an 8% net trailing activation milestone.
     const adverseSlippagePercent =
@@ -1121,6 +1122,7 @@ export const tryLimitedLiveExecution = async (opts: {
 }
 +requiredNetProfitUsd.toFixed(4)+
           ' after estimated Coinbase fee.'
+
         publish('live_order_preview_rejected',{
           productId,
           side,
@@ -1135,6 +1137,7 @@ export const tryLimitedLiveExecution = async (opts: {
           requiredNetProfitUsd,
           reason
         },'risk')
+
         return {
           executed:false,
           reason,
