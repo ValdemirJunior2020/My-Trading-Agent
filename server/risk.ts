@@ -609,28 +609,22 @@ export const tryLimitedLiveExecution = async (opts: {
   let quoteSizeUsd: number | undefined
 
   if (side === 'BUY') {
-    const maxPositionUsd=Math.max(
-      maxFromPercent,
-      config.smallAccountMode
-        ? Math.min(config.smallAccountMaxBuyUsd,totalPortfolioUsd*0.10)
-        : 0
-    )
-    const remainingPositionUsd=Math.max(0,maxPositionUsd-currentAssetUsd)
-    const remainingTotalExposureUsd=Math.max(0,maxExposureUsd-botExposure.totalBotExposureUsd)
+    // Locked production profile: one global $100 bot slot.
+    // Existing non-bot holdings do not reduce this strategy allocation; only
+    // bot-managed exposure consumes the production slot.
+    const strategyPositionUsd=config.maxLiveOrderUsd
+    const currentBotProductUsd=botExposure.positions
+      .filter(row=>row.productId===productId)
+      .reduce((sum,row)=>sum+Number(row.costUsd||0),0)
+    const remainingPositionUsd=Math.max(0,strategyPositionUsd-currentBotProductUsd)
+    const remainingTotalExposureUsd=Math.max(0,strategyPositionUsd-botExposure.totalBotExposureUsd)
     const quoteMin = Math.max(config.minLiveOrderUsd, Number(productInfo?.quote_min_size || 0))
     const quoteMax = Number(productInfo?.quote_max_size || Infinity)
 
-    // Market BUYs use quote_size in USD, so an expensive coin such as ETH/BTC
-    // is purchased fractionally. Never require the price of one whole coin.
-    const smallAccountRiskCapUsd = config.smallAccountMode
-      ? Math.max(
-          maxFromPercent,
-          Math.min(config.smallAccountMaxBuyUsd, totalPortfolioUsd * 0.10)
-        )
-      : maxFromPercent
-
+    // Market BUYs use quote_size in USD, so BTC/ETH can be bought fractionally.
+    // The strategy requests the full $100 slot when cash is available.
     const safeMaxBuyUsd = Math.min(
-      smallAccountRiskCapUsd,
+      strategyPositionUsd,
       hardCap,
       remainingPositionUsd,
       remainingTotalExposureUsd,
