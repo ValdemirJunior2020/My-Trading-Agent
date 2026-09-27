@@ -3,7 +3,7 @@ import { config } from './config.js'
 
 export const SCAN_PRODUCTS=[
   'XRP-USD','BTC-USD','ETH-USD','SOL-USD','LINK-USD','ADA-USD','DOGE-USD',
-  'AVAX-USD','LTC-USD','BCH-USD','DOT-USD','UNI-USD','XLM-USD','AAVE-USD',
+  'AVAX-USD','LTC-USD','BCH-USD','DOT-USD','POL-USD','UNI-USD','XLM-USD','AAVE-USD',
   'NEAR-USD','HBAR-USD','SUI-USD','SHIB-USD','PEPE-USD','ATOM-USD','ICP-USD'
 ]
 
