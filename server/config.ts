@@ -11,6 +11,20 @@ const num = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+export const PRODUCTION_STRATEGY = Object.freeze({
+  positionSizeUsd: 100,
+  maxConcurrentPositions: 1,
+  hardStopLossPercent: 2.5,
+  trailingActivationNetPercent: 8,
+  trailingDistancePercent: 1.5,
+  previousRsiMax: 30,
+  currentRsiMinExclusive: 30,
+  currentRsiMax: 36,
+  minimumRsiRecoveryPoints: 1,
+  volumeLookbackCandles: 20,
+  minimumVolumeRatio: 1.5
+})
+
 export const config = {
   host: process.env.SERVER_HOST || '127.0.0.1',
   port: num(process.env.SERVER_PORT, 8787),
@@ -28,8 +42,8 @@ export const config = {
   maxPositionPercent: num(process.env.MAX_POSITION_PERCENT, 5),
   maxDailyLossPercent: num(process.env.MAX_DAILY_LOSS_PERCENT, 2),
   maxTotalExposurePercent: num(process.env.MAX_TOTAL_EXPOSURE_PERCENT, 25),
-  maxOpenBotPositions: Math.max(1, Math.min(50, Math.floor(num(process.env.MAX_OPEN_BOT_POSITIONS, 8)))),
-  maxLiveOrderUsd: num(process.env.MAX_LIVE_ORDER_USD, 25),
+  maxOpenBotPositions: PRODUCTION_STRATEGY.maxConcurrentPositions,
+  maxLiveOrderUsd: PRODUCTION_STRATEGY.positionSizeUsd,
   minLiveOrderUsd: num(process.env.MIN_LIVE_ORDER_USD, 1),
   autoTradeCooldownSeconds: Math.max(60, num(process.env.AUTO_TRADE_COOLDOWN_SECONDS, 900)),
   autoTradeMinConfidencePercent: Math.max(0, Math.min(100, num(process.env.AUTO_TRADE_MIN_CONFIDENCE_PERCENT, 70))),
@@ -47,11 +61,19 @@ export const config = {
   smallAccountStrongProximityPercent: Math.max(0.1, Math.min(2, num(process.env.SMALL_ACCOUNT_STRONG_PROXIMITY_PERCENT, 0.9))),
   smallAccountNormalProximityPercent: Math.max(0.1, Math.min(1.5, num(process.env.SMALL_ACCOUNT_NORMAL_PROXIMITY_PERCENT, 0.4))),
   smallAccountMinDollarVolume24h: Math.max(1_000_000, num(process.env.SMALL_ACCOUNT_MIN_DOLLAR_VOLUME_24H, 10_000_000)),
-  smallAccountMaxBuyUsd: Math.max(1, Math.min(25, num(process.env.SMALL_ACCOUNT_MAX_BUY_USD, 10))),
+  smallAccountMaxBuyUsd: PRODUCTION_STRATEGY.positionSizeUsd,
   smallAccountMinNetProfitUsd: Math.max(0, Math.min(5, num(process.env.SMALL_ACCOUNT_MIN_NET_PROFIT_USD, 0.10))),
   takeProfitPercent: Math.max(0.2, Math.min(10, num(process.env.TAKE_PROFIT_PERCENT, 1.5))),
   maxRequiredGrossProfitPercent: Math.max(1, Math.min(10, num(process.env.MAX_REQUIRED_GROSS_PROFIT_PERCENT, 4))),
-  fixedStopLossPercent: 0.8,
+  fixedStopLossPercent: PRODUCTION_STRATEGY.hardStopLossPercent,
+  trailingActivationNetPercent: PRODUCTION_STRATEGY.trailingActivationNetPercent,
+  trailingDistancePercent: PRODUCTION_STRATEGY.trailingDistancePercent,
+  entryPreviousRsiMax: PRODUCTION_STRATEGY.previousRsiMax,
+  entryCurrentRsiMinExclusive: PRODUCTION_STRATEGY.currentRsiMinExclusive,
+  entryCurrentRsiMax: PRODUCTION_STRATEGY.currentRsiMax,
+  entryMinimumRsiRecoveryPoints: PRODUCTION_STRATEGY.minimumRsiRecoveryPoints,
+  entryVolumeLookbackCandles: PRODUCTION_STRATEGY.volumeLookbackCandles,
+  entryMinimumVolumeRatio: PRODUCTION_STRATEGY.minimumVolumeRatio,
   rollingKillSwitchPercent: 3,
   rollingKillSwitchWindowMs: 24 * 60 * 60 * 1000,
   maxSlippagePercent: Math.max(0.01, Math.min(5, num(process.env.MAX_SLIPPAGE_PERCENT, 0.1))),
