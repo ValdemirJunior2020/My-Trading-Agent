@@ -273,7 +273,7 @@ export const runLiveStrategyStressTest=async(input?:{productIds?:string[];candle
       minNetProfitUsd:config.smallAccountMinNetProfitUsd,
       assumedMarketFeeRatePercent:Number((config.backtestMarketFeeRate*100).toFixed(4)),
       sameLossGuardBehavior:'STOP SCENARIO AFTER FIRST REALIZED LOSS',
-      entryConfirmation:'Previous RSI <=30, current RSI rebounds above 30 by at least 2 points (max 35), lower-Bollinger reclaim, close above previous high, and no >0.5% three-candle drop',
+      entryConfirmation:'Previous RSI <=30, current RSI rebounds above 35 by at least 5 points (max 45), lower-Bollinger reclaim, close above previous high, and no >0.5% three-candle drop',
       stopLossBasis:'ACTUAL_FILL_PRICE_NOT_FEE_LOADED_COST_BASIS'
     }
   }
