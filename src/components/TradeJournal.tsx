@@ -30,6 +30,7 @@ const journalStatus=(event:any)=>{
   if(type==='capital_rotation_plan_failed')return 'ROTATION CHECK FAILED'
 
   if(type==='live_execution_cycle'){
+    if(String(p.action||'').toUpperCase()==='AGENT_APPROVAL_ONLY')return 'AGENT APPROVED'
     if(p.attempted===false)return 'WAIT'
     if(decision==='REJECT')return 'REJECTED BY AGENTS'
     if(decision==='WAIT'||decision==='HOLD'||!decision)return 'WAIT'
@@ -47,7 +48,7 @@ const journalStatus=(event:any)=>{
 const statusGroup=(status:string):JournalFilter=>{
   if(status==='ORDER PLACED')return 'ORDER PLACED'
   if(status==='REJECTED BY AGENTS')return 'REJECTED'
-  if(status==='WAIT'||status==='NO TRADE')return 'WAIT'
+  if(status==='WAIT'||status==='NO TRADE'||status==='AGENT APPROVED')return 'WAIT'
   if(status.includes('BLOCKED')||status.includes('PREVIEW')||status==='FUNDING NEEDED'||status==='ROTATION READY'||status==='ROTATION CHECK FAILED')return 'BLOCKED'
   if(status.includes('FAILED'))return 'FAILED'
   return 'ALL'
@@ -147,6 +148,7 @@ const statusClass=(status:string)=>{
   if(status==='ORDER PLACED')return 'placed'
   if(status==='REJECTED BY AGENTS')return 'rejected'
   if(status==='WAIT'||status==='NO TRADE')return 'wait'
+  if(status==='AGENT APPROVED')return 'placed'
   if(status.includes('BLOCKED'))return 'blocked'
   if(status.includes('PREVIEW'))return 'preview-failed'
   if(status==='ROTATION READY')return 'placed'
@@ -482,7 +484,14 @@ export function TradeJournal({language}:Props){
             ? 'NET PROFIT '+(profit.netProfit>=0?'+':'-')+'USD '+Math.abs(profit.netProfit).toFixed(4)
               +' ('+(profit.netProfitPercent>=0?'+':'')+profit.netProfitPercent.toFixed(2)+'%) after buy + sell fees'
             : ''
-          const detail=String([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const approvalOnly=event.type==='live_execution_cycle'&&String(p.action||'').toUpperCase()==='AGENT_APPROVAL_ONLY'
+          const detail=String(
+            approvalOnly
+              ? (pt
+                  ? 'Agentes aprovaram a oportunidade. Nenhuma ordem foi bloqueada aqui; o motor determinístico separado decide a execução real.'
+                  : 'Agents approved the opportunity. No order was blocked here; the separate deterministic engine decides real execution.')
+              : ([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          )
           const hoverHelp=strategyDetail
             ? strategyHoverHelp(ds,pt)
             : (pt
