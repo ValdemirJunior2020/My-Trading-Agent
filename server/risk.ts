@@ -46,6 +46,29 @@ export const saveRuntimeRiskLimits = (input: Partial<RuntimeRiskLimits>) => {
 export const emergencyStopActive = () => getSetting('emergency_stop', 'false') === 'true'
 export const rollingRiskPauseActive = () => getSetting('rolling_risk_pause', 'false') === 'true'
 
+export const migrateLegacyLossHaltEmergencyStop=()=>{
+  const lossHaltActive=getSetting('loss_halt_active','false')==='true'
+  const lossHaltTriggeredAt=getSetting('loss_halt_triggered_at','')
+  const emergencyStopReason=getSetting('emergency_stop_reason','').toUpperCase()
+
+  if(
+    emergencyStopActive() &&
+    lossHaltActive &&
+    Boolean(lossHaltTriggeredAt) &&
+    (emergencyStopReason===''||emergencyStopReason==='LOSS_HALT')
+  ){
+    setSetting('emergency_stop','false')
+    setSetting('emergency_stop_reason','')
+    publish('legacy_loss_halt_emergency_migrated',{
+      lossHaltTriggeredAt,
+      message:'Cleared legacy global emergency flag at startup; loss halt remains active for new BUYs while SELL exits stay enabled.'
+    },'risk')
+    return true
+  }
+
+  return false
+}
+
 export const getRollingRiskState=()=>{
   const raw=getSetting('rolling_risk_last_state','')
   if(!raw)return {paused:rollingRiskPauseActive(),drawdownPercent:0,limitPercent:config.rollingKillSwitchPercent,rollingWindowHours:24}
@@ -478,20 +501,7 @@ export const tryLimitedLiveExecution = async (opts: {
   const lossHaltActive=getSetting('loss_halt_active','false')==='true'
   let emergencyStopReason=getSetting('emergency_stop_reason','')
 
-  // Migrate the legacy automatic-loss state that also set the global emergency stop.
-  // Automatic loss halt should block NEW BUYs only; existing positions must remain sellable.
-  if(
-    emergencyStopActive() &&
-    lossHaltActive &&
-    (emergencyStopReason===''||emergencyStopReason==='LOSS_HALT')
-  ){
-    setSetting('emergency_stop','false')
-    setSetting('emergency_stop_reason','')
-    emergencyStopReason=''
-    publish('legacy_loss_halt_emergency_migrated',{
-      message:'Cleared legacy global emergency flag; loss halt remains active for new BUYs while SELL exits stay enabled.'
-    },'risk')
-  }
+  if(migrateLegacyLossHaltEmergencyStop()) emergencyStopReason=''
 
   const executionGate=assessEmergencyExecutionGate({
     emergencyStop:emergencyStopActive(),
