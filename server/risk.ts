@@ -1,5 +1,5 @@
 import { config } from './config.js'
-import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from './riskCore.js'
+import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from './riskCore.js'
 import { getSetting, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
@@ -829,83 +829,9 @@ export const tryLimitedLiveExecution = async (opts: {
 
     const estimatedFillPrice = Number(preview.est_average_filled_price || 0)
 
-    if(side==='BUY'){
-      const buyCommissionUsd=Number(preview.commission_total||0)
-      const buyNotionalForFee=Math.max(
-        Number(preview.quote_size||0),
-        Number(notionalUsd||0)
-      )
-      const entryEconomics=assessProfitFirstEntryEconomics({
-        buyNotionalUsd:buyNotionalForFee,
-        buyCommissionUsd,
-        takeProfitPercent:config.takeProfitPercent,
-        maxSlippagePercent:config.maxSlippagePercent,
-        maxRequiredGrossProfitPercent:config.maxRequiredGrossProfitPercent
-      })
-
-      if(!entryEconomics.approved){
-        const reason=
-          'BUY blocked: fees make the required gross move too large for the profit-first setup'
-        publish('live_order_preview_rejected',{
-          productId,
-          side,
-          notionalUsd,
-          preview,
-          reason,
-          entryEconomics
-        },'risk')
-        return {
-          executed:false,
-          reason,
-          preflight,
-          preview,
-          entryEconomics
-        }
-      }
-    }
-
-    if (
-      side === 'SELL' &&
-      String(opts.exitReason || '').includes('TAKE_PROFIT')
-    ) {
-      const sellCommission = Number(preview.commission_total || 0)
-      const avgEntryPrice = Number(opts.avgEntryPrice || 0)
-      const sellQty = Number(baseSize || 0)
-      const requiredNetProfitPercent = Math.max(
-        config.takeProfitPercent,
-        Number(opts.requiredNetProfitPercent || 0)
-      )
-      if (avgEntryPrice > 0 && sellQty > 0 && estimatedFillPrice > 0) {
-        const costBasisUsd = avgEntryPrice * sellQty
-        const estimatedNetProceedsUsd = (estimatedFillPrice * sellQty) - sellCommission
-        const estimatedNetProfitUsd = estimatedNetProceedsUsd - costBasisUsd
-        const estimatedNetProfitPercent = costBasisUsd > 0
-          ? (estimatedNetProfitUsd / costBasisUsd) * 100
-          : 0
-        const requiredNetProfitUsd = Math.max(
-          config.smallAccountMinNetProfitUsd,
-          costBasisUsd * (requiredNetProfitPercent / 100)
-        )
-        if (
-          estimatedNetProfitUsd + 1e-8 < requiredNetProfitUsd ||
-          estimatedNetProfitPercent + 1e-8 < requiredNetProfitPercent
-        ) {
-          return {
-            executed: false,
-            reason: 'Take-profit preview is below the required net profit after fees',
-            preflight,
-            preview,
-            estimatedNetProfitUsd,
-            estimatedNetProfitPercent,
-            requiredNetProfitUsd,
-            requiredNetProfitPercent,
-            costBasisUsd,
-            estimatedNetProceedsUsd
-          }
-        }
-      }
-    }
-
+    // Production entry/exit math is deterministic. Legacy static take-profit
+    // economics gates are intentionally bypassed because this strategy has no
+    // fixed take-profit; it uses an 8% net trailing activation milestone.
     const adverseSlippagePercent =
       estimatedFillPrice > 0 && slippageReferencePrice > 0
         ? side === 'BUY'
