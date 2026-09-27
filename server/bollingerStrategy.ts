@@ -71,6 +71,8 @@ export const confirmedMeanReversionEntryDecision=(params:{
   currentClose:number
   currentLower:number
   threeCandleReturnPct:number
+  currentVolume:number
+  averageVolume:number
 })=>{
   const base=smallAccountEntryDecision({
     rsiValue:params.rsiValue,
@@ -87,13 +89,16 @@ export const confirmedMeanReversionEntryDecision=(params:{
   const brokePreviousHigh=params.currentClose>params.previousHigh
   const notFallingFast=params.threeCandleReturnPct>-0.5
   const insideSafeReclaimZone=params.closeVsLowerPct>=0&&params.closeVsLowerPct<=config.smallAccountStrongProximityPercent
+  const volumeRatio=params.averageVolume>0?params.currentVolume/params.averageVolume:0
+  const volumeRebound=volumeRatio>=1.5
   const ready=Boolean(
     rsiRecoveryConfirmed &&
     reclaimedLowerBand &&
     candleRecovered &&
     brokePreviousHigh &&
     notFallingFast &&
-    insideSafeReclaimZone
+    insideSafeReclaimZone &&
+    volumeRebound
   )
   const blockers:string[]=[]
   if(!wasExtremeOversold)blockers.push('PREVIOUS_RSI_NOT_EXTREME_OVERSOLD')
@@ -104,6 +109,7 @@ export const confirmedMeanReversionEntryDecision=(params:{
   if(!brokePreviousHigh)blockers.push('NO_BULLISH_BREAK_ABOVE_PREVIOUS_HIGH')
   if(!notFallingFast)blockers.push('FAST_DROP_3_CANDLES')
   if(!insideSafeReclaimZone)blockers.push('OUTSIDE_SAFE_RECLAIM_ZONE')
+  if(!volumeRebound)blockers.push('VOLUME_REBOUND_BELOW_1_5X')
   return {
     ...base,
     ready,
@@ -118,6 +124,8 @@ export const confirmedMeanReversionEntryDecision=(params:{
     brokePreviousHigh,
     notFallingFast,
     insideSafeReclaimZone,
+    volumeRatio,
+    volumeRebound,
     threeCandleReturnPct:params.threeCandleReturnPct,
     blockers
   }
@@ -228,6 +236,8 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
     : Infinity
   const threeLookbackClose=closes.at(-4)??previous.close
   const threeCandleReturnPct=threeLookbackClose>0?((latest.close-threeLookbackClose)/threeLookbackClose)*100:0
+  const priorVolumes=candles.slice(-21,-1).map(c=>Number(c.volume||0)).filter(v=>v>0)
+  const averageVolume=priorVolumes.length?avg(priorVolumes):0
   const entryDecision=confirmedMeanReversionEntryDecision({
     rsiValue:latestRsi,
     previousRsiValue:previousRsi,
@@ -238,7 +248,9 @@ export const evaluateBollingerRsiStrategy=async(productId:string)=>{
     previousLower:prevBands.lower,
     currentClose:latest.close,
     currentLower:latestBands.lower,
-    threeCandleReturnPct
+    threeCandleReturnPct,
+    currentVolume:Number(latest.volume||0),
+    averageVolume
   })
   const oversold=entryDecision.oversold
   const nearLowerBand=entryDecision.nearLowerBand
