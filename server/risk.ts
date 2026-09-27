@@ -466,18 +466,25 @@ export const tryLimitedLiveExecution = async (opts: {
   requiredNetProfitPercent?: number
   executionSource?: string
 }) => {
+  if (!['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(opts.decision)) {
+    return { executed: false, reason: 'Decision is not BUY_CANDIDATE or SELL_CANDIDATE' }
+  }
+
+  const side = opts.decision === 'BUY_CANDIDATE' ? 'BUY' : 'SELL'
+  const lossHaltActive=getSetting('loss_halt_active','false')==='true'
+  const emergencyStopReason=getSetting('emergency_stop_reason','')
   const executionGate=assessEmergencyExecutionGate({
     emergencyStop:emergencyStopActive(),
     tradingMode:config.tradingMode,
     liveTradingEnabled:config.liveTradingEnabled,
     autoTradingEnabled:config.autoTradingEnabled,
-    manualApprovalRequired:config.manualApprovalRequired
+    manualApprovalRequired:config.manualApprovalRequired,
+    lossHaltActive,
+    protectiveExit:side==='SELL',
+    emergencyStopReason
   })
   if(!executionGate.approved){
     return {executed:false,reason:executionGate.reasons[0],reasons:executionGate.reasons}
-  }
-  if (!['BUY_CANDIDATE', 'SELL_CANDIDATE'].includes(opts.decision)) {
-    return { executed: false, reason: 'Decision is not BUY_CANDIDATE or SELL_CANDIDATE' }
   }
 
   const confidencePercent = normalizedConfidencePercent(opts.confidence)
@@ -490,7 +497,6 @@ export const tryLimitedLiveExecution = async (opts: {
     }
   }
 
-  const side = opts.decision === 'BUY_CANDIDATE' ? 'BUY' : 'SELL'
   const productId = opts.productId.toUpperCase()
   const cooldown = cooldownRemainingSeconds(productId)
   if (side === 'BUY' && cooldown > 0) {
@@ -875,6 +881,7 @@ export const tryLimitedLiveExecution = async (opts: {
     ){
       setSetting('loss_halt_active','true')
       setSetting('emergency_stop','true')
+      setSetting('emergency_stop_reason','LOSS_HALT')
       setSetting('loss_halt_triggered_at',placedAt)
       setSetting('loss_halt_product',productId)
       setSetting('loss_halt_amount_usd',String(realizedNetProfitUsd))
@@ -898,7 +905,7 @@ export const tryLimitedLiveExecution = async (opts: {
         productId,
         realizedNetProfitUsd,
         realizedNetProfitPercent,
-        message:'ANY realized loss hard-stops automatic live trading until manually reset.',
+        message:'ANY realized loss blocks new BUYs while existing positions may still SELL to exit.',
         canceledOrderIds
       },'risk')
     }
