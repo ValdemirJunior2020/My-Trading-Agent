@@ -40,28 +40,34 @@ export const emergencyStopActive = () => getSetting('emergency_stop', 'false') =
 export const rollingRiskPauseActive = () => getSetting('rolling_risk_pause', 'false') === 'true'
 
 export const initializeSingleLossStopModel=()=>{
-  if(getSetting('single_loss_stop_model_v2_initialized','false')==='true')return false
+  if(getSetting('single_loss_stop_model_v3_initialized','false')==='true')return false
 
+  const singleLossLocked=getSetting('single_loss_kill_switch_locked','false')==='true'
+  const rollingLocked=getSetting('rolling_kill_switch_locked','false')==='true'
   const hadLossHalt=getSetting('loss_halt_active','false')==='true'
   const hadEmergency=emergencyStopActive()
   const previousReason=getSetting('emergency_stop_reason','')
 
-  // One-time cleanup of ALL persisted legacy stop state. This is intentionally
-  // unconditional because older versions could leave emergency_stop=true after
-  // already clearing loss_halt_active.
-  setSetting('loss_halt_active','false')
-  setSetting('loss_halt_triggered_at','')
-  setSetting('loss_halt_product','')
-  setSetting('loss_halt_amount_usd','')
-  setSetting('emergency_stop','false')
-  setSetting('emergency_stop_reason','')
+  // Only clear stale legacy stop state when no current production kill switch
+  // is latched. Never auto-clear a real single-loss or rolling-equity lock.
+  if(!singleLossLocked&&!rollingLocked){
+    setSetting('loss_halt_active','false')
+    setSetting('loss_halt_triggered_at','')
+    setSetting('loss_halt_product','')
+    setSetting('loss_halt_amount_usd','')
+    if(!['MANUAL'].includes(previousReason.toUpperCase())){
+      setSetting('emergency_stop','false')
+      setSetting('emergency_stop_reason','')
+    }
+  }
 
-  setSetting('single_loss_stop_model_v2_initialized','true')
+  setSetting('single_loss_stop_model_v3_initialized','true')
   publish('single_loss_stop_model_initialized',{
-    clearedLegacyLossHalt:hadLossHalt,
-    clearedLegacyEmergency:hadEmergency,
+    preservedSingleLossLock:singleLossLocked,
+    preservedRollingLock:rollingLocked,
+    clearedLegacyLossHalt:!singleLossLocked&&!rollingLocked&&hadLossHalt,
     previousEmergencyStopReason:previousReason||null,
-    behavior:'NEXT realized loss blocks new BUYs; existing SELL exits stay enabled. Manual emergency stop remains available after initialization.'
+    behavior:'FIRST realized losing SELL triggers full lockdown, cancels open orders, liquidates remaining bot positions, and requires manual reset.'
   },'risk')
   return true
 }
@@ -621,7 +627,7 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   if (side === 'SELL' && notionalUsd > availableAssetUsd + 1e-8) reasons.push('Insufficient available asset balance for this sell.')
   reasons.push(...exposure.reasons)
 
-  // Legacy daily/single-loss guards remain visible as telemetry only.
+  // Daily telemetry remains informational; the production first-loss kill switch is enforced at realized SELL execution.
   // Production execution authority is the deterministic strategy plus the
   // latched 3% rolling 24-hour account-equity kill switch.
 
