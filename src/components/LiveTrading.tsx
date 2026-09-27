@@ -238,7 +238,13 @@ export function LiveTrading({ language }: Props) {
         ) : null}
 
         <div className="live-stats">
-          <div><small>{pt ? 'Portfólio atual' : 'Current portfolio'}</small><strong>{readiness?.currentPortfolioUsd != null ? '
+          <div><small>{pt ? 'Portfólio atual' : 'Current portfolio'}</small><strong>{readiness?.currentPortfolioUsd != null ? '$' + Number(readiness.currentPortfolioUsd).toFixed(2) : '—'}</strong></div>
+          <div><small>{pt ? 'Slot de produção' : 'Production slot'}</small><strong>$100.00 / 1</strong></div>
+          <div><small>{pt ? 'Stop / Trailing' : 'Stop / Trailing'}</small><strong>2.50% / +8.00%</strong></div>
+          <div><small>{pt ? 'RSI / Volume' : 'RSI / Volume'}</small><strong>≤30 → &gt;30≤36 / 1.5×</strong></div>
+        </div>
+
+        <div className={'simple-trade-signal ' + signalClass}>
           <small>{pt ? 'Status agora' : 'Status now'}</small>
           <strong>{plainSignal}</strong>
           <p>
