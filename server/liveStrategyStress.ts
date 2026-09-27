@@ -11,7 +11,7 @@ type StressTrade={
   price:number
   pnlUsd?:number
   pnlPercent?:number
-  reason?:'TRAILING_PROFIT'|'STOP_LOSS'
+  reason?:'MICRO_NET_PROFIT'|'TRAILING_PROFIT'|'STOP_LOSS'
   entryRsi?:number
   entryCloseVsLowerPct?:number
   entryThreeCandleReturnPct?:number
@@ -145,7 +145,7 @@ export const simulateLiveStrategyWindow=(productId:string,candles:StressCandle[]
         const netProceeds=sellGross-sellFee
         const pnl=netProceeds-costBasisUsd
         const pnlPercent=costBasisUsd>0?(pnl/costBasisUsd)*100:0
-        const reason=stopHit?'STOP_LOSS':'TRAILING_PROFIT'
+        const reason=stopHit?'STOP_LOSS':microProfitHit?'MICRO_NET_PROFIT':'TRAILING_PROFIT'
         trades.push({
           side:'SELL',time:candle.start,price:sellPrice,pnlUsd:pnl,pnlPercent,reason,
           entryRsi:entryMeta?.rsi,entryCloseVsLowerPct:entryMeta?.closeVsLowerPct,
