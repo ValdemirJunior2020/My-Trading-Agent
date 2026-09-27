@@ -1,76 +1,36 @@
-import { getSetting,livePlacedOrders,setSetting } from './db.js'
-import { cancelOrders,listOpenOrders } from './coinbase.js'
+import { getSetting,setSetting } from './db.js'
 import { publish } from './events.js'
 
 export const LOSS_GUARD_AGENT_ID='loss_guard'
 
-let monitorTimer:NodeJS.Timeout|null=null
-let monitorInFlight=false
-
-const isoMs=(value:string)=>{
-  const ms=new Date(value).getTime()
-  return Number.isFinite(ms)?ms:0
-}
-
 export const getLossGuardState=()=>({
-  active:getSetting('loss_guard_active','false')==='true',
-  armed:getSetting('loss_guard_active','false')!=='true',
-  triggeredAt:getSetting('loss_guard_triggered_at','')||null,
-  productId:getSetting('loss_guard_product','')||null,
-  lossUsd:Number(getSetting('loss_guard_amount_usd','0'))||0,
-  lossPercent:Number(getSetting('loss_guard_percent','0'))||0,
-  resetAt:getSetting('loss_guard_reset_at','')||null,
-  behavior:'ANY realized losing SELL activates the global emergency stop. No BUY or SELL execution is allowed until manually reset.'
+  active:getSetting('rolling_kill_switch_locked','false')==='true',
+  armed:getSetting('rolling_kill_switch_locked','false')!=='true',
+  triggeredAt:getSetting('rolling_risk_pause_started_at','')||null,
+  productId:null,
+  lossUsd:0,
+  lossPercent:Number(getSetting('rolling_risk_last_state','')
+    ?(()=>{
+        try{return JSON.parse(getSetting('rolling_risk_last_state','{}')).drawdownPercent||0}catch{return 0}
+      })()
+    :0),
+  resetAt:getSetting('rolling_kill_switch_reset_at','')||null,
+  behavior:'The only production equity lockdown is the latched 3% rolling 24-hour kill switch. Manual reset is required.'
 })
 
+// Kept only for API/backward compatibility. A single losing SELL no longer
+// activates a global stop; production lockdown is controlled by rolling equity.
 export const triggerLossGuard=async(input:{
   productId:string
   realizedNetProfitUsd:number
   realizedNetProfitPercent:number|null
   triggeredAt?:string
 })=>{
-  const triggeredAt=input.triggeredAt||new Date().toISOString()
-
-  setSetting('loss_guard_active','true')
-  setSetting('loss_guard_triggered_at',triggeredAt)
-  setSetting('loss_guard_product',input.productId)
-  setSetting('loss_guard_amount_usd',String(input.realizedNetProfitUsd))
-  setSetting('loss_guard_percent',String(input.realizedNetProfitPercent??0))
-
-  // Keep the older loss-halt fields populated for backwards-compatible UI/history,
-  // but LOSS_GUARD owns the stronger behavior: the entire live execution gate stops.
-  setSetting('loss_halt_active','true')
-  setSetting('loss_halt_triggered_at',triggeredAt)
-  setSetting('loss_halt_product',input.productId)
-  setSetting('loss_halt_amount_usd',String(input.realizedNetProfitUsd))
-
-  setSetting('emergency_stop','true')
-  setSetting('emergency_stop_reason','LOSS_GUARD')
-
-  let canceledOrderIds:string[]=[]
-  try{
-    const openOrders=await listOpenOrders()
-    const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
-    if(ids.length){
-      await cancelOrders(ids)
-      canceledOrderIds=ids
-    }
-  }catch(error){
-    publish('loss_guard_cancel_failed',{
-      productId:input.productId,
-      error:error instanceof Error?error.message:String(error)
-    },LOSS_GUARD_AGENT_ID)
-  }
-
-  publish('loss_guard_triggered',{
-    productId:input.productId,
-    realizedNetProfitUsd:input.realizedNetProfitUsd,
-    realizedNetProfitPercent:input.realizedNetProfitPercent,
-    triggeredAt,
-    canceledOrderIds,
-    message:'REALIZED LOSS DETECTED — GLOBAL EMERGENCY STOP ACTIVATED. ALL LIVE BUY AND SELL EXECUTION IS BLOCKED UNTIL MANUALLY RESET.'
+  publish('legacy_single_loss_guard_ignored',{
+    ...input,
+    timestampIso:new Date().toISOString(),
+    message:'Single-loss guard is disabled by the deterministic production profile.'
   },LOSS_GUARD_AGENT_ID)
-
   return getLossGuardState()
 }
 
@@ -86,72 +46,27 @@ export const resetLossGuard=()=>{
   setSetting('loss_halt_triggered_at','')
   setSetting('loss_halt_product','')
   setSetting('loss_halt_amount_usd','')
-  publish('loss_guard_reset',{
+  if(getSetting('emergency_stop_reason','')==='LOSS_GUARD'){
+    setSetting('emergency_stop','false')
+    setSetting('emergency_stop_reason','')
+  }
+  publish('legacy_loss_guard_reset',{
     resetAt,
-    message:'Loss Guard reset manually. It is armed and waiting for the next realized loss.'
+    message:'Legacy single-loss guard state cleared.'
   },LOSS_GUARD_AGENT_ID)
   return getLossGuardState()
 }
 
-const findLossAfterReset=()=>{
-  const resetAtMs=isoMs(getSetting('loss_guard_reset_at',''))
-  return livePlacedOrders(5000).find((event:any)=>{
-    const p:any=event.payload||{}
-    if(String(p.side||'').toUpperCase()!=='SELL')return false
-    const pnl=Number(p.realizedNetProfitUsd)
-    if(!Number.isFinite(pnl)||pnl>=0)return false
-    const eventMs=isoMs(String(event.createdAt||p.placedAt||''))
-    return eventMs>resetAtMs
-  })
-}
-
-const auditLossGuard=async()=>{
-  if(monitorInFlight||getSetting('loss_guard_active','false')==='true')return
-  monitorInFlight=true
-  try{
-    const latestLoss=findLossAfterReset()
-    if(!latestLoss)return
-    const p:any=latestLoss.payload||{}
-    await triggerLossGuard({
-      productId:String(p.productId||'UNKNOWN'),
-      realizedNetProfitUsd:Number(p.realizedNetProfitUsd),
-      realizedNetProfitPercent:Number.isFinite(Number(p.realizedNetProfitPercent))
-        ?Number(p.realizedNetProfitPercent)
-        :null,
-      triggeredAt:String(latestLoss.createdAt||p.placedAt||new Date().toISOString())
-    })
-  }finally{
-    monitorInFlight=false
-  }
-}
-
 export const initializeLossGuard=async()=>{
-  if(getSetting('loss_guard_active','false')==='true'){
-    setSetting('emergency_stop','true')
-    setSetting('emergency_stop_reason','LOSS_GUARD')
-    publish('loss_guard_waiting',{
-      state:'STOPPED',
-      message:'Loss Guard remains latched from a realized loss. Global emergency stop is active.'
-    },LOSS_GUARD_AGENT_ID)
-  }else{
-    await auditLossGuard()
-    if(getSetting('loss_guard_active','false')!=='true'){
-      publish('loss_guard_waiting',{
-        state:'ARMED',
-        message:'Loss Guard is armed and waiting. Any realized loss will stop all live execution.'
-      },LOSS_GUARD_AGENT_ID)
-    }
+  // Migrate away from the previous "any realized loss" global stop model.
+  if(getSetting('loss_guard_active','false')==='true'||getSetting('loss_halt_active','false')==='true'){
+    resetLossGuard()
   }
-
-  if(monitorTimer)clearInterval(monitorTimer)
-  monitorTimer=setInterval(()=>{void auditLossGuard()},2000)
-
+  publish('loss_guard_compatibility_mode',{
+    state:'DISABLED',
+    message:'Single-loss shutdown is disabled. Production protection uses the 3% rolling 24-hour kill switch.'
+  },LOSS_GUARD_AGENT_ID)
   return getLossGuardState()
 }
 
-export const stopLossGuard=()=>{
-  if(monitorTimer){
-    clearInterval(monitorTimer)
-    monitorTimer=null
-  }
-}
+export const stopLossGuard=()=>{}
