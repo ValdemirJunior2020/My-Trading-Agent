@@ -124,10 +124,10 @@ export function WorkspacePage({page,language,system}:Props){
     {error&&<div className="tool-error">{error}</div>}{analysis&&<div className="tool-json">{JSON.stringify(analysis.output||analysis,null,2)}</div>}
   </PageShell>
 
-  if(page==='scanner')return <PageShell title="Scanner" subtitle={pt?'Scanner real de oportunidades de curto prazo.':'Real short-term opportunity scanner.'}>
+  if(page==='scanner')return <PageShell title="Scanner" subtitle={pt?'Compras podem vir do mercado; vendas são avaliadas somente nas moedas que você realmente possui na Coinbase.':'Buys may come from the market; sells are evaluated only for coins you actually hold on Coinbase.'}>
     <div className="tool-toolbar"><button onClick={()=>{setBusy(true);api.getScanner().then(setScanner).finally(()=>setBusy(false))}}>{busy?'Scanning...':'Scan Now'}</button></div>
     {error&&<div className="tool-error">{error}</div>}
-    <div className="tool-table"><div className="tool-table-head"><span>Coin</span><span>Buy</span><span>Sell</span><span>6h</span><span>24h</span><span>Signal</span></div>{(scanner?.results||[]).slice(0,30).map((r:any)=><div key={r.productId}><strong>{r.productId}</strong><span>{Number(r.buyScore||0).toFixed(0)}</span><span>{Number(r.sellScore||0).toFixed(0)}</span><span>{fmtPct(r.change6hPercent)}</span><span>{fmtPct(r.change24hPercent)}</span><em>{r.buyCandidate?'BUY':r.sellCandidate?'SELL':'WAIT'}</em></div>)}</div>
+    <div className="tool-table"><div className="tool-table-head"><span>Coin</span><span>Buy</span><span>Sell (Owned)</span><span>6h</span><span>24h</span><span>Signal</span></div>{(scanner?.results||[]).slice(0,30).map((r:any)=><div key={r.productId}><strong>{r.productId}</strong><span>{Number(r.buyScore||0).toFixed(0)}</span><span>{Number(r.sellScore||0).toFixed(0)}</span><span>{fmtPct(r.change6hPercent)}</span><span>{fmtPct(r.change24hPercent)}</span><em>{r.buyCandidate?'BUY':r.sellCandidate?'SELL':'WAIT'}</em></div>)}</div>
   </PageShell>
 
   if(page==='strategies')return <PageShell title={pt?'Estratégias':'Strategies'} subtitle={pt?'Estratégias e regras que o pipeline realmente utiliza.':'Strategies and rules actually used by the pipeline.'}>
