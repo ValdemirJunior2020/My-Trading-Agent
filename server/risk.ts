@@ -70,7 +70,7 @@ export const migrateLegacyLossHaltEmergencyStop=()=>{
   const lossHaltActive=getSetting('loss_halt_active','false')==='true'
   const lossHaltTriggeredAt=getSetting('loss_halt_triggered_at','')
   const emergencyStopReason=getSetting('emergency_stop_reason','').toUpperCase()
-  if(emergencyStopReason==='LOSS_GUARD')return false
+  if(['LOSS_GUARD','SINGLE_REALIZED_LOSS'].includes(emergencyStopReason))return false
   const latestManualEmergency=recentEvents(500)
     .find((event:any)=>String(event.type)==='emergency_stop_activated'&&String(event.agentId||'')==='manager')
   const latestManualEmergencyAt=String(latestManualEmergency?.createdAt||'')
