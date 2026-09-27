@@ -515,7 +515,7 @@ export function TradeJournal({language}:Props){
                   </>
                 : '—'}
             </span>
-            <span className="journal-detail journal-context" data-help={hoverHelp} aria-label={hoverHelp}>{detail}</span>
+            <span className="journal-detail journal-context" data-help={hoverHelp} title={hoverHelp} aria-label={hoverHelp}>{detail}</span>
           </div>
         })}
       </div>
