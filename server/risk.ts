@@ -381,6 +381,10 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   reasons.push(...exposure.reasons)
 
   if(side==='BUY'){
+    if(getSetting('loss_halt_active','false')==='true'){
+      reasons.push('Loss halt is active: new BUY entries are blocked until manually reset.')
+    }
+
     const capitalGuard=assessCapitalPreservationBuy({
       enabled:config.capitalPreservationMode,
       realizedPnlTodayUsd:Number(daily.realizedBotPnlUsd||0),
