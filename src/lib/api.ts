@@ -90,6 +90,8 @@ export const api={
   setChallenge:(body:{enabled?:boolean;startingBalanceUsd?:number;targetBalanceUsd?:number;durationDays?:number;restart?:boolean})=>request<any>('/api/challenge',{method:'POST',body:JSON.stringify(body)}),
   getRiskSettings:()=>request<any>('/api/risk/settings'),
   getLiveReadiness:()=>request<any>('/api/live/readiness'),
+  getLiveStressTest:()=>request<{result:any|null}>('/api/live/stress-test',{signal:AbortSignal.timeout(10000)}),
+  runLiveStressTest:(body?:{productIds?:string[];candleLimit?:number})=>request<{ok:boolean;result:any}>('/api/live/stress-test',{method:'POST',body:JSON.stringify(body||{}),signal:AbortSignal.timeout(120000)}),
   livePreflight:(body:{productId:string;side:'BUY'|'SELL';notionalUsd:number})=>request<any>('/api/live/preflight',{method:'POST',body:JSON.stringify(body)}),
   setRiskSettings:(body:{maxPositionPercent?:number;maxTotalExposurePercent?:number;maxDailyLossPercent?:number})=>request<any>('/api/risk/settings',{method:'POST',body:JSON.stringify(body)}),
   eventUrl:`${base}/api/events`
