@@ -13,7 +13,10 @@ const num = (value: string | undefined, fallback: number) => {
 
 export const PRODUCTION_STRATEGY = Object.freeze({
   buyStepUsd: 5,
-  maxConcurrentPositions: 1,
+  targetBuyPercent: 10,
+  maxPerProductPercent: 10,
+  maxTotalExposurePercent: 100,
+  maxConcurrentPositions: 999,
   hardStopLossPercent: 0.8,
   minimumNetProfitUsd: 0.02,
   trailingActivationNetPercent: 8,
@@ -42,10 +45,11 @@ export const config = {
   liveTradingEnabled: bool(process.env.COINBASE_LIVE_TRADING_ENABLED, false),
   autoTradingEnabled: bool(process.env.AUTO_TRADING_ENABLED, false),
   manualApprovalRequired: bool(process.env.MANUAL_APPROVAL_REQUIRED, true),
-  maxPositionPercent: num(process.env.MAX_POSITION_PERCENT, 5),
+  maxPositionPercent: PRODUCTION_STRATEGY.maxPerProductPercent,
   maxDailyLossPercent: num(process.env.MAX_DAILY_LOSS_PERCENT, 2),
-  maxTotalExposurePercent: num(process.env.MAX_TOTAL_EXPOSURE_PERCENT, 25),
+  maxTotalExposurePercent: PRODUCTION_STRATEGY.maxTotalExposurePercent,
   maxOpenBotPositions: PRODUCTION_STRATEGY.maxConcurrentPositions,
+  targetBuyPercent: PRODUCTION_STRATEGY.targetBuyPercent,
   buyStepUsd: PRODUCTION_STRATEGY.buyStepUsd,
   // Dynamic sizing uses available cash + runtime exposure limits.
   // This legacy field is retained as a very high compatibility ceiling only.
