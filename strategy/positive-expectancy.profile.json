@@ -1,5 +1,5 @@
 {
-  "profileName": "positive-expectancy-research-v1",
+  "profileName": "positive-expectancy-research-v2",
   "mode": "RESEARCH_ONLY",
   "granularity": "FIVE_MINUTE",
   "fees": {
@@ -8,9 +8,9 @@
   },
   "entryConfirmation": {
     "previousRsiAtOrBelow": 30,
-    "currentRsiAbove": 35,
-    "currentRsiMax": 45,
-    "minimumRsiRecoveryPoints": 5,
+    "currentRsiAbove": 30,
+    "currentRsiMax": 36,
+    "minimumRsiRecoveryPoints": 1,
     "requireLowerBollingerReclaim": true,
     "requireCloseAbovePreviousHigh": true,
     "maxThreeCandleDropPercent": 0.5,
@@ -53,5 +53,19 @@
       "status": "RESEARCH_CANDIDATE_NOT_LIVE_APPROVED"
     }
   },
-  "promotionRule": "DO_NOT_APPLY_TO_LIVE_UNLESS_OUT_OF_SAMPLE_AND_WALK_FORWARD_RESULTS_ARE_POSITIVE_WITH_ADEQUATE_TRADE_COUNT"
+  "promotionRule": "DO_NOT_APPLY_TO_LIVE_UNLESS_OUT_OF_SAMPLE_AND_WALK_FORWARD_RESULTS_ARE_POSITIVE_WITH_ADEQUATE_TRADE_COUNT",
+  "accountSimulation": {
+    "initialCapitalUsd": 100,
+    "positionSizeUsd": 100,
+    "maxConcurrentPositions": 1,
+    "note": "A $100 cash account can fund only one $100 spot position at a time without leverage."
+  },
+  "optimizedRun": {
+    "hardStopPercent": 1.5,
+    "trailingActivationNetPercent": 8,
+    "trailingDistancePercent": 1.5,
+    "feeRatePerSide": 0.006,
+    "roundTripFeeRate": 0.012,
+    "status": "VALIDATION_REQUIRED"
+  }
 }
