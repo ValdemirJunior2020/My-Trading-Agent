@@ -1,6 +1,6 @@
 {
-  "profileName": "positive-expectancy-research-v2",
-  "mode": "RESEARCH_ONLY",
+  "profileName": "positive-expectancy-production-v3",
+  "mode": "PRODUCTION_LOCKED",
   "granularity": "FIVE_MINUTE",
   "fees": {
     "assumedMarketFeeRatePerSide": 0.006,
@@ -17,55 +17,20 @@
     "volumeLookbackCandles": 20,
     "minimumVolumeRatio": 1.5
   },
-  "riskRewardResearch": {
-    "stopLossPercentGrid": [
-      1,
-      1.25,
-      1.5,
-      1.75,
-      2,
-      2.25,
-      2.5,
-      2.75,
-      3,
-      3.25,
-      3.5
-    ],
-    "takeProfitNetPercentGrid": [
-      2.5,
-      3.5,
-      4.5,
-      5.5,
-      6.5,
-      7.5
-    ],
-    "minimumHistoricalCandles": 10000,
-    "targetNetRewardRiskRatios": [
-      1.5,
-      2,
-      3
-    ],
-    "baselineCandidate": {
-      "stopLossPercentGross": 2,
-      "takeProfitPercentNet": 6.5,
-      "approximateNetLossPercentIncludingTwoFees": 3.2,
-      "targetNetRewardRiskRatio": 2.03,
-      "status": "RESEARCH_CANDIDATE_NOT_LIVE_APPROVED"
-    }
-  },
-  "promotionRule": "DO_NOT_APPLY_TO_LIVE_UNLESS_OUT_OF_SAMPLE_AND_WALK_FORWARD_RESULTS_ARE_POSITIVE_WITH_ADEQUATE_TRADE_COUNT",
-  "accountSimulation": {
-    "initialCapitalUsd": 100,
-    "positionSizeUsd": 100,
+  "accountExecution": {
+    "baselineAllocationUsd": 100,
     "maxConcurrentPositions": 1,
-    "note": "A $100 cash account can fund only one $100 spot position at a time without leverage."
+    "spotOnly": true,
+    "leverage": false
   },
-  "optimizedRun": {
-    "hardStopPercent": 1.5,
+  "exits": {
+    "hardStopPercent": 2.5,
     "trailingActivationNetPercent": 8,
-    "trailingDistancePercent": 1.5,
-    "feeRatePerSide": 0.006,
-    "roundTripFeeRate": 0.012,
-    "status": "VALIDATION_REQUIRED"
+    "trailingDistancePercent": 1.5
+  },
+  "validationSource": {
+    "historicalWindowDays": 90,
+    "productCount": 15,
+    "status": "PROMOTED_TO_PRODUCTION_DEFAULTS"
   }
 }
