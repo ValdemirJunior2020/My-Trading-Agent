@@ -156,6 +156,47 @@ const statusClass=(status:string)=>{
   return 'neutral'
 }
 
+const strategyHoverHelp=(ds:any,pt:boolean)=>{
+  if(!ds||Object.keys(ds).length===0){
+    return pt
+      ? 'Passe o mouse aqui para entender esta linha. RSI mede se o preço caiu ou subiu rápido demais. BB significa Bandas de Bollinger, uma faixa que mostra onde o preço está em relação ao seu movimento recente.'
+      : 'Hover here to understand this row. RSI measures whether price has fallen or risen too fast. BB means Bollinger Bands, a price range that shows where the coin is compared with its recent movement.'
+  }
+
+  const rsi=Number(ds.rsi)
+  const threshold=Number(ds.rsiThreshold||35)
+  const hasRsi=Number.isFinite(rsi)
+  const closePct=Number(ds.closeVsLowerPct)
+  const hasClosePct=Number.isFinite(closePct)
+  const near=ds.nearLowerBand===true
+  const crossed=ds.crossedBelowLower===true
+  const oversold=ds.oversold===true
+  const open=ds.positionAlreadyOpen===true
+  const ready=ds.rawEntrySignal===true && !open
+
+  if(pt){
+    const pieces=[
+      'RSI = força do movimento do preço. Abaixo de '+threshold.toFixed(0)+' significa que a moeda pode estar sobrevendida e é uma condição que o bot procura para comprar.',
+      'BB = Bandas de Bollinger. A banda inferior é a parte baixa da faixa recente de preço; ficar perto dela pode indicar uma possível entrada.',
+      hasRsi?'Agora: RSI '+rsi.toFixed(1)+(oversold?' — está abaixo do limite.':' — ainda está acima do limite.'):'',
+      hasClosePct?'Preço: '+Math.abs(closePct).toFixed(2)+'% '+(closePct>=0?'acima':'abaixo')+' da banda inferior.':'',
+      crossed?'O preço cruzou a banda inferior.':near?'O preço está perto da banda inferior, mas não cruzou.':'O preço não está perto da banda inferior.',
+      open?'Já existe uma posição aberta, então o bot está monitorando a saída.':ready?'As condições básicas de compra estão presentes; os outros controles ainda precisam aprovar.':'O bot está esperando uma configuração melhor antes de comprar.'
+    ].filter(Boolean)
+    return pieces.join(' ')
+  }
+
+  const pieces=[
+    'RSI = price momentum. Below '+threshold.toFixed(0)+' means the coin may be oversold, which is one condition the bot looks for before buying.',
+    'BB = Bollinger Bands. The lower BB is the bottom of the coin’s recent price range; being near it can signal a possible entry.',
+    hasRsi?'Right now: RSI '+rsi.toFixed(1)+(oversold?' — below the limit.':' — still above the limit.'):'',
+    hasClosePct?'Price is '+Math.abs(closePct).toFixed(2)+'% '+(closePct>=0?'above':'below')+' the lower BB.':'',
+    crossed?'Price crossed below the lower BB.':near?'Price is near the lower BB, but it did not cross it.':'Price is not near the lower BB.',
+    open?'A bot position is already open, so it is monitoring for an exit.':ready?'The basic buy setup is present; the remaining safety and execution checks still have to approve it.':'The bot is waiting for a better setup before buying.'
+  ].filter(Boolean)
+  return pieces.join(' ')
+}
+
 export function TradeJournal({language}:Props){
   const [events,setEvents]=useState<any[]>(()=>readCachedHistory())
   const [loading,setLoading]=useState(()=>readCachedHistory().length===0)
@@ -442,6 +483,11 @@ export function TradeJournal({language}:Props){
               +' ('+(profit.netProfitPercent>=0?'+':'')+profit.netProfitPercent.toFixed(2)+'%) after buy + sell fees'
             : ''
           const detail=String([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          const hoverHelp=strategyDetail
+            ? strategyHoverHelp(ds,pt)
+            : (pt
+                ? 'Esta linha mostra o que o bot decidiu ou tentou fazer. RSI mede a força recente do preço. BB significa Bandas de Bollinger, uma faixa usada para comparar o preço atual com seu movimento recente.'
+                : 'This row shows what the bot decided or tried to do. RSI measures recent price momentum. BB means Bollinger Bands, a range used to compare the current price with its recent movement.')
           const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
           const displayCoin=String(p.productId||p.buyProductId||'—')
           const rawSide=String(p.side||'—').toUpperCase()
@@ -469,7 +515,7 @@ export function TradeJournal({language}:Props){
                   </>
                 : '—'}
             </span>
-            <span className="journal-detail journal-context" title={detail}>{detail}</span>
+            <span className="journal-detail journal-context" data-help={hoverHelp} aria-label={hoverHelp}>{detail}</span>
           </div>
         })}
       </div>
