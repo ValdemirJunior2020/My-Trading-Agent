@@ -29,6 +29,7 @@ export function WorkspacePage({page,language,system}:Props){
   const [message,setMessage]=useState('')
   const [analysis,setAnalysis]=useState<any>(null)
   const [backtest,setBacktest]=useState<any>(null)
+  const [stressTest,setStressTest]=useState<any|null>(null)
   const [error,setError]=useState('')
 
   const loadCore=async()=>{
@@ -55,6 +56,7 @@ export function WorkspacePage({page,language,system}:Props){
 
   useEffect(()=>{void loadCore()},[page])
   useEffect(()=>{if(['markets','charts','backtesting'].includes(page))void loadMarket()},[page,product])
+  useEffect(()=>{if(page==='backtesting'){api.getLiveStressTest().then(r=>setStressTest(r.result||null)).catch(()=>{})}},[page])
   useEffect(()=>{if(page==='scanner'){setBusy(true);api.getScanner().then(setScanner).catch(e=>setError(String(e))).finally(()=>setBusy(false))}},[page])
 
   const chartPoints=useMemo(()=>{
@@ -69,6 +71,15 @@ export function WorkspacePage({page,language,system}:Props){
     setBusy(true);setError('')
     try{setAnalysis(await api.runAgent({agentId:'market',asset:product,summary:message.trim()}))}
     catch(e){setError(e instanceof Error?e.message:String(e))}
+    finally{setBusy(false)}
+  }
+
+  const runStressTest=async()=>{
+    setBusy(true);setError('')
+    try{
+      const response=await api.runLiveStressTest({candleLimit:1200})
+      setStressTest(response.result)
+    }catch(e){setError(e instanceof Error?e.message:String(e))}
     finally{setBusy(false)}
   }
 
@@ -129,7 +140,24 @@ export function WorkspacePage({page,language,system}:Props){
     <div className="tool-json">{pipeline?JSON.stringify(pipeline,null,2):'Pipeline status unavailable.'}</div>
   </PageShell>
 
-  if(page==='backtesting')return <PageShell title="Backtesting" subtitle={pt?'Teste VectorBT com candles reais do Coinbase.':'Run VectorBT against real Coinbase candles.'}>
+  if(page==='backtesting')return <PageShell title={pt?'Teste de Estresse Real':'Live Strategy Stress Test'} subtitle={pt?'Mais de 100 cenários históricos usando candles reais da Coinbase e as mesmas regras RSI/Bollinger, lucro, stop e Loss Guard. Nenhuma ordem é enviada.':'100+ historical scenarios using Coinbase candles and the same RSI/Bollinger, profit, stop and Loss Guard rules. No order is submitted.'}>
+    <div className="stress-test-card">
+      <div><span className="eyebrow">{pt?'AUDITORIA AUTOMÁTICA':'AUTOMATIC AUDIT'}</span><h3>{pt?'100+ cenários antes de confiar no modo real':'100+ scenarios before trusting live mode'}</h3><p>{pt?'O servidor roda esta auditoria sozinho ao iniciar. Você também pode rodar novamente aqui.':'The server runs this audit automatically after startup. You can also rerun it here.'}</p></div>
+      <button className="tool-primary" disabled={busy} onClick={()=>void runStressTest()}>{busy?(pt?'Testando...':'Testing...'):(pt?'▶ Rodar 100+ testes':'▶ Run 100+ tests')}</button>
+    </div>
+    {stressTest&&<div className="stress-results">
+      <div className="tool-stats">
+        <div><small>{pt?'Cenários':'Scenarios'}</small><strong>{stressTest.scenarioCount}</strong></div>
+        <div><small>{pt?'Trades fechados':'Closed Trades'}</small><strong>{stressTest.closedTrades}</strong></div>
+        <div><small>{pt?'Vitórias':'Wins'}</small><strong className="sim-profit">{stressTest.wins}</strong></div>
+        <div><small>{pt?'Perdas':'Losses'}</small><strong className={Number(stressTest.losses)>0?'sim-loss':'sim-profit'}>{stressTest.losses}</strong></div>
+        <div><small>{pt?'Taxa de acerto':'Win Rate'}</small><strong>{Number(stressTest.winRatePercent||0).toFixed(1)}%</strong></div>
+        <div><small>{pt?'Loss Guard acionaria':'Loss Guard Stops'}</small><strong>{stressTest.lossGuardStops}</strong></div>
+      </div>
+      {Array.isArray(stressTest.lossPatterns)&&stressTest.lossPatterns.length>0&&<div className="stress-patterns"><h3>{pt?'Padrões das perdas encontradas':'Loss patterns found'}</h3>{stressTest.lossPatterns.map((p:any)=><div key={p.id}><strong>{p.label}</strong><span>{p.losses} {pt?'perdas':'losses'}</span></div>)}</div>}
+      <div className="tool-json">{JSON.stringify({generatedAt:stressTest.generatedAt,products:stressTest.products?.map((p:any)=>({productId:p.productId,scenarios:p.scenarios,wins:p.wins,losses:p.losses,winRatePercent:p.winRatePercent})),rules:stressTest.rules,caution:stressTest.caution},null,2)}</div>
+    </div>}
+    <div className="paper-manual-divider"><span>{pt?'TESTE QUANT ADICIONAL':'ADDITIONAL QUANT TEST'}</span></div>
     {marketSelector}<button className="tool-primary" disabled={busy||candles.length<40} onClick={()=>void runBacktest()}>{busy?'Running...':'Run SMA 10/30 Backtest'}</button>
     {error&&<div className="tool-error">{error}</div>}{backtest&&<div className="tool-json">{JSON.stringify(backtest,null,2)}</div>}
   </PageShell>
