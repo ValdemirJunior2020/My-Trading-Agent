@@ -132,10 +132,10 @@ export function WorkspacePage({page,language,system}:Props){
 
   if(page==='strategies')return <PageShell title={pt?'Estratégias':'Strategies'} subtitle={pt?'Estratégias e regras que o pipeline realmente utiliza.':'Strategies and rules actually used by the pipeline.'}>
     <div className="tool-card-grid">
-      <article><h3>Production Rule Set</h3><p>$100 allocation • 1 global position • 2.50% hard stop • 8.00% net trailing activation.</p></article>
-      <article><h3>Entry Confirmation</h3><p>Previous RSI ≤30 • current RSI &gt;30 and ≤36 • rebound volume ≥1.5× prior VMA20.</p></article>
-      <article><h3>Short-Term Opportunity Scanner</h3><p>Momentum 6h/24h, volume acceleration, volatility quality, liquidity/spread and breakout proximity.</p></article>
-      <article><h3>Risk Gate</h3><p>Single global slot, daily-loss guard, slippage checks and Coinbase preview remain authoritative.</p></article>
+      <article><h3>Production Rule Set</h3><p>$100 fixed allocation • 1 global position • 0.80% fill-based hard stop • 8.00% net trailing activation • 1.50% callback.</p></article>
+      <article><h3>Dual-Timeframe Entry</h3><p>Closed 10m close &gt; Bollinger middle/SMA20 • closed 5m close &lt; lower Bollinger • RSI14 &lt;30 • volume ≥1.5× VMA20.</p></article>
+      <article><h3>Deterministic Execution</h3><p>0.10% max entry slippage. AI may scan and ingest data, but it cannot approve, reject, or modify live entry/exit math.</p></article>
+      <article><h3>Rolling Kill Switch</h3><p>3% rolling 24h equity drawdown cancels open orders, liquidates bot-managed positions, blocks trading, and requires manual reset.</p></article>
     </div>
     <div className="tool-json">{pipeline?JSON.stringify(pipeline,null,2):'Pipeline status unavailable.'}</div>
   </PageShell>
