@@ -4,6 +4,7 @@ import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquityS
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { publish } from './events.js'
+import { triggerLossGuard } from './lossGuard.js'
 
 export interface PaperOrderRequest {
   productId: string
@@ -77,6 +78,7 @@ export const migrateLegacyLossHaltEmergencyStop=()=>{
   const lossHaltActive=getSetting('loss_halt_active','false')==='true'
   const lossHaltTriggeredAt=getSetting('loss_halt_triggered_at','')
   const emergencyStopReason=getSetting('emergency_stop_reason','').toUpperCase()
+  if(emergencyStopReason==='LOSS_GUARD')return false
   const latestManualEmergency=recentEvents(500)
     .find((event:any)=>String(event.type)==='emergency_stop_activated'&&String(event.agentId||'')==='manager')
   const latestManualEmergencyAt=String(latestManualEmergency?.createdAt||'')
@@ -944,33 +946,12 @@ export const tryLimitedLiveExecution = async (opts: {
       Number.isFinite(realizedNetProfitUsd) &&
       realizedNetProfitUsd<0
     ){
-      setSetting('loss_halt_active','true')
-      setSetting('loss_halt_triggered_at',placedAt)
-      setSetting('loss_halt_product',productId)
-      setSetting('loss_halt_amount_usd',String(realizedNetProfitUsd))
-
-      let canceledOrderIds:string[]=[]
-      try{
-        const openOrders=await listOpenOrders()
-        const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
-        if(ids.length){
-          await cancelOrders(ids)
-          canceledOrderIds=ids
-        }
-      }catch(error){
-        publish('loss_halt_cancel_failed',{
-          productId,
-          error:error instanceof Error?error.message:String(error)
-        },'risk')
-      }
-
-      publish('loss_halt_triggered',{
+      await triggerLossGuard({
         productId,
         realizedNetProfitUsd,
         realizedNetProfitPercent,
-        message:'ANY realized loss blocks new BUYs while existing positions may still SELL to exit.',
-        canceledOrderIds
-      },'risk')
+        triggeredAt:placedAt
+      })
     }
 
     publish('live_order_placed', {
