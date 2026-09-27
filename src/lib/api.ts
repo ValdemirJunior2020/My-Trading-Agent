@@ -20,6 +20,16 @@ export interface SystemStatus {
   safety:{
     emergencyStop:boolean
     lossHaltActive?:boolean
+    lossGuard?:{
+      active:boolean
+      armed:boolean
+      triggeredAt?:string|null
+      productId?:string|null
+      lossUsd?:number
+      lossPercent?:number
+      resetAt?:string|null
+      behavior?:string
+    }
     rollingRisk?:{
       paused?:boolean
       drawdownPercent?:number
