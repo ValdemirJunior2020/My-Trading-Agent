@@ -16,7 +16,7 @@ type PipelineOptions = {
   deepResearch?: boolean
   executeLive?: boolean
   signalIntent?: 'BUY' | 'SELL' | 'NONE'
-  signalSource?: 'MEAN_REVERSION' | 'MOMENTUM_SCANNER' | 'MANUAL' | 'UNKNOWN'
+  signalSource?: 'MEAN_REVERSION' | 'MOMENTUM_SCANNER' | 'NEXT_WEEK_BREAKOUT' | 'MANUAL' | 'UNKNOWN'
   signalReason?: string
 }
 type PipelineState = {
