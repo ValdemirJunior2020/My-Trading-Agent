@@ -253,3 +253,17 @@ test('manual emergency stop still blocks SELL exits',()=>{
   })
   assert.equal(result.approved,false)
 })
+
+
+test('loss halt model keeps SELL gate open when global emergency is off',()=>{
+  const result=assessEmergencyExecutionGate({
+    emergencyStop:false,
+    tradingMode:'live',
+    liveTradingEnabled:true,
+    autoTradingEnabled:true,
+    lossHaltActive:true,
+    protectiveExit:true,
+    emergencyStopReason:''
+  })
+  assert.equal(result.approved,true)
+})
