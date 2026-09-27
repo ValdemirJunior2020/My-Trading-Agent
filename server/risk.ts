@@ -801,16 +801,6 @@ export const tryLimitedLiveExecution = async (opts: {
   const botExposure=getOpenBotExposureSummary()
   const productAlreadyOpen=botExposure.positions.some(row=>row.productId===productId)
 
-  if(side==='BUY'&&!productAlreadyOpen&&botExposure.openBotPositions>=config.maxOpenBotPositions){
-    return {
-      executed:false,
-      reason:'Maximum number of open bot positions has been reached',
-      openBotPositions:botExposure.openBotPositions,
-      maxOpenBotPositions:config.maxOpenBotPositions,
-      totalBotExposureUsd:botExposure.totalBotExposureUsd
-    }
-  }
-
   let notionalUsd = 0
   let baseSize: number | undefined
   let quoteSizeUsd: number | undefined
@@ -831,12 +821,12 @@ export const tryLimitedLiveExecution = async (opts: {
     )
     const steppedUsd=Math.floor((rawAffordableUsd+1e-9)/buyStepUsd)*buyStepUsd
 
-    if(productAlreadyOpen||botExposure.openBotPositions>0){
+    if(productAlreadyOpen){
       return {
         executed:false,
-        reason:'The single global production position slot is already occupied.',
-        openBotPositions:botExposure.openBotPositions,
-        maxOpenBotPositions:config.maxOpenBotPositions
+        reason:'This product already has an open bot-managed position. The bot will not stack another BUY on the same coin.',
+        productId,
+        openBotPositions:botExposure.openBotPositions
       }
     }
 
