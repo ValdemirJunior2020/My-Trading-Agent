@@ -1,17 +1,10 @@
 import { config } from './config.js'
 import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from './riskCore.js'
-import { getSetting, openPaperNotional, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
+import { getSetting, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { publish } from './events.js'
 import { triggerLossGuard } from './lossGuard.js'
-
-export interface PaperOrderRequest {
-  productId: string
-  side: 'BUY' | 'SELL'
-  size: number
-  price: number
-}
 
 export interface RuntimeRiskLimits {
   maxPositionPercent: number
@@ -233,22 +226,6 @@ export const checkRollingEquityKillSwitch=async(currentPortfolioUsd:number)=>{
   }
   setSetting('rolling_risk_last_state',JSON.stringify(state))
   return state
-}
-
-export const evaluatePaperOrder = (order: PaperOrderRequest) => {
-  const reasons: string[] = []
-  const limits = getRuntimeRiskLimits()
-  const notional = order.size * order.price
-  const maxPositionUsd = config.paperStartingBalanceUsd * (limits.maxPositionPercent / 100)
-  const maxExposureUsd = config.paperStartingBalanceUsd * (limits.maxTotalExposurePercent / 100)
-  const currentExposure = openPaperNotional()
-  if (emergencyStopActive()) reasons.push('Emergency stop is active.')
-  if (!order.productId || !/^[A-Z0-9]+-[A-Z0-9]+$/.test(order.productId)) reasons.push('Invalid product ID.')
-  if (!['BUY', 'SELL'].includes(order.side)) reasons.push('Invalid side.')
-  if (!(order.size > 0) || !(order.price > 0)) reasons.push('Size and price must be positive.')
-  if (notional > maxPositionUsd) reasons.push('Position notional exceeds the hard ' + limits.maxPositionPercent + '% paper-capital limit.')
-  if (currentExposure + notional > maxExposureUsd) reasons.push('Total paper exposure would exceed ' + limits.maxTotalExposurePercent + '%.')
-  return { approved: reasons.length === 0, reasons, notional, currentExposure, maxPositionUsd, maxExposureUsd, limits }
 }
 
 export interface LiveOrderPreflightInput {
