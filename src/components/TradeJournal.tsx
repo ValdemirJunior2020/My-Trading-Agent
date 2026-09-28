@@ -30,7 +30,7 @@ const journalStatus=(event:any)=>{
   if(type==='mean_reversion_entry_result')return p.result?.executed?'ORDER PLACED':'ORDER BLOCKED'
   if(type==='mean_reversion_exit_signal')return 'EXIT SIGNAL'
   if(type==='mean_reversion_candle_closed')return p.deterministicReady?'SETUP READY':'WAIT'
-  if(type==='single_loss_kill_switch_triggered')return 'FIRST LOSS STOP'
+  if(type==='single_loss_kill_switch_triggered')return 'FIRST LOSS PAUSE'
   if(type==='single_loss_kill_switch_liquidation_fill')return 'EMERGENCY SELL'
   if(type==='rolling_kill_switch_triggered')return 'KILL SWITCH'
   if(type==='rolling_kill_switch_liquidation_fill')return 'EMERGENCY SELL'
@@ -57,7 +57,7 @@ const statusGroup=(status:string):JournalFilter=>{
   if(status==='ORDER PLACED')return 'ORDER PLACED'
   if(status==='REJECTED BY AGENTS')return 'REJECTED'
   if(status==='WAIT'||status==='NO TRADE'||status==='AGENT APPROVED'||status==='SETUP READY'||status==='BUY SIGNAL'||status==='EXIT SIGNAL')return 'WAIT'
-  if(status.includes('BLOCKED')||status.includes('PREVIEW')||status==='FUNDING NEEDED'||status==='ROTATION READY'||status==='ROTATION CHECK FAILED'||status==='KILL SWITCH'||status==='FIRST LOSS STOP')return 'BLOCKED'
+  if(status.includes('BLOCKED')||status.includes('PREVIEW')||status==='FUNDING NEEDED'||status==='ROTATION READY'||status==='ROTATION CHECK FAILED'||status==='KILL SWITCH'||status==='FIRST LOSS PAUSE')return 'BLOCKED'
   if(status.includes('FAILED'))return 'FAILED'
   return 'ALL'
 }
@@ -167,7 +167,7 @@ const statusClass=(status:string)=>{
   if(status==='AGENT APPROVED')return 'placed'
   if(status==='BUY SIGNAL'||status==='SETUP READY')return 'placed'
   if(status==='EXIT SIGNAL'||status==='EMERGENCY SELL')return 'placed'
-  if(status==='KILL SWITCH'||status==='FIRST LOSS STOP')return 'blocked'
+  if(status==='KILL SWITCH'||status==='FIRST LOSS PAUSE')return 'blocked'
   if(status.includes('BLOCKED'))return 'blocked'
   if(status.includes('PREVIEW'))return 'preview-failed'
   if(status==='ROTATION READY')return 'placed'
@@ -208,7 +208,7 @@ const strategyHoverHelp=(event:any,pt:boolean)=>{
   }
   return pt
     ? 'Este evento pertence ao motor determinístico atual: compras dinâmicas em passos de $5 conforme o caixa disponível, saída somente quando a prévia cobre todas as taxas e deixa pelo menos $0,02 líquido, stop de 0,8%, primeiro prejuízo realizado = desligamento total e kill switch de 3%/24h.'
-    : 'This event belongs to the current deterministic engine: dynamic $5-step buys based on available cash, fee-aware exits only when previewed proceeds cover all costs plus at least $0.10 net, 0.8% stop, first realized loss = full shutdown, and a 3%/24h kill switch.'
+    : 'This event belongs to the current deterministic engine: dynamic $5-step buys based on available cash, fee-aware exits only when previewed proceeds cover all costs plus at least $0.10 net, 0.8% stop, first realized loss = new BUYs paused while existing-position exits stay active, and a 3%/24h kill switch.'
 }
 
 export function TradeJournal({language}:Props){
@@ -511,7 +511,7 @@ export function TradeJournal({language}:Props){
             if(event.type==='mean_reversion_exit_signal'){
               return [
                 String(p.reason||'EXIT').replace(/_/g,' '),
-                Number.isFinite(Number(p.stopLossPercent))?('Hard stop '+Number(p.stopLossPercent).toFixed(2)+'% from fill'):'',
+                Number.isFinite(Number(p.stopLossPercent))?('Price stop '+Number(p.stopLossPercent).toFixed(2)+'% below fill; net loss also includes trading fees'):'',
                 Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net after BUY + SELL fees $'+Number(p.minimumNetProfitUsd).toFixed(2)):'',
                 Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
                 Number.isFinite(Number(p.trailingActivationNetPercent))?('Backup trailing +'+Number(p.trailingActivationNetPercent).toFixed(2)+'%'):'',
@@ -519,7 +519,7 @@ export function TradeJournal({language}:Props){
               ].filter(Boolean).join(' • ')
             }
             if(event.type==='single_loss_kill_switch_triggered'){
-              return 'FIRST REALIZED LOSS • open orders canceled • remaining bot positions liquidated • automation locked • manual reset required'
+              return 'FIRST REALIZED LOSS • new BUYs paused • existing positions continue normal exits • no forced liquidation • manual reset required'
             }
             if(event.type==='single_loss_kill_switch_liquidation_fill'){
               return 'EMERGENCY LIQUIDATION FILL • first-loss shutdown'
