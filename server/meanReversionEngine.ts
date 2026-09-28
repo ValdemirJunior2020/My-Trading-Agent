@@ -763,8 +763,10 @@ const seedUniverse=async()=>{
     :discovered
 
   researchPriorityProducts.clear()
-  for(const productId of researchOrder.slice(0,config.activeCapitalResearchTopN)){
-    researchPriorityProducts.add(productId)
+  if(research.status==='ok'){
+    for(const productId of researchOrder.slice(0,config.activeCapitalResearchTopN)){
+      researchPriorityProducts.add(productId)
+    }
   }
 
   publish('market_research_ranked',{
