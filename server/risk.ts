@@ -830,7 +830,10 @@ export const tryLimitedLiveExecution = async (opts: {
   const limits = getRuntimeRiskLimits()
   const maxFromPercent = totalPortfolioUsd * (limits.maxPositionPercent / 100)
   const hardCap = config.maxLiveOrderUsd
-  const maxExposureUsd = totalPortfolioUsd * (limits.maxTotalExposurePercent / 100)
+  const maxExposureUsd = Math.min(
+    totalPortfolioUsd * (limits.maxTotalExposurePercent / 100),
+    Number(config.maxTotalExposureUsd||100)
+  )
   const botExposure=getOpenBotExposureSummary()
   const productAlreadyOpen=botExposure.positions.some(row=>row.productId===productId)
 
