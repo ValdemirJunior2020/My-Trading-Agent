@@ -22,7 +22,7 @@ export const PRODUCTION_STRATEGY = Object.freeze({
   trailingActivationNetPercent: 8,
   trailingDistancePercent: 1.5,
   maxEntrySlippagePercent: 0.1,
-  macroTimeframeMinutes: 10,
+  macroTimeframeMinutes: 5,
   macroBollingerPeriod: 20,
   entryRsiStrictlyBelow: 30,
   volumeLookbackCandles: 20,
