@@ -27,6 +27,11 @@ export const PRODUCTION_STRATEGY = Object.freeze({
   entryRsiStrictlyBelow: 30,
   volumeLookbackCandles: 20,
   minimumVolumeRatio: 1.5,
+  activeCapitalRsiMin: 40,
+  activeCapitalRsiMax: 62,
+  activeCapitalMinimumVolumeRatio: 0.75,
+  activeCapitalMaxMacroExtensionPercent: 1.0,
+  activeCapitalResearchTopN: 20,
   rollingKillSwitchPercent: 3,
   rollingKillSwitchWindowHours: 24
 })
@@ -81,6 +86,11 @@ export const config = {
   entryRsiStrictlyBelow: PRODUCTION_STRATEGY.entryRsiStrictlyBelow,
   entryVolumeLookbackCandles: PRODUCTION_STRATEGY.volumeLookbackCandles,
   entryMinimumVolumeRatio: PRODUCTION_STRATEGY.minimumVolumeRatio,
+  activeCapitalRsiMin: PRODUCTION_STRATEGY.activeCapitalRsiMin,
+  activeCapitalRsiMax: PRODUCTION_STRATEGY.activeCapitalRsiMax,
+  activeCapitalMinimumVolumeRatio: PRODUCTION_STRATEGY.activeCapitalMinimumVolumeRatio,
+  activeCapitalMaxMacroExtensionPercent: PRODUCTION_STRATEGY.activeCapitalMaxMacroExtensionPercent,
+  activeCapitalResearchTopN: PRODUCTION_STRATEGY.activeCapitalResearchTopN,
   macroTimeframeMinutes: PRODUCTION_STRATEGY.macroTimeframeMinutes,
   macroBollingerPeriod: PRODUCTION_STRATEGY.macroBollingerPeriod,
   rollingKillSwitchPercent: PRODUCTION_STRATEGY.rollingKillSwitchPercent,
