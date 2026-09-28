@@ -632,7 +632,7 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   const maxPositionUsd = totalPortfolioUsd * (limits.maxPositionPercent / 100)
   const maxExposureUsd = Math.min(
     totalPortfolioUsd * (limits.maxTotalExposurePercent / 100),
-    Number(config.maxTotalExposureUsd||50)
+    Number(config.maxTotalExposureUsd||100)
   )
   const daily = getDailyEquityGuard(totalPortfolioUsd)
   const botExposure=getOpenBotExposureSummary()
