@@ -1,10 +1,9 @@
 import { config, coinbaseConfigured } from './config.js'
-import { getCandles, getProduct, listAccounts } from './coinbase.js'
+import { getCandles } from './coinbase.js'
 import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
 import { researchCryptoCandidates } from './marketResearch.js'
 import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive, getOpenBotExposureSummary, triggerUnrealizedPriceLossPause } from './risk.js'
-import { getChallengeSnapshot } from './challenge.js'
 import { confirmedMeanReversionEntryDecision, getBotManagedLots, getBotManagedPosition } from './bollingerStrategy.js'
 import { NEXT_WEEK_BREAKOUT,breakoutHardStopPrice,breakoutTrailingActivationPrice,breakoutTrailingStopPrice,evaluateBreakoutConfirmation,nextWeekBreakoutActive } from './velocityBreakout.js'
 
@@ -126,74 +125,6 @@ const refreshPosition=(productId:string,state:ProductState,force=false)=>{
   state.position=getBotManagedPosition(productId)
   state.lastPositionRefreshAt=Date.now()
   return state.position
-}
-
-const withTimeout=async<T>(promise:Promise<T>,ms:number,label:string):Promise<T>=>{
-  let timer:NodeJS.Timeout|undefined
-  try{
-    return await Promise.race([
-      promise,
-      new Promise<T>((_,reject)=>{
-        timer=setTimeout(()=>reject(new Error(label+'_TIMEOUT_AFTER_'+ms+'MS')),ms)
-      })
-    ])
-  }finally{
-    if(timer)clearTimeout(timer)
-  }
-}
-
-const smallAccountBuyIsExecutable=async(productId:string)=>{
-  try{
-    const [product,accounts]=await withTimeout(
-      Promise.all([
-        getProduct(productId),
-        listAccounts()
-      ]),
-      8000,
-      'BUY_SIZING_CHECK'
-    )
-    const usdAccount=(accounts as any[]).find((a:any)=>String(a.currency||'').toUpperCase()==='USD')
-    const availableUsd=Number(usdAccount?.availableBalance?.value??usdAccount?.availableBalance??0)||0
-    const quoteMin=Math.max(config.minLiveOrderUsd,Number((product as any)?.quote_min_size||0))
-    const quoteMax=Number((product as any)?.quote_max_size||Infinity)
-    const step=Math.max(0.01,Number(config.buyStepUsd||5))
-    const targetUsd=availableUsd*(Number(config.targetBuyPercent||10)/100)
-    const cappedUsd=Math.min(targetUsd,availableUsd,quoteMax)
-    const affordable=Math.floor((cappedUsd+1e-9)/step)*step
-    const requestedUsd=Number(affordable.toFixed(2))
-    const smallAccountMaxUsd=Math.max(step,Number(config.buyStepUsd||5)*2)
-
-    if(quoteMin>smallAccountMaxUsd){
-      return {
-        ok:false,
-        reason:'COINBASE_MINIMUM_EXCEEDS_SMALL_ACCOUNT_SIZE',
-        requestedUsd,
-        availableUsd,
-        portfolioUsd:null,
-        targetBuyPercent:config.targetBuyPercent,
-        targetUsd,
-        quoteMin,
-        quoteMax,
-        buyStepUsd:step,
-        smallAccountMaxUsd
-      }
-    }
-
-    return {
-      ok:requestedUsd+1e-8>=quoteMin&&requestedUsd>0,
-      requestedUsd,
-      availableUsd,
-      portfolioUsd:null,
-      targetBuyPercent:config.targetBuyPercent,
-      targetUsd,
-      quoteMin,
-      quoteMax,
-      buyStepUsd:step,
-      smallAccountMaxUsd
-    }
-  }catch(error){
-    return {ok:false,error:error instanceof Error?error.message:String(error)}
-  }
 }
 
 const handleClosedCandle=async(productId:string,candle:Candle)=>{
@@ -348,18 +279,6 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
 
   if(!deterministicReady)return
 
-  const executable=await smallAccountBuyIsExecutable(productId)
-  if(!executable.ok){
-    publish('mean_reversion_buy_skipped',{
-      productId,
-      timestampIso:new Date().toISOString(),
-      monotonicNs:process.hrtime.bigint().toString(),
-      reason:executable.reason||'NO_AFFORDABLE_COINBASE_BUY_SIZE',
-      ...executable
-    },'strategy')
-    return
-  }
-
   publish('mean_reversion_buy_signal',{
     productId,
     timestampIso:new Date().toISOString(),
@@ -381,7 +300,6 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
           currentRsiStrictlyBelow:config.entryRsiStrictlyBelow,
           minimumVolumeRatio:config.entryMinimumVolumeRatio,
           volumeLookbackCandles:config.entryVolumeLookbackCandles,
-          requestedBuyUsd:executable.requestedUsd,
           buyStepUsd:config.buyStepUsd,
           maxEntrySlippagePercent:config.maxSlippagePercent
         }
@@ -393,7 +311,6 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
           rsiMax:config.activeCapitalRsiMax,
           minimumVolumeRatio:config.activeCapitalMinimumVolumeRatio,
           maximumMacroExtensionPercent:config.activeCapitalMaxMacroExtensionPercent,
-          requestedBuyUsd:executable.requestedUsd,
           buyStepUsd:config.buyStepUsd,
           maxEntrySlippagePercent:config.maxSlippagePercent
         }
@@ -410,7 +327,6 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
       decision:'BUY_CANDIDATE',
       confidence:1,
       triggerPrice:candle.close,
-      requestedBuyUsd:executable.requestedUsd,
       executionSource:'MEAN_REVERSION'
     })
     publish('mean_reversion_entry_result',{
