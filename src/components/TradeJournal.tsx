@@ -521,11 +521,18 @@ export function TradeJournal({language}:Props){
               return [
                 'LOSS PAUSE / HOLD',
                 p.productId?String(p.productId):'',
-                Number.isFinite(Number(p.livePrice))?('Live 
+                Number.isFinite(Number(p.livePrice))?('Live $'+Number(p.livePrice).toFixed(6)):'',
+                Number.isFinite(Number(p.stopPrice))?('Threshold $'+Number(p.stopPrice).toFixed(6)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                'No SELL sent • new BUYs paused • wait for profitable exit'
+              ].filter(Boolean).join(' • ')
+            }
             if(event.type==='mean_reversion_entry_result'){
               const result=p.result||{}
               return result.executed
-                ? ('DETERMINISTIC ENTRY EXECUTED • 
+                ? ('DETERMINISTIC ENTRY EXECUTED • $'+Number(result.notionalUsd||0).toFixed(2))
+                : 'DETERMINISTIC ENTRY BLOCKED • '+String(result.reason||'execution gate rejected')
+            }
             if(event.type==='mean_reversion_exit_signal'){
               return [
                 String(p.reason||'EXIT').replace(/_/g,' '),
