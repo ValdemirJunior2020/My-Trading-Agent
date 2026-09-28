@@ -669,7 +669,11 @@ const seedUniverse=async()=>{
   const fallbackUniverse:string[]=Array.isArray(scan.universe)
     ?scan.universe.map((x:any)=>String(x).toUpperCase())
     :[]
-  products=[...new Set<string>(rows.length?liquidUniverse:fallbackUniverse)].slice(0,28)
+  const openBotProducts=getOpenBotExposureSummary().positions.map(row=>row.productId)
+  const discovered=rows.length?liquidUniverse:fallbackUniverse
+  // Always keep current bot-managed holdings in the stream so exits are never
+  // dropped just because a coin falls out of the current liquidity ranking.
+  products=[...new Set<string>([...openBotProducts,...discovered])].slice(0,60)
 
   for(let i=0;i<products.length;i+=4){
     const batch=products.slice(i,i+4)
