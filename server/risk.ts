@@ -842,7 +842,7 @@ export const tryLimitedLiveExecution = async (opts: {
     const buyStepUsd=Math.max(0.01,Number(config.buyStepUsd||5))
     const strategyTargetUsd=Math.max(
       buyStepUsd,
-      Math.floor(((totalPortfolioUsd*(config.targetBuyPercent/100))+1e-9)/buyStepUsd)*buyStepUsd
+      Math.floor((Number(config.targetBuyUsd||50)+1e-9)/buyStepUsd)*buyStepUsd
     )
     const requestedBuyUsd=Number(opts.requestedBuyUsd||strategyTargetUsd)
     const remainingExposureUsd=Math.max(0,maxExposureUsd-botExposure.totalBotExposureUsd)
