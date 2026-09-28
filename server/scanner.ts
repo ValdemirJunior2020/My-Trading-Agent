@@ -45,7 +45,7 @@ const discoverScanUniverse=async()=>{
       .filter((p:any)=>Number.isFinite(p.notional24h)&&p.notional24h>0)
       .sort((a:any,b:any)=>b.notional24h-a.notional24h)
 
-    const dynamic=ranked.slice(0,24).map((p:any)=>p.productId)
+    const dynamic=ranked.slice(0,60).map((p:any)=>p.productId)
     return [...new Set([...ownedProducts,...PRIORITY_PRODUCTS,...config.watchlist,...dynamic])]
   }catch{
     const ownedProducts=await ownedSpotUsdProducts()
