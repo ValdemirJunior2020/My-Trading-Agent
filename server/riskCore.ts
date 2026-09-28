@@ -118,7 +118,7 @@ export const assessEmergencyExecutionGate=(input:{
   const lossHaltExitAllowed=
     Boolean(input.lossHaltActive) &&
     Boolean(input.protectiveExit) &&
-    (stopReason===''||stopReason==='LOSS_HALT')
+    (stopReason===''||stopReason==='LOSS_HALT'||stopReason==='LOSS_GUARD'||stopReason==='SINGLE_REALIZED_LOSS')
 
   if(input.emergencyStop&&!lossHaltExitAllowed)reasons.push('Emergency stop is active')
   if(input.lossHaltActive&&!input.protectiveExit){
