@@ -188,7 +188,7 @@ const strategyHoverHelp=(event:any,pt:boolean)=>{
     return pt
       ? [
           'Regra atual determinística.',
-          '5m macro: '+(macroPass?'PASSOU':'BLOQUEOU')+' — último candle fechado de 10m deve fechar acima da banda média/SMA20.',
+          '5m macro: '+(macroPass?'PASSOU':'BLOQUEOU')+' — último candle fechado de 5m deve fechar acima da banda média/SMA20.',
           '5m Bollinger: '+(lowerPass?'PASSOU':'BLOQUEOU')+' — o fechamento deve ficar estritamente abaixo da banda inferior.',
           Number.isFinite(rsi)?'RSI14: '+rsi.toFixed(1)+' — precisa ser <30.':'',
           Number.isFinite(ratio)?'Volume: '+ratio.toFixed(2)+'× VMA20 — precisa ser ≥1.50×.':''
