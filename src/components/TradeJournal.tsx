@@ -546,7 +546,7 @@ export function TradeJournal({language}:Props){
                   : '',
                 Number.isFinite(Number(p.rules?.requestedBuyUsd))
                   ? ('Target buy $'+Number(p.rules.requestedBuyUsd).toFixed(2))
-                  : 'Target buy $50 • $5 step',
+                  : 'Target buy $10 • total bot exposure $50',
                 'Max slippage 0.10%'
               ].filter(Boolean).join(' • ')
             }
