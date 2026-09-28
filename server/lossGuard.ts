@@ -67,6 +67,7 @@ export const resetLossGuard=()=>{
   setSetting('loss_halt_triggered_at','')
   setSetting('loss_halt_product','')
   setSetting('loss_halt_amount_usd','')
+  setSetting('loss_halt_reason','')
 
   if(['LOSS_GUARD','SINGLE_REALIZED_LOSS'].includes(getSetting('emergency_stop_reason',''))){
     setSetting('emergency_stop','false')
