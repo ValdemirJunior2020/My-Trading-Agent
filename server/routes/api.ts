@@ -206,7 +206,8 @@ export const handleApiRequest=async(
     const rollingRisk=getRollingRiskState()
     const hardStopped=emergencyStopActive()
     const lossHaltActive=getSetting('loss_halt_active','false')==='true'
-    const entryPaused=Boolean(rollingRisk?.paused)
+    const entryPaused=Boolean(rollingRisk?.paused)||lossHaltActive
+    const entryPauseReason=lossHaltActive?'FIRST_REALIZED_LOSS':rollingRisk?.paused?'ROLLING_24H_GUARD':null
     return json(res,200,{
       ok:true,
       configured:true,
@@ -216,6 +217,7 @@ export const handleApiRequest=async(
       emergencyStop:hardStopped,
       lossHaltActive,
       autoSafePause:entryPaused,
+      entryPauseReason,
       rollingRiskGuard:rollingRisk,
       currentPortfolioUsd:portfolioAvailable?totalPortfolioUsd:null,
       portfolioAvailable,
