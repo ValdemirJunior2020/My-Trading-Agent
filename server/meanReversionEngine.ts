@@ -34,6 +34,7 @@ const breakoutPeaks=new Map<string,number>()
 const meanReversionPeaks=new Map<string,number>()
 const lastHandledClosedStart=new Map<string,number>()
 const researchPriorityProducts=new Set<string>()
+let researchPrioritySource:'OLLAMA'|'LIQUIDITY_FALLBACK'='LIQUIDITY_FALLBACK'
 
 let ws:WebSocket|null=null
 let reconnectTimer:NodeJS.Timeout|null=null
@@ -238,6 +239,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     ?((candle.close-macroMiddle)/macroMiddle)*100
     :Infinity
   const researchPriority=researchPriorityProducts.has(productId)
+  const activeCapitalPrioritySource=researchPriority?researchPrioritySource:null
 
   const strongEntryReady=Boolean(
     entryDecision.ready&&
@@ -284,6 +286,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     macro5m:macro,
     macroExtensionPercent,
     researchPriority,
+    activeCapitalPrioritySource,
     strongEntryReady,
     activeCapitalReady,
     entryMode,
@@ -328,6 +331,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     macro5m:macro,
     entryMode,
     researchPriority,
+    activeCapitalPrioritySource,
     macroExtensionPercent,
     rules:entryMode==='STRONG_ENTRY'
       ?{
@@ -763,10 +767,9 @@ const seedUniverse=async()=>{
     :discovered
 
   researchPriorityProducts.clear()
-  if(research.status==='ok'){
-    for(const productId of researchOrder.slice(0,config.activeCapitalResearchTopN)){
-      researchPriorityProducts.add(productId)
-    }
+  researchPrioritySource=research.status==='ok'?'OLLAMA':'LIQUIDITY_FALLBACK'
+  for(const productId of researchOrder.slice(0,config.activeCapitalResearchTopN)){
+    researchPriorityProducts.add(productId)
   }
 
   publish('market_research_ranked',{
@@ -778,7 +781,8 @@ const seedUniverse=async()=>{
     model:research.model||null,
     reason:research.reason||null,
     topCandidates:researchOrder.slice(0,12),
-    activeCapitalPriorityCount:researchPriorityProducts.size
+    activeCapitalPriorityCount:researchPriorityProducts.size,
+    activeCapitalPrioritySource:researchPrioritySource
   },'research')
 
   // Always keep current bot-managed holdings in the stream so exits are never
