@@ -128,13 +128,31 @@ const refreshPosition=(productId:string,state:ProductState,force=false)=>{
   return state.position
 }
 
+const withTimeout=async<T>(promise:Promise<T>,ms:number,label:string):Promise<T>=>{
+  let timer:NodeJS.Timeout|undefined
+  try{
+    return await Promise.race([
+      promise,
+      new Promise<T>((_,reject)=>{
+        timer=setTimeout(()=>reject(new Error(label+'_TIMEOUT_AFTER_'+ms+'MS')),ms)
+      })
+    ])
+  }finally{
+    if(timer)clearTimeout(timer)
+  }
+}
+
 const smallAccountBuyIsExecutable=async(productId:string)=>{
   try{
-    const [product,accounts,portfolio]=await Promise.all([
-      getProduct(productId),
-      listAccounts(),
-      getChallengeSnapshot()
-    ])
+    const [product,accounts,portfolio]=await withTimeout(
+      Promise.all([
+        getProduct(productId),
+        listAccounts(),
+        getChallengeSnapshot()
+      ]),
+      8000,
+      'BUY_SIZING_CHECK'
+    )
     const usdAccount=(accounts as any[]).find((a:any)=>String(a.currency||'').toUpperCase()==='USD')
     const availableUsd=Number(usdAccount?.availableBalance?.value??usdAccount?.availableBalance??0)||0
     const portfolioUsd=Number((portfolio as any)?.currentPortfolioUsd||0)||0
