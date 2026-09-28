@@ -41,6 +41,34 @@ export const saveRuntimeRiskLimits = (input: Partial<RuntimeRiskLimits>) => {
 export const emergencyStopActive = () => getSetting('emergency_stop', 'false') === 'true'
 export const rollingRiskPauseActive = () => getSetting('rolling_risk_pause', 'false') === 'true'
 
+export const triggerUnrealizedPriceLossPause=(input:{
+  productId:string
+  livePrice:number
+  stopPrice:number
+  estimatedNetProfitUsd:number
+})=>{
+  const alreadyPaused=getSetting('loss_halt_active','false')==='true'
+  if(!alreadyPaused){
+    const triggeredAt=new Date().toISOString()
+    setSetting('loss_halt_active','true')
+    setSetting('loss_halt_triggered_at',triggeredAt)
+    setSetting('loss_halt_product',input.productId)
+    setSetting('loss_halt_amount_usd',String(input.estimatedNetProfitUsd))
+    setSetting('loss_halt_reason','UNREALIZED_PRICE_STOP')
+    publish('unrealized_price_loss_pause',{
+      ...input,
+      triggeredAt,
+      behavior:'NEW_BUYS_PAUSED_NO_LOSS_SELL_EXISTING_POSITIONS_WAIT_FOR_PROFIT'
+    },'risk')
+  }
+  return {
+    paused:true,
+    productId:input.productId,
+    reason:'UNREALIZED_PRICE_STOP',
+    alreadyPaused
+  }
+}
+
 export const initializeSingleLossStopModel=()=>{
   if(getSetting('single_loss_stop_model_v4_initialized','false')==='true')return false
 
@@ -950,14 +978,18 @@ export const tryLimitedLiveExecution = async (opts: {
 
     const estimatedFillPrice = Number(preview.est_average_filled_price || 0)
 
-    if(side==='SELL'&&Number(opts.requiredNetProfitUsd||0)>0){
+    const requiredNetProfitUsd=
+      side==='SELL'&&executionSource!=='ROLLING_24H_KILL_SWITCH'
+        ?Math.max(config.smallAccountMinNetProfitUsd,Number(opts.requiredNetProfitUsd||0))
+        :Number(opts.requiredNetProfitUsd||0)
+
+    if(side==='SELL'&&requiredNetProfitUsd>0){
       const previewCommission=Number(preview.commission_total||0)
       const previewQty=Number(baseSize||0)
       const feeLoadedEntry=Number(opts.avgEntryPrice||0)
       const previewNetProceeds=(estimatedFillPrice*previewQty)-previewCommission
       const previewCostBasis=feeLoadedEntry*previewQty
       const previewNetProfitUsd=previewNetProceeds-previewCostBasis
-      const requiredNetProfitUsd=Number(opts.requiredNetProfitUsd||0)
 
       if(!(estimatedFillPrice>0)||!(previewQty>0)||!(feeLoadedEntry>0)||previewNetProfitUsd+1e-9<requiredNetProfitUsd){
         const reason='SELL preview net profit $'
