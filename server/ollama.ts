@@ -211,3 +211,62 @@ Rules:
     return parsed
   }catch{return {action:'NONE'}}
 }
+
+
+export const rankResearchCandidates=async(
+  candidateProductIds:string[],
+  headlineEvidence:string,
+  sources:string[]
+)=>{
+  const model=await getRequiredChatModel()
+  const allow=[...new Set(candidateProductIds.map(x=>String(x).toUpperCase()).filter(Boolean))]
+  const system=`You are the market-research ranker for My Trading Agent.
+Use only the supplied public-news evidence and only rank symbols from the supplied Coinbase USD candidate allowlist.
+Do not invent symbols, prices, facts, or certainty. News can be stale, duplicated, wrong, promotional, or irrelevant.
+Treat source disagreement as uncertainty. Do not execute trades and do not output BUY/SELL commands.
+Return JSON only with keys: marketSentiment, ranked.
+marketSentiment must be one of POSITIVE, MIXED, CAUTIOUS, NEGATIVE, UNKNOWN.
+ranked must be an array of objects with keys productId, score, rationale.
+score must be 0-100 and means research relevance/quality of current context, not probability of profit.
+Prefer assets with fresh, multi-source, concrete catalysts or constructive market context. Penalize hacks, regulatory trouble, liquidity concerns, extreme hype, unsupported promotion, and single-source claims.
+Every productId must exactly match one item from the allowlist.`
+
+  const response=await fetch(`${config.ollamaBaseUrl}/api/chat`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model,
+      stream:false,
+      format:'json',
+      messages:[
+        {role:'system',content:system},
+        {role:'user',content:`Sources: ${sources.join(', ')}\nCoinbase candidate allowlist: ${allow.join(', ')}\n\nRecent public headlines:\n${headlineEvidence}`}
+      ]
+    }),
+    signal:AbortSignal.timeout(120000)
+  })
+  if(!response.ok)throw new Error(await ollamaError(response))
+  const data=await response.json() as {message?:{content?:string}}
+  const raw=data.message?.content||'{}'
+  let parsed:any={}
+  try{parsed=JSON.parse(raw)}catch{throw new Error('Ollama research ranker returned invalid JSON.')}
+
+  const allowed=new Set(allow)
+  const rankedRaw=Array.isArray(parsed?.ranked)?parsed.ranked:[]
+  const rankedProductIds=rankedRaw
+    .map((row:any)=>String(row?.productId||'').toUpperCase())
+    .filter((productId:string)=>allowed.has(productId))
+
+  return {
+    model,
+    marketSentiment:String(parsed?.marketSentiment||'UNKNOWN').toUpperCase(),
+    rankedProductIds:[...new Set(rankedProductIds)],
+    ranked:rankedRaw
+      .filter((row:any)=>allowed.has(String(row?.productId||'').toUpperCase()))
+      .map((row:any)=>({
+        productId:String(row.productId).toUpperCase(),
+        score:Math.max(0,Math.min(100,Number(row.score)||0)),
+        rationale:String(row.rationale||'').slice(0,300)
+      }))
+  }
+}
