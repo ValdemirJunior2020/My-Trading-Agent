@@ -4,6 +4,7 @@ import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
 import { researchCryptoCandidates } from './marketResearch.js'
 import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive, getOpenBotExposureSummary, triggerUnrealizedPriceLossPause } from './risk.js'
+import { getChallengeSnapshot } from './challenge.js'
 import { confirmedMeanReversionEntryDecision, getBotManagedLots, getBotManagedPosition } from './bollingerStrategy.js'
 import { NEXT_WEEK_BREAKOUT,breakoutHardStopPrice,breakoutTrailingActivationPrice,breakoutTrailingStopPrice,evaluateBreakoutConfirmation,nextWeekBreakoutActive } from './velocityBreakout.js'
 
