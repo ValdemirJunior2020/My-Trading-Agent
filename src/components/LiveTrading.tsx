@@ -257,9 +257,11 @@ export function LiveTrading({ language }: Props) {
                   ? (pt ? 'O Emergency Stop manual está bloqueando ordens reais.' : 'The manual Emergency Stop is blocking real orders.')
                   : (pt ? 'Um check de segurança ainda não está pronto para ordens reais.' : 'A safety check is not ready for real orders yet.')
                 : autoSafePause
-                ? readiness?.entryPauseReason==='FIRST_REALIZED_LOSS'
-                  ? (pt ? 'Primeira perda realizada: novas compras pausadas; saídas das posições atuais continuam ativas.' : 'First realized loss: new buys paused; existing-position exits remain active.')
-                  : (pt ? 'Compras pausadas; saídas de proteção continuam ativas.' : 'Buys paused; protective exits remain active.')
+                ? readiness?.entryPauseReason==='UNREALIZED_PRICE_STOP'
+                  ? (pt ? 'LOSS PAUSE: nenhuma venda com prejuízo; novas compras pausadas e posições atuais aguardam saída lucrativa.' : 'LOSS PAUSE: no loss sell; new buys paused and current positions wait for a profitable exit.')
+                  : readiness?.entryPauseReason==='FIRST_REALIZED_LOSS'
+                    ? (pt ? 'Primeira perda realizada: novas compras pausadas; saídas das posições atuais continuam ativas.' : 'First realized loss: new buys paused; existing-position exits remain active.')
+                    : (pt ? 'Compras pausadas; saídas de proteção continuam ativas.' : 'Buys paused; protective exits remain active.')
                 : pipelineRunning
                   ? (pt ? 'Os agentes estão analisando ' + pipelineProduct + '.' : 'The agents are analyzing ' + pipelineProduct + '.')
                   : (pt ? 'O sistema continua monitorando automaticamente.' : 'The system continues monitoring automatically.')}
