@@ -460,15 +460,23 @@ export const getOpenBotExposureSummary=()=>{
     const preview:any=p.preview||{}
     const fill:any=p.fill||{}
     const price=Number(p.actualFillPrice||fill.filledPrice||preview.est_average_filled_price||0)
-    const notional=Number(p.notionalUsd||fill.filledValue||preview.order_total||0)
+    const requestedNotional=Number(p.notionalUsd||preview.order_total||0)
+    const qty=Number(
+      p.executedQty||fill.executedQty||preview.base_size||
+      (price>0&&requestedNotional>0?requestedNotional/price:0)
+    )
+    const filledValue=Number(
+      fill.filledValue||
+      (price>0&&qty>0?price*qty:0)||
+      requestedNotional
+    )
     const fee=Number(fill.totalFees||preview.commission_total||0)
-    const qty=Number(p.executedQty||fill.executedQty||preview.base_size||(price>0&&notional>0?notional/price:0))
     if(!(price>0)||!(qty>0))continue
 
     const row=inventory.get(productId)||{qty:0,costUsd:0}
     if(side==='BUY'){
       row.qty+=qty
-      row.costUsd+=notional+fee
+      row.costUsd+=filledValue+fee
       inventory.set(productId,row)
       continue
     }
@@ -527,13 +535,19 @@ export const getDailyEquityGuard = (currentPortfolioUsd: number) => {
 
     const side = String(p.side || '').toUpperCase()
     const preview:any = p.preview || {}
-    const price = Number(preview.est_average_filled_price || 0)
-    const notional = Number(p.notionalUsd || preview.order_total || 0)
-    const commission = Number(preview.commission_total || 0)
+    const fill:any = p.fill || {}
+    const price = Number(p.actualFillPrice || fill.filledPrice || preview.est_average_filled_price || 0)
+    const requestedNotional = Number(p.notionalUsd || preview.order_total || 0)
     const baseQty = Number(
-      preview.base_size ||
-      (price > 0 && notional > 0 ? notional / price : 0)
+      p.executedQty || fill.executedQty || preview.base_size ||
+      (price > 0 && requestedNotional > 0 ? requestedNotional / price : 0)
     )
+    const filledValue = Number(
+      fill.filledValue ||
+      (price > 0 && baseQty > 0 ? price * baseQty : 0) ||
+      requestedNotional
+    )
+    const commission = Number(fill.totalFees || preview.commission_total || 0)
 
     if (!(baseQty > 0) || !(price > 0)) continue
 
@@ -541,7 +555,7 @@ export const getDailyEquityGuard = (currentPortfolioUsd: number) => {
 
     if (side === 'BUY') {
       row.qty += baseQty
-      row.costUsd += notional + commission
+      row.costUsd += filledValue + commission
       inventory.set(productId,row)
       continue
     }
@@ -550,7 +564,8 @@ export const getDailyEquityGuard = (currentPortfolioUsd: number) => {
       const qtySold = Math.min(baseQty,row.qty)
       const avgCost = row.qty > 0 ? row.costUsd / row.qty : 0
       const allocatedCost = avgCost * qtySold
-      const proceeds = (price * qtySold) - commission
+      const grossProceeds = baseQty>0 ? filledValue*(qtySold/baseQty) : price*qtySold
+      const proceeds = grossProceeds - commission
       const pnl = proceeds - allocatedCost
 
       const eventDate = new Date(event.createdAt).toLocaleDateString('en-CA')
@@ -586,7 +601,7 @@ export const getDailyEquityGuard = (currentPortfolioUsd: number) => {
     blocked: dailyLoss.blocked,
     mode: 'BOT_REALIZED_LOSS',
     marketDrawdownBlocksTrading: false,
-    basisNote: 'Bot PnL uses Coinbase preview fill estimates until fill reconciliation is added.'
+    basisNote: 'Bot PnL is reconstructed from Coinbase actual fills and fees, with preview values only as fallback.'
   }
 }
 
