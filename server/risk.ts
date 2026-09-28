@@ -91,7 +91,7 @@ export const initializeSingleLossStopModel=()=>{
     }
   }
 
-  if(singleLossLocked&&!rollingLocked&&previousReason.toUpperCase()==='SINGLE_REALIZED_LOSS'){
+  if(singleLossLocked&&!rollingLocked&&['SINGLE_REALIZED_LOSS','LOSS_GUARD'].includes(previousReason.toUpperCase())){
     setSetting('loss_guard_active','true')
     setSetting('loss_halt_active','true')
     setSetting('emergency_stop','false')
@@ -117,7 +117,17 @@ export const migrateLegacyLossHaltEmergencyStop=()=>{
   const lossHaltActive=getSetting('loss_halt_active','false')==='true'
   const lossHaltTriggeredAt=getSetting('loss_halt_triggered_at','')
   const emergencyStopReason=getSetting('emergency_stop_reason','').toUpperCase()
-  if(['LOSS_GUARD','SINGLE_REALIZED_LOSS'].includes(emergencyStopReason))return false
+  if(lossHaltActive&&['LOSS_GUARD','SINGLE_REALIZED_LOSS'].includes(emergencyStopReason)){
+    setSetting('emergency_stop','false')
+    setSetting('emergency_stop_reason','')
+    publish('legacy_loss_halt_emergency_migrated',{
+      lossHaltTriggeredAt:lossHaltTriggeredAt||null,
+      previousEmergencyStopReason:emergencyStopReason,
+      latestManualEmergencyAt:null,
+      message:'Converted legacy full-stop loss guard into BUY pause; profitable SELL exits remain enabled.'
+    },'risk')
+    return true
+  }
   const latestManualEmergency=recentEvents(500)
     .find((event:any)=>String(event.type)==='emergency_stop_activated'&&String(event.agentId||'')==='manager')
   const latestManualEmergencyAt=String(latestManualEmergency?.createdAt||'')
@@ -322,7 +332,7 @@ const triggerSingleLossEmergency=async(input:{
   // A first realized loss pauses entries only. Existing positions remain under
   // normal profit management. The rolling 3%/24h guard is a separate portfolio-level
   // BUY pause and does not force liquidation at a loss.
-  if(getSetting('emergency_stop_reason','').toUpperCase()==='SINGLE_REALIZED_LOSS'){
+  if(['SINGLE_REALIZED_LOSS','LOSS_GUARD'].includes(getSetting('emergency_stop_reason','').toUpperCase())){
     setSetting('emergency_stop','false')
     setSetting('emergency_stop_reason','')
   }
