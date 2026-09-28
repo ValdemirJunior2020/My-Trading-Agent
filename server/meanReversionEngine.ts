@@ -144,38 +144,52 @@ const withTimeout=async<T>(promise:Promise<T>,ms:number,label:string):Promise<T>
 
 const smallAccountBuyIsExecutable=async(productId:string)=>{
   try{
-    const [product,accounts,portfolio]=await withTimeout(
+    const [product,accounts]=await withTimeout(
       Promise.all([
         getProduct(productId),
-        listAccounts(),
-        getChallengeSnapshot()
+        listAccounts()
       ]),
       8000,
       'BUY_SIZING_CHECK'
     )
     const usdAccount=(accounts as any[]).find((a:any)=>String(a.currency||'').toUpperCase()==='USD')
     const availableUsd=Number(usdAccount?.availableBalance?.value??usdAccount?.availableBalance??0)||0
-    const portfolioUsd=Number((portfolio as any)?.currentPortfolioUsd||0)||0
     const quoteMin=Math.max(config.minLiveOrderUsd,Number((product as any)?.quote_min_size||0))
     const quoteMax=Number((product as any)?.quote_max_size||Infinity)
     const step=Math.max(0.01,Number(config.buyStepUsd||5))
-    const targetUsd=portfolioUsd>0
-      ?portfolioUsd*(Number(config.targetBuyPercent||10)/100)
-      :availableUsd*(Number(config.targetBuyPercent||10)/100)
+    const targetUsd=availableUsd*(Number(config.targetBuyPercent||10)/100)
     const cappedUsd=Math.min(targetUsd,availableUsd,quoteMax)
     const affordable=Math.floor((cappedUsd+1e-9)/step)*step
     const requestedUsd=Number(affordable.toFixed(2))
+    const smallAccountMaxUsd=Math.max(step,Number(config.buyStepUsd||5)*2)
+
+    if(quoteMin>smallAccountMaxUsd){
+      return {
+        ok:false,
+        reason:'COINBASE_MINIMUM_EXCEEDS_SMALL_ACCOUNT_SIZE',
+        requestedUsd,
+        availableUsd,
+        portfolioUsd:null,
+        targetBuyPercent:config.targetBuyPercent,
+        targetUsd,
+        quoteMin,
+        quoteMax,
+        buyStepUsd:step,
+        smallAccountMaxUsd
+      }
+    }
 
     return {
       ok:requestedUsd+1e-8>=quoteMin&&requestedUsd>0,
       requestedUsd,
       availableUsd,
-      portfolioUsd,
+      portfolioUsd:null,
       targetBuyPercent:config.targetBuyPercent,
       targetUsd,
       quoteMin,
       quoteMax,
-      buyStepUsd:step
+      buyStepUsd:step,
+      smallAccountMaxUsd
     }
   }catch(error){
     return {ok:false,error:error instanceof Error?error.message:String(error)}
@@ -340,7 +354,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
       productId,
       timestampIso:new Date().toISOString(),
       monotonicNs:process.hrtime.bigint().toString(),
-      reason:'NO_AFFORDABLE_COINBASE_BUY_SIZE',
+      reason:executable.reason||'NO_AFFORDABLE_COINBASE_BUY_SIZE',
       ...executable
     },'strategy')
     return
