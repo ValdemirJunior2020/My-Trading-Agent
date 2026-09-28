@@ -630,7 +630,10 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   } = input
   const availableAssetUsd = Number(input.availableAssetUsd ?? currentAssetUsd)
   const maxPositionUsd = totalPortfolioUsd * (limits.maxPositionPercent / 100)
-  const maxExposureUsd = totalPortfolioUsd * (limits.maxTotalExposurePercent / 100)
+  const maxExposureUsd = Math.min(
+    totalPortfolioUsd * (limits.maxTotalExposurePercent / 100),
+    Number(config.maxTotalExposureUsd||50)
+  )
   const daily = getDailyEquityGuard(totalPortfolioUsd)
   const botExposure=getOpenBotExposureSummary()
   const productAlreadyOpen=botExposure.positions.some(row=>row.productId===productId.toUpperCase())
@@ -842,7 +845,7 @@ export const tryLimitedLiveExecution = async (opts: {
     const buyStepUsd=Math.max(0.01,Number(config.buyStepUsd||5))
     const strategyTargetUsd=Math.max(
       buyStepUsd,
-      Math.floor((Number(config.targetBuyUsd||50)+1e-9)/buyStepUsd)*buyStepUsd
+      Math.floor((Number(config.targetBuyUsd||10)+1e-9)/buyStepUsd)*buyStepUsd
     )
     const requestedBuyUsd=Number(opts.requestedBuyUsd||strategyTargetUsd)
     const remainingExposureUsd=Math.max(0,maxExposureUsd-botExposure.totalBotExposureUsd)
