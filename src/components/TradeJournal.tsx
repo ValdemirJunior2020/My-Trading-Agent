@@ -475,34 +475,35 @@ export function TradeJournal({language}:Props){
             if(event.type==='mean_reversion_candle_closed'){
               const macro=p.macro5m||{}
               const mode=String(p.entryMode||'WAIT')
-              const active=mode==='ACTIVE_CAPITAL'
+              const activeReady=mode==='ACTIVE_CAPITAL'
+              const strongReady=mode==='STRONG_ENTRY'
+              const prioritySource=String(p.activeCapitalPrioritySource||'')
               const parts=[
                 '5m Macro '+(macro.ready===true?'PASS':'FAIL'),
                 Number.isFinite(Number(macro.latestClose))&&Number.isFinite(Number(macro.middleBand))
                   ? ('Close '+Number(macro.latestClose).toFixed(6)+' vs SMA20 '+Number(macro.middleBand).toFixed(6))
                   : '',
-                active
-                  ? ('ACTIVE CAPITAL '+(p.activeCapitalReady===true?'READY':'WAIT'))
-                  : ('5m BB '+(p.closeBelowLowerBand===true?'PASS':'FAIL')),
+                'STRONG '+(strongReady?'READY':'WAIT'),
+                'BB '+(p.closeBelowLowerBand===true?'PASS':'FAIL'),
                 Number.isFinite(Number(p.rsi))
-                  ? active
-                    ? ('RSI '+Number(p.rsi).toFixed(1)+' / active range 40–62')
-                    : ('RSI '+Number(p.rsi).toFixed(1)+' / strong needs <30')
+                  ? ('RSI '+Number(p.rsi).toFixed(1)+' / strong <30 • active 40–62')
                   : '',
                 Number.isFinite(Number(p.volumeRatio))
-                  ? active
-                    ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / active needs ≥0.75× VMA20')
-                    : ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / strong needs ≥1.50× VMA20')
+                  ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / strong ≥1.50× • active ≥0.75×')
                   : '',
-                active&&Number.isFinite(Number(p.macroExtensionPercent))
-                  ? ('SMA20 extension '+Number(p.macroExtensionPercent).toFixed(2)+'% / max 1.00%')
+                'ACTIVE CAPITAL '+(activeReady?'READY':'WAIT'),
+                'Priority '+(p.researchPriority===true?'YES':'NO')+(prioritySource?(' via '+prioritySource.replace(/_/g,' ')):''),
+                Number.isFinite(Number(p.macroExtensionPercent))
+                  ? ('SMA20 extension '+Number(p.macroExtensionPercent).toFixed(2)+'% / active max 1.00%')
                   : '',
-                active?('Ollama priority '+(p.researchPriority===true?'YES':'NO')):'',
+                Array.isArray(p.entryBlockers)&&p.entryBlockers.length
+                  ? ('Blockers '+p.entryBlockers.join(', '))
+                  : '',
                 Array.isArray(p.openBotProductIds)&&p.openBotProductIds.length
                   ? ('OPEN BOT POSITIONS: '+p.openBotProductIds.join(', '))
                   : 'OPEN BOT POSITIONS: NONE',
                 p.deterministicReady===true
-                  ? (mode==='ACTIVE_CAPITAL'?'ACTIVE CAPITAL BUY SETUP READY':'STRONG BUY SETUP READY')
+                  ? (activeReady?'ACTIVE CAPITAL BUY SETUP READY':'STRONG BUY SETUP READY')
                   : 'No deterministic entry trigger'
               ]
               return parts.filter(Boolean).join(' • ')
@@ -540,7 +541,8 @@ export function TradeJournal({language}:Props){
                 'Sentiment '+String(p.marketSentiment||'UNKNOWN'),
                 sources?('Sources '+sources):'',
                 top?('Top candidates '+top):'',
-                p.status==='fallback'&&p.reason?('Fallback '+String(p.reason)):''
+                p.activeCapitalPrioritySource?('Active-capital source '+String(p.activeCapitalPrioritySource).replace(/_/g,' ')):'',
+                p.status==='fallback'&&p.reason?('Research fallback '+String(p.reason)):''
               ].filter(Boolean).join(' • ')
             }
             if(event.type==='unrealized_price_loss_pause'){
