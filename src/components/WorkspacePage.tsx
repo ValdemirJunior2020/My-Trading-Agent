@@ -133,7 +133,7 @@ export function WorkspacePage({page,language,system}:Props){
   if(page==='strategies')return <PageShell title={pt?'Estratégias':'Strategies'} subtitle={pt?'Estratégias e regras que o pipeline realmente utiliza.':'Strategies and rules actually used by the pipeline.'}>
     <div className="tool-card-grid">
       <article><h3>Production Rule Set</h3><p>Target ~10% of portfolio per good setup, rounded down to $5 steps • multiple different coins allowed within cash/exposure limits • no same-coin stacking • fee-aware normal exit only when net proceeds exceed full cost by at least $0.10 • 0.80% loss-pause threshold does not sell negative; it pauses new BUYs and holds existing positions for a profitable exit • 3%/24h emergency account kill switch remains separate.</p></article>
-      <article><h3>Dual-Timeframe Entry</h3><p>Closed 5m macro close &gt; Bollinger middle/SMA20 • same closed 5m entry close &lt; lower Bollinger • RSI14 &lt;30 • volume ≥1.5× VMA20.</p></article>
+      <article><h3>Two Entry Paths</h3><p>STRONG: 5m macro PASS • close below lower Bollinger • RSI14 &lt;30 • volume ≥1.5× VMA20. ACTIVE CAPITAL: Ollama-researched priority coin • 5m macro PASS • RSI 40–62 • volume ≥0.75× VMA20 • price no more than 1.0% above SMA20.</p></article>
       <article><h3>Deterministic Execution</h3><p>0.10% max entry slippage. AI may scan and ingest data, but it cannot approve, reject, or modify live entry/exit math.</p></article>
       <article><h3>Rolling Kill Switch</h3><p>3% rolling 24h equity drawdown pauses new BUYs, does not force-sell losing positions, still allows fee-aware profitable exits, and requires manual reset.</p></article>
     </div>
