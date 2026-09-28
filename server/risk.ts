@@ -156,7 +156,7 @@ export const getRollingRiskState=()=>{
     limitPercent:config.rollingKillSwitchPercent,
     rollingWindowHours:24,
     requiresManualReset:locked,
-    protectiveSellsAllowed:false
+    protectiveSellsAllowed:true
   }
   try{
     const parsed=JSON.parse(raw)
@@ -170,7 +170,7 @@ export const getRollingRiskState=()=>{
       limitPercent:config.rollingKillSwitchPercent,
       rollingWindowHours:24,
       requiresManualReset:locked,
-      protectiveSellsAllowed:false
+      protectiveSellsAllowed:true
     }
   }
 }
@@ -397,50 +397,30 @@ export const checkRollingEquityKillSwitch=async(currentPortfolioUsd:number)=>{
     setSetting('rolling_kill_switch_locked','true')
     setSetting('rolling_risk_pause','true')
     setSetting('rolling_risk_pause_started_at',new Date(now).toISOString())
-    setSetting('emergency_stop','true')
-    setSetting('emergency_stop_reason','ROLLING_24H_DRAWDOWN')
 
-    if(!rollingKillInFlight){
-      rollingKillInFlight=(async()=>{
-        try{
-          try{
-            const openOrders=await listOpenOrders()
-            const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
-            if(ids.length){
-              await cancelOrders(ids)
-              canceledOrderIds=ids
-            }
-          }catch(error){
-            publish('rolling_kill_switch_cancel_failed',{
-              timestampIso:new Date().toISOString(),
-              monotonicNs:process.hrtime.bigint().toString(),
-              error:error instanceof Error?error.message:String(error)
-            },'risk')
-          }
-
-          liquidationResults=await liquidateBotInventoryForEmergency('ROLLING_24H_KILL_SWITCH')
-
-          publish('rolling_kill_switch_triggered',{
-            timestampIso:new Date().toISOString(),
-            monotonicNs:process.hrtime.bigint().toString(),
-            mode:'FULL_MANUAL_RESET_LOCKDOWN',
-            currentEquityUsd:equity,
-            peakEquityUsd,
-            drawdownPercent,
-            limitPercent:config.rollingKillSwitchPercent,
-            rollingWindowHours:24,
-            canceledOrderIds,
-            liquidationResults,
-            entryBehavior:'ALL_NEW_ENTRIES_BLOCKED',
-            exitBehavior:'BOT_POSITIONS_MARKET_LIQUIDATED',
-            resetBehavior:'MANUAL_RESET_REQUIRED'
-          },'risk')
-        }finally{
-          rollingKillInFlight=null
-        }
-      })()
+    // The rolling drawdown guard no longer force-sells positions. It pauses
+    // new entries and lets existing positions wait for a fee-aware profitable
+    // exit. This honors the global no-automatic-loss-sell rule.
+    if(getSetting('emergency_stop_reason','')==='ROLLING_24H_DRAWDOWN'){
+      setSetting('emergency_stop','false')
+      setSetting('emergency_stop_reason','')
     }
-    await rollingKillInFlight
+
+    publish('rolling_kill_switch_triggered',{
+      timestampIso:new Date().toISOString(),
+      monotonicNs:process.hrtime.bigint().toString(),
+      mode:'ENTRY_PAUSE_NO_LOSS_LIQUIDATION',
+      currentEquityUsd:equity,
+      peakEquityUsd,
+      drawdownPercent,
+      limitPercent:config.rollingKillSwitchPercent,
+      rollingWindowHours:24,
+      canceledOrderIds:[],
+      liquidationResults:[],
+      entryBehavior:'ALL_NEW_ENTRIES_BLOCKED',
+      exitBehavior:'ONLY_FEE_AWARE_PROFITABLE_EXITS_ALLOWED',
+      resetBehavior:'MANUAL_RESET_REQUIRED'
+    },'risk')
   }
 
   const state={
@@ -455,7 +435,7 @@ export const checkRollingEquityKillSwitch=async(currentPortfolioUsd:number)=>{
     rollingWindowHours:24,
     requiresManualReset:locked,
     newBuysBlocked:locked,
-    protectiveSellsAllowed:false,
+    protectiveSellsAllowed:true,
     pauseStartedAt:getSetting('rolling_risk_pause_started_at','')||null,
     resetAt:getSetting('rolling_kill_switch_reset_at','')||null,
     snapshotCount:snapshots.length,
@@ -813,10 +793,10 @@ export const tryLimitedLiveExecution = async (opts: {
   }
 
   const rollingKillSwitch=await checkRollingEquityKillSwitch(totalPortfolioUsd)
-  if(rollingKillSwitch.blocked){
+  if(rollingKillSwitch.blocked&&side==='BUY'){
     return {
       executed:false,
-      reason:'Rolling 24-hour 3% kill switch is locked. Manual reset is required before any automated execution can resume.',
+      reason:'Rolling 24-hour 3% guard is locked. New BUYs are paused until manual reset; profitable SELL exits remain allowed.',
       rollingKillSwitch
     }
   }
@@ -979,7 +959,7 @@ export const tryLimitedLiveExecution = async (opts: {
     const estimatedFillPrice = Number(preview.est_average_filled_price || 0)
 
     const requiredNetProfitUsd=
-      side==='SELL'&&executionSource!=='ROLLING_24H_KILL_SWITCH'
+      side==='SELL'
         ?Math.max(config.smallAccountMinNetProfitUsd,Number(opts.requiredNetProfitUsd||0))
         :Number(opts.requiredNetProfitUsd||0)
 
