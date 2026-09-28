@@ -13,10 +13,11 @@ const num = (value: string | undefined, fallback: number) => {
 
 export const PRODUCTION_STRATEGY = Object.freeze({
   buyStepUsd: 5,
-  targetBuyUsd: 50,
+  targetBuyUsd: 10,
   targetBuyPercent: 10,
-  maxPerProductPercent: 50,
+  maxPerProductPercent: 10,
   maxTotalExposurePercent: 100,
+  maxTotalExposureUsd: 50,
   maxConcurrentPositions: 999,
   hardStopLossPercent: 0.8,
   minimumNetProfitUsd: 0.10,
@@ -54,6 +55,7 @@ export const config = {
   maxPositionPercent: PRODUCTION_STRATEGY.maxPerProductPercent,
   maxDailyLossPercent: num(process.env.MAX_DAILY_LOSS_PERCENT, 2),
   maxTotalExposurePercent: PRODUCTION_STRATEGY.maxTotalExposurePercent,
+  maxTotalExposureUsd: PRODUCTION_STRATEGY.maxTotalExposureUsd,
   maxOpenBotPositions: PRODUCTION_STRATEGY.maxConcurrentPositions,
   targetBuyUsd: PRODUCTION_STRATEGY.targetBuyUsd,
   targetBuyPercent: PRODUCTION_STRATEGY.targetBuyPercent,
