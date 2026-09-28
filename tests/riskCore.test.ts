@@ -317,7 +317,7 @@ test('newer real MANUAL emergency stop is preserved',()=>{
 })
 
 
-test('Loss Guard blocks both BUY and SELL execution',()=>{
+test('legacy Loss Guard reason pauses BUYs but still allows protective SELL exits',()=>{
   const buy=assessEmergencyExecutionGate({
     emergencyStop:true,
     tradingMode:'live',
@@ -337,8 +337,8 @@ test('Loss Guard blocks both BUY and SELL execution',()=>{
     emergencyStopReason:'LOSS_GUARD'
   })
   assert.equal(buy.approved,false)
-  assert.equal(sell.approved,false)
-  assert.equal(sell.lossHaltExitAllowed,false)
+  assert.equal(sell.approved,true)
+  assert.equal(sell.lossHaltExitAllowed,true)
 })
 
 test('Loss Guard emergency reason is never cleared as legacy loss-halt state',()=>{
