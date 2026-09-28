@@ -866,9 +866,19 @@ export const tryLimitedLiveExecution = async (opts: {
     }
 
     if(steppedUsd+1e-8<quoteMin||!(steppedUsd>0)){
+      const blocker=
+        availableUsd+1e-8<buyStepUsd
+          ?'INSUFFICIENT_AVAILABLE_USD'
+          :maxFromPercent+1e-8<buyStepUsd
+            ?'POSITION_CAP_BELOW_BUY_STEP'
+            :remainingExposureUsd+1e-8<buyStepUsd
+              ?'REMAINING_EXPOSURE_BELOW_BUY_STEP'
+              :quoteMin>steppedUsd+1e-8
+                ?'COINBASE_MINIMUM_ABOVE_AFFORDABLE_SIZE'
+                :'NO_EXECUTABLE_BUY_SIZE'
       return {
         executed:false,
-        reason:'Available cash or risk allowance is below the minimum executable $5-step buy size.',
+        reason:blocker,
         availableUsd,
         requestedBuyUsd,
         rawAffordableUsd,
@@ -877,7 +887,9 @@ export const tryLimitedLiveExecution = async (opts: {
         quoteMin,
         quoteMax,
         maxPositionUsd:maxFromPercent,
-        remainingExposureUsd
+        remainingExposureUsd,
+        totalBotExposureUsd:botExposure.totalBotExposureUsd,
+        totalPortfolioUsd
       }
     }
 
