@@ -51,9 +51,9 @@ export function AgentDetails({agent,t}:Props){
 
   const currentTask=isLossGuard
     ? (singleLossLocked
-        ? 'FIRST LOSS EMERGENCY SHUTDOWN ACTIVE'
+        ? 'FIRST LOSS BUY PAUSE ACTIVE'
         : rollingLocked
-          ? '3% / 24h EMERGENCY LOCKDOWN ACTIVE'
+          ? '3% / 24h BUY PAUSE ACTIVE'
           : 'Monitoring first-loss + rolling 24h protection')
     : isCurrent
       ? 'Processing optional AI analysis'
@@ -65,9 +65,9 @@ export function AgentDetails({agent,t}:Props){
 
   const lastCompleted=isLossGuard
     ? (singleLossLocked
-        ? 'First realized loss triggered full shutdown — manual reset required'
+        ? 'First realized loss paused new BUYs — manual reset required'
         : rollingLocked
-          ? '3% / 24h kill switch triggered — manual reset required'
+          ? '3% / 24h guard paused new BUYs — manual reset required'
           : 'First-loss and 24h protections armed')
     : isCompleted
       ? 'Completed optional AI analysis'
@@ -79,10 +79,10 @@ export function AgentDetails({agent,t}:Props){
 
   const reasoning=isLossGuard
     ? (singleLossLocked
-        ? 'A realized losing SELL triggered the first-loss rule. Open orders are canceled, all remaining bot-managed positions are liquidated, and all automated trading remains locked until you manually reset it.'
+        ? 'A realized losing SELL triggered the first-loss rule. New BUYs are paused until manual reset; existing positions remain active and may exit only through the current fee-aware profitable SELL rules.'
         : rollingLocked
-          ? 'Rolling account equity reached the 3% drawdown limit. Open orders are canceled, bot-managed positions are liquidated, and automated trading remains locked until manual reset.'
-          : 'Two protections are armed: the first realized losing SELL triggers a full shutdown, and a 3% rolling 24-hour equity drawdown triggers the same manual-reset lockdown.')
+          ? 'Rolling account equity reached the 3% drawdown limit. New BUYs are paused until manual reset; existing positions are not force-sold and profitable exits remain active.'
+          : 'Two protections are armed: a first realized losing SELL pauses new BUYs, and a 3% rolling 24-hour equity drawdown also pauses new BUYs. Neither rule force-sells losing positions.')
     : isCurrent
       ? 'This AI agent is analyzing in the background. It cannot approve, reject, modify, or override deterministic live trades.'
       : pipelineRunning
