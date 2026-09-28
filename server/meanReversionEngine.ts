@@ -95,38 +95,11 @@ const appendClosed=(state:ProductState,candle:Candle)=>{
   state.closed=[...map.values()].sort((a,b)=>a.start-b.start).slice(-MAX_HISTORY)
 }
 
-const buildClosedTenMinuteBars=(fiveMinuteCandles:Candle[])=>{
-  const buckets=new Map<number,Candle[]>()
-  for(const candle of fiveMinuteCandles){
-    const bucketStart=Math.floor(candle.start/600)*600
-    const rows=buckets.get(bucketStart)||[]
-    rows.push(candle)
-    buckets.set(bucketStart,rows)
-  }
-
-  const result:Candle[]=[]
-  for(const [bucketStart,rows] of [...buckets.entries()].sort((a,b)=>a[0]-b[0])){
-    const ordered=rows.sort((a,b)=>a.start-b.start)
-    const first=ordered.find(row=>row.start===bucketStart)
-    const second=ordered.find(row=>row.start===bucketStart+300)
-    if(!first||!second)continue
-    result.push({
-      start:bucketStart,
-      open:first.open,
-      high:Math.max(first.high,second.high),
-      low:Math.min(first.low,second.low),
-      close:second.close,
-      volume:first.volume+second.volume
-    })
-  }
-  return result
-}
-
-const tenMinuteMacroContext=(fiveMinuteCandles:Candle[])=>{
-  const bars=buildClosedTenMinuteBars(fiveMinuteCandles)
+const fiveMinuteMacroContext=(fiveMinuteCandles:Candle[])=>{
+  const bars=[...fiveMinuteCandles].sort((a,b)=>a.start-b.start)
   if(bars.length<config.macroBollingerPeriod)return {
     ready:false,
-    reason:'NOT_ENOUGH_CLOSED_10M_BARS',
+    reason:'NOT_ENOUGH_CLOSED_5M_BARS',
     candleCount:bars.length,
     latestClose:null,
     middleBand:null
@@ -136,7 +109,7 @@ const tenMinuteMacroContext=(fiveMinuteCandles:Candle[])=>{
   const middleBand=avg(closes.slice(-config.macroBollingerPeriod))
   return {
     ready:latestClose>middleBand,
-    reason:latestClose>middleBand?'ABOVE_10M_BOLLINGER_MIDDLE':'NOT_ABOVE_10M_BOLLINGER_MIDDLE',
+    reason:latestClose>middleBand?'ABOVE_5M_BOLLINGER_MIDDLE':'NOT_ABOVE_5M_BOLLINGER_MIDDLE',
     candleCount:bars.length,
     latestClose,
     middleBand,
@@ -246,7 +219,7 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     currentVolume:Number(candle.volume||0),
     averageVolume
   })
-  const macro=tenMinuteMacroContext(state.closed)
+  const macro=fiveMinuteMacroContext(state.closed)
   const position=refreshPosition(productId,state,true)
   const globalExposure=getOpenBotExposureSummary()
   const openBotProductIds=globalExposure.positions.map(row=>row.productId)
@@ -270,11 +243,11 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     averageVolume20:averageVolume,
     volumeRatio:entryDecision.volumeRatio,
     minimumVolumeRatio:config.entryMinimumVolumeRatio,
-    macro10m:macro,
+    macro5m:macro,
     deterministicReady,
     entryBlockers:[
       ...entryDecision.blockers,
-      ...(macro.ready?[]:['TEN_MINUTE_MACRO_FILTER_BLOCKED']),
+      ...(macro.ready?[]:['FIVE_MINUTE_MACRO_FILTER_BLOCKED']),
       ...(position.qty>0?['PRODUCT_ALREADY_HAS_OPEN_BOT_POSITION']:[])
     ]
   },'strategy')
@@ -302,9 +275,9 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     lowerBand:currentLower,
     rsi:currentRsi,
     volumeRatio:entryDecision.volumeRatio,
-    macro10m:macro,
+    macro5m:macro,
     rules:{
-      macro10mCloseAboveBollingerMiddle:true,
+      macro5mCloseAboveBollingerMiddle:true,
       fiveMinuteCloseStrictlyBelowLowerBand:true,
       currentRsiStrictlyBelow:config.entryRsiStrictlyBelow,
       minimumVolumeRatio:config.entryMinimumVolumeRatio,
