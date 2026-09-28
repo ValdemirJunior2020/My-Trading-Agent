@@ -135,7 +135,7 @@ export function WorkspacePage({page,language,system}:Props){
       <article><h3>Production Rule Set</h3><p>Target ~10% of portfolio per good setup, rounded down to $5 steps • multiple different coins allowed within cash/exposure limits • no same-coin stacking • fee-aware normal exit only when net proceeds exceed full cost by at least $0.10 • 0.80% loss-pause threshold does not sell negative; it pauses new BUYs and holds existing positions for a profitable exit • 3%/24h emergency account kill switch remains separate.</p></article>
       <article><h3>Dual-Timeframe Entry</h3><p>Closed 5m macro close &gt; Bollinger middle/SMA20 • same closed 5m entry close &lt; lower Bollinger • RSI14 &lt;30 • volume ≥1.5× VMA20.</p></article>
       <article><h3>Deterministic Execution</h3><p>0.10% max entry slippage. AI may scan and ingest data, but it cannot approve, reject, or modify live entry/exit math.</p></article>
-      <article><h3>Rolling Kill Switch</h3><p>3% rolling 24h equity drawdown cancels open orders, liquidates bot-managed positions, blocks trading, and requires manual reset.</p></article>
+      <article><h3>Rolling Kill Switch</h3><p>3% rolling 24h equity drawdown pauses new BUYs, does not force-sell losing positions, still allows fee-aware profitable exits, and requires manual reset.</p></article>
     </div>
     <div className="tool-json">{pipeline?JSON.stringify(pipeline,null,2):'Pipeline status unavailable.'}</div>
   </PageShell>
