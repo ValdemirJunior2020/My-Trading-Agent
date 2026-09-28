@@ -42,7 +42,7 @@ export const emergencyStopActive = () => getSetting('emergency_stop', 'false') =
 export const rollingRiskPauseActive = () => getSetting('rolling_risk_pause', 'false') === 'true'
 
 export const initializeSingleLossStopModel=()=>{
-  if(getSetting('single_loss_stop_model_v3_initialized','false')==='true')return false
+  if(getSetting('single_loss_stop_model_v4_initialized','false')==='true')return false
 
   const singleLossLocked=getSetting('single_loss_kill_switch_locked','false')==='true'
   const rollingLocked=getSetting('rolling_kill_switch_locked','false')==='true'
@@ -63,13 +63,24 @@ export const initializeSingleLossStopModel=()=>{
     }
   }
 
-  setSetting('single_loss_stop_model_v3_initialized','true')
+  if(singleLossLocked&&!rollingLocked&&previousReason.toUpperCase()==='SINGLE_REALIZED_LOSS'){
+    setSetting('loss_guard_active','true')
+    setSetting('loss_halt_active','true')
+    setSetting('emergency_stop','false')
+    setSetting('emergency_stop_reason','')
+    publish('single_loss_stop_model_migrated',{
+      mode:'ENTRY_PAUSE_ONLY',
+      message:'Converted legacy first-loss full emergency into BUY pause with existing-position exits still active.'
+    },'risk')
+  }
+
+  setSetting('single_loss_stop_model_v4_initialized','true')
   publish('single_loss_stop_model_initialized',{
     preservedSingleLossLock:singleLossLocked,
     preservedRollingLock:rollingLocked,
     clearedLegacyLossHalt:!singleLossLocked&&!rollingLocked&&hadLossHalt,
     previousEmergencyStopReason:previousReason||null,
-    behavior:'FIRST realized losing SELL triggers full lockdown, cancels open orders, liquidates remaining bot positions, and requires manual reset.'
+    behavior:'FIRST realized losing SELL pauses new BUYs, keeps existing-position exits active, does not liquidate other positions, and requires manual reset.'
   },'risk')
   return true
 }
@@ -257,8 +268,6 @@ const liquidateBotInventoryForEmergency=async(
 
 let lastRollingEquitySnapshotAt=0
 let rollingKillInFlight:Promise<any>|null=null
-let singleLossKillInFlight:Promise<any>|null=null
-
 const triggerSingleLossEmergency=async(input:{
   productId:string
   realizedNetProfitUsd:number
@@ -267,7 +276,8 @@ const triggerSingleLossEmergency=async(input:{
   if(!(Number(input.realizedNetProfitUsd)<0))return null
   if(getSetting('single_loss_kill_switch_locked','false')==='true')return {
     locked:true,
-    reason:'SINGLE_REALIZED_LOSS'
+    reason:'SINGLE_REALIZED_LOSS',
+    mode:'ENTRY_PAUSE_ONLY'
   }
 
   const triggeredAt=new Date().toISOString()
@@ -278,52 +288,36 @@ const triggerSingleLossEmergency=async(input:{
   setSetting('single_loss_kill_switch_loss_percent',String(input.realizedNetProfitPercent??0))
   setSetting('loss_guard_active','true')
   setSetting('loss_halt_active','true')
-  setSetting('emergency_stop','true')
-  setSetting('emergency_stop_reason','SINGLE_REALIZED_LOSS')
+  setSetting('loss_halt_triggered_at',triggeredAt)
+  setSetting('loss_halt_product',input.productId)
+  setSetting('loss_halt_amount_usd',String(input.realizedNetProfitUsd))
 
-  if(!singleLossKillInFlight){
-    singleLossKillInFlight=(async()=>{
-      let canceledOrderIds:string[]=[]
-      let liquidationResults:any[]=[]
-      try{
-        try{
-          const openOrders=await listOpenOrders()
-          const ids=openOrders.map((o:any)=>String(o.order_id||'')).filter(Boolean)
-          if(ids.length){
-            await cancelOrders(ids)
-            canceledOrderIds=ids
-          }
-        }catch(error){
-          publish('single_loss_kill_switch_cancel_failed',{
-            timestampIso:new Date().toISOString(),
-            productId:input.productId,
-            error:error instanceof Error?error.message:String(error)
-          },'risk')
-        }
-
-        liquidationResults=await liquidateBotInventoryForEmergency('SINGLE_LOSS_KILL_SWITCH')
-
-        publish('single_loss_kill_switch_triggered',{
-          timestampIso:triggeredAt,
-          productId:input.productId,
-          realizedNetProfitUsd:input.realizedNetProfitUsd,
-          realizedNetProfitPercent:input.realizedNetProfitPercent,
-          canceledOrderIds,
-          liquidationResults,
-          mode:'FULL_MANUAL_RESET_LOCKDOWN',
-          entryBehavior:'ALL_AUTOMATION_BLOCKED',
-          exitBehavior:'ALL_REMAINING_BOT_POSITIONS_MARKET_LIQUIDATED',
-          resetBehavior:'MANUAL_RESET_REQUIRED'
-        },'loss_guard')
-
-        return {locked:true,canceledOrderIds,liquidationResults}
-      }finally{
-        singleLossKillInFlight=null
-      }
-    })()
+  // A first realized loss pauses entries only. Existing positions remain under
+  // normal stop/profit management. The rolling 3%/24h kill switch remains the
+  // separate full-liquidation emergency layer.
+  if(getSetting('emergency_stop_reason','').toUpperCase()==='SINGLE_REALIZED_LOSS'){
+    setSetting('emergency_stop','false')
+    setSetting('emergency_stop_reason','')
   }
 
-  return await singleLossKillInFlight
+  publish('single_loss_kill_switch_triggered',{
+    timestampIso:triggeredAt,
+    productId:input.productId,
+    realizedNetProfitUsd:input.realizedNetProfitUsd,
+    realizedNetProfitPercent:input.realizedNetProfitPercent,
+    mode:'ENTRY_PAUSE_ONLY',
+    entryBehavior:'NEW_BUYS_BLOCKED',
+    exitBehavior:'EXISTING_POSITIONS_CONTINUE_NORMAL_PROTECTIVE_AND_PROFIT_EXITS',
+    liquidationResults:[],
+    resetBehavior:'MANUAL_RESET_REQUIRED'
+  },'loss_guard')
+
+  return {
+    locked:true,
+    reason:'SINGLE_REALIZED_LOSS',
+    mode:'ENTRY_PAUSE_ONLY',
+    liquidationResults:[]
+  }
 }
 
 export const resetRollingKillSwitchLock=()=>{
