@@ -295,7 +295,6 @@ const liquidateBotInventoryForEmergency=async(
 }
 
 let lastRollingEquitySnapshotAt=0
-let rollingKillInFlight:Promise<any>|null=null
 const triggerSingleLossEmergency=async(input:{
   productId:string
   realizedNetProfitUsd:number
@@ -321,8 +320,8 @@ const triggerSingleLossEmergency=async(input:{
   setSetting('loss_halt_amount_usd',String(input.realizedNetProfitUsd))
 
   // A first realized loss pauses entries only. Existing positions remain under
-  // normal stop/profit management. The rolling 3%/24h kill switch remains the
-  // separate full-liquidation emergency layer.
+  // normal profit management. The rolling 3%/24h guard is a separate portfolio-level
+  // BUY pause and does not force liquidation at a loss.
   if(getSetting('emergency_stop_reason','').toUpperCase()==='SINGLE_REALIZED_LOSS'){
     setSetting('emergency_stop','false')
     setSetting('emergency_stop_reason','')
