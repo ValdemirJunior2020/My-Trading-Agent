@@ -206,8 +206,11 @@ export const handleApiRequest=async(
     const rollingRisk=getRollingRiskState()
     const hardStopped=emergencyStopActive()
     const lossHaltActive=getSetting('loss_halt_active','false')==='true'
+    const lossHaltReason=getSetting('loss_halt_reason','')
     const entryPaused=Boolean(rollingRisk?.paused)||lossHaltActive
-    const entryPauseReason=lossHaltActive?'FIRST_REALIZED_LOSS':rollingRisk?.paused?'ROLLING_24H_GUARD':null
+    const entryPauseReason=lossHaltActive
+      ?(lossHaltReason==='UNREALIZED_PRICE_STOP'?'UNREALIZED_PRICE_STOP':'FIRST_REALIZED_LOSS')
+      :rollingRisk?.paused?'ROLLING_24H_GUARD':null
     return json(res,200,{
       ok:true,
       configured:true,
