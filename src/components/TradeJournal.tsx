@@ -527,7 +527,11 @@ export function TradeJournal({language}:Props){
                   ? ('SMA20 extension '+Number(p.macroExtensionPercent).toFixed(2)+'% / max 1.00%')
                   : '',
                 Number.isFinite(Number(p.rules?.requestedBuyUsd))
-                  ? ('Dynamic buy 
+                  ? ('Dynamic buy $'+Number(p.rules.requestedBuyUsd).toFixed(2))
+                  : 'Dynamic $5-step buy',
+                'Max slippage 0.10%'
+              ].filter(Boolean).join(' • ')
+            }
             if(event.type==='market_research_ranked'){
               const top=Array.isArray(p.topCandidates)?p.topCandidates.slice(0,8).join(', '):''
               const sources=Array.isArray(p.sources)?p.sources.join(', '):''
