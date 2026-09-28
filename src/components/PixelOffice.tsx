@@ -12,7 +12,7 @@ const stateFromEvent=(event:any):RuntimeState|undefined=>{
   const type=String(event.type||'')
   if(event.agentId==='loss_guard'){
     if(type==='loss_guard_triggered')return {status:'approved',task:'LOSS DETECTED • NEW BUYS PAUSED'}
-    if(type==='loss_guard_waiting'&&String(event?.payload?.state||'').toUpperCase()==='STOPPED')return {status:'approved',task:'LOSS DETECTED • GLOBAL STOP ACTIVE'}
+    if(type==='loss_guard_waiting'&&String(event?.payload?.state||'').toUpperCase()==='STOPPED')return {status:'approved',task:'LOSS DETECTED • NEW BUYS PAUSED'}
     if(type==='loss_guard_reset'||type==='loss_guard_waiting')return {status:'waiting',task:'Waiting for any realized loss'}
     if(type==='loss_guard_cancel_failed')return {status:'reviewing',task:'Buy pause active • existing exits remain monitored'}
   }
