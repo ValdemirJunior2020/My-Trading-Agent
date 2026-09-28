@@ -3,7 +3,7 @@ import { getCandles, getProduct, listAccounts } from './coinbase.js'
 import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
 import { researchCryptoCandidates } from './marketResearch.js'
-import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive, getOpenBotExposureSummary } from './risk.js'
+import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive, getOpenBotExposureSummary, triggerUnrealizedPriceLossPause } from './risk.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { confirmedMeanReversionEntryDecision, getBotManagedLots, getBotManagedPosition } from './bollingerStrategy.js'
 import { NEXT_WEEK_BREAKOUT,breakoutHardStopPrice,breakoutTrailingActivationPrice,breakoutTrailingStopPrice,evaluateBreakoutConfirmation,nextWeekBreakoutActive } from './velocityBreakout.js'
@@ -363,7 +363,22 @@ const handleTicker=async(productId:string,price:number)=>{
     const trailingHit=trailingActive&&price<=trailingStop
 
     if(hardStopHit||trailingHit){
-      const reason=hardStopHit?'BREAKOUT_HARD_STOP':'BREAKOUT_TRAILING_PROFIT'
+      const estimatedBreakoutNetProceeds=price*breakoutLot.qty*(1-config.backtestMarketFeeRate)
+      const estimatedBreakoutNetProfitUsd=estimatedBreakoutNetProceeds-breakoutLot.costUsd
+      const breakoutProfitReady=estimatedBreakoutNetProfitUsd+1e-9>=config.smallAccountMinNetProfitUsd
+
+      if(hardStopHit&&!breakoutProfitReady){
+        triggerUnrealizedPriceLossPause({
+          productId,
+          livePrice:price,
+          stopPrice:hardStop,
+          estimatedNetProfitUsd:estimatedBreakoutNetProfitUsd
+        })
+        return
+      }
+      if(!breakoutProfitReady)return
+
+      const reason='BREAKOUT_TRAILING_PROFIT'
       const exitKey=key+':'+reason
       const lastAttempt=Number(exitAttemptAt.get(exitKey)||0)
       if(Date.now()-lastAttempt<2000)return
@@ -393,7 +408,8 @@ const handleTicker=async(productId:string,price:number)=>{
           exitReason:reason,
           avgEntryPrice:breakoutLot.avgEntryPrice,
           sourceLotOrderId:breakoutLot.orderId,
-          requiredNetProfitPercent:hardStopHit?0:NEXT_WEEK_BREAKOUT.minimumTrailingExitNetPercent,
+          requiredNetProfitPercent:NEXT_WEEK_BREAKOUT.minimumTrailingExitNetPercent,
+          requiredNetProfitUsd:config.smallAccountMinNetProfitUsd,
           executionSource:'NEXT_WEEK_BREAKOUT'
         })
         publish('next_week_breakout_exit_result',{productId,reason,result},'execution')
@@ -440,18 +456,25 @@ const handleTicker=async(productId:string,price:number)=>{
   const microProfitReady=
     estimatedNetProfitUsd+1e-9>=config.smallAccountMinNetProfitUsd
 
-  // A profit exit is never signaled unless estimated proceeds cover the
-  // fee-loaded BUY cost, the estimated SELL fee, and leave the configured
-  // minimum net profit. The hard stop remains exempt from the profit floor.
-  if(!stopLoss&&!microProfitReady)return
+  // A price-stop breach while net-negative pauses NEW BUYs but never sells
+  // this position at a loss. Existing positions remain monitored until a
+  // fee-aware profitable exit is available.
+  if(stopLoss&&!microProfitReady){
+    triggerUnrealizedPriceLossPause({
+      productId,
+      livePrice:price,
+      stopPrice,
+      estimatedNetProfitUsd
+    })
+    return
+  }
 
-  const reason=stopLoss
-    ? 'STOP_LOSS'
-    : trailingHit
-      ? 'TRAILING_PROFIT'
-      : 'MICRO_NET_PROFIT'
+  // Normal strategy exits are profit-only.
+  if(!microProfitReady)return
+
+  const reason=trailingHit?'TRAILING_PROFIT':'MICRO_NET_PROFIT'
   const exitKey=key+':'+reason
-  const retryMs=stopLoss?2000:30000
+  const retryMs=30000
   const lastAttempt=Number(exitAttemptAt.get(exitKey)||0)
   if(Date.now()-lastAttempt<retryMs)return
 
@@ -502,7 +525,7 @@ const handleTicker=async(productId:string,price:number)=>{
       avgEntryPrice:targetLot.avgEntryPrice,
       sourceLotOrderId:targetLot.orderId,
       requiredNetProfitPercent:0,
-      requiredNetProfitUsd:stopLoss?0:config.smallAccountMinNetProfitUsd,
+      requiredNetProfitUsd:config.smallAccountMinNetProfitUsd,
       executionSource:'MEAN_REVERSION'
     })
     publish('mean_reversion_exit_result',{
