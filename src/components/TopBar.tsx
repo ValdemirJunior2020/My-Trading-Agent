@@ -69,14 +69,12 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
  const lossGuard=Boolean(system?.safety?.lossGuard?.active)
  const lossHalt=Boolean(system?.safety?.lossHaltActive)
  const liveModeLabel=system?.safety.liveTradingEnabled
-  ?(lossGuard?'LOSS GUARD STOP':lossHalt?'LOSS HALT':safePause?'AUTO SAFE PAUSE':system?.safety.automaticTradingEnabled?'Auto Live Trading':'Live Trading')
+  ?(lossGuard||lossHalt?'LOSS PAUSE':safePause?'AUTO SAFE PAUSE':system?.safety.automaticTradingEnabled?'Auto Live Trading':'Live Trading')
   :'LIVE DISABLED'
  const liveModeDetail=system?.safety.liveTradingEnabled
-  ?(lossGuard
-    ?'REALIZED LOSS - ALL live BUY and SELL execution stopped'
-    :lossHalt
-      ?'new buys stopped after realized loss - sell exits active'
-      :safePause
+  ?(lossGuard||lossHalt
+    ?'new buys paused after realized loss - profitable sell exits remain active'
+    :safePause
         ?'new buys paused - protective sells active'
         :system?.safety.automaticTradingEnabled
           ?'auto live'
@@ -116,7 +114,7 @@ export function TopBar({t,emergency,onEmergency,onLanguage,system}:Props){
    <button className="language-btn" onClick={()=>void runAgents(false)} disabled={running||!system?.coinbase.configured||!ollama} title={title}>{runLabel}</button>
    <button className="language-btn" onClick={()=>void runAgents(true)} disabled={running||!system?.coinbase.configured||!ollama||!rdReady} title={rdReady?'Run pipeline with RD-Agent factor research':'Install RD-Agent to enable deep research'}>◆ DEEP RESEARCH</button>
    <button className="language-btn" onClick={onLanguage}>🌐 {t('language')}</button>
-   {lossGuard?<div className="simulation-chip" title="Loss Guard detected a realized loss. ALL live BUY and SELL execution is blocked until manually reset.">LOSS GUARD STOP</div>:lossHalt?<div className="simulation-chip" title="A realized losing SELL triggered the automatic loss halt. New BUYs are blocked; SELL exits remain active.">LOSS HALT</div>:safePause?<div className="simulation-chip" title="Automatic rolling 24h safety pause. New BUYs are paused; protective SELL exits remain active.">AUTO SAFE</div>:null}
+   {lossGuard||lossHalt?<div className="simulation-chip" title="A realized loss paused new BUYs. Existing positions may still exit when the fee-aware profit requirement is met. Manual reset is required to resume new entries.">LOSS PAUSE</div>:safePause?<div className="simulation-chip" title="Automatic rolling 24h safety pause. New BUYs are paused; profitable SELL exits remain active.">AUTO SAFE</div>:null}
    <button className={'emergency-btn '+(emergency?'is-active':'')} onClick={onEmergency}>⚠ {emergency?t('emergencyActive'):t('emergencyStop')}</button>
   </div>
  </header>
