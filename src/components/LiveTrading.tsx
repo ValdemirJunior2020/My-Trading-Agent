@@ -241,7 +241,7 @@ export function LiveTrading({ language }: Props) {
           <div><small>{pt ? 'Portfólio atual' : 'Current portfolio'}</small><strong>{readiness?.currentPortfolioUsd != null ? '$' + Number(readiness.currentPortfolioUsd).toFixed(2) : '—'}</strong></div>
           <div><small>{pt ? 'Tamanho da compra' : 'Buy size'}</small><strong>~10% portfolio • $5 steps</strong></div>
           <div><small>{pt ? 'Saída' : 'Exit'}</small><strong>+$0.10 net / 0.80% loss-pause</strong></div>
-          <div><small>{pt ? 'Entrada 10m / 5m' : '10m / 5m Entry'}</small><strong>SMA20 gate / RSI&lt;30 • VMA 1.5×</strong></div>
+          <div><small>{pt ? 'Entradas' : 'Entries'}</small><strong>Strong + Ollama Active Capital</strong></div>
         </div>
 
         <div className={'simple-trade-signal ' + signalClass}>
