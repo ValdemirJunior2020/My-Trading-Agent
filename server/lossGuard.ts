@@ -29,7 +29,7 @@ export const getLossGuardState=()=>{
           })()
         :0),
     resetAt:getSetting('loss_guard_reset_at','')||getSetting('rolling_kill_switch_reset_at','')||null,
-    behavior:'First realized losing SELL triggers full lockdown: cancel open orders, liquidate all remaining bot-managed positions, block automation, manual reset required. The 3% rolling 24-hour equity kill switch remains active as a second protection layer.'
+    behavior:'First realized losing SELL pauses new BUYs, keeps existing-position exits active, does not liquidate other positions, and requires manual reset. The 3% rolling 24-hour equity kill switch remains the full-liquidation emergency layer.'
   }
 }
 
@@ -75,7 +75,7 @@ export const resetLossGuard=()=>{
 
   publish('single_loss_kill_switch_manual_reset',{
     resetAt,
-    message:'Single-loss emergency lockdown manually reset.'
+    message:'Single-loss entry pause manually reset.'
   },LOSS_GUARD_AGENT_ID)
 
   return getLossGuardState()
@@ -84,12 +84,15 @@ export const resetLossGuard=()=>{
 export const initializeLossGuard=async()=>{
   const state=getLossGuardState()
 
-  // Never auto-clear a latched single-loss or rolling-equity shutdown at startup.
+  // A latched first-loss state pauses new BUYs only. Existing-position exits
+  // remain active. The rolling kill switch remains the full emergency layer.
   if(state.singleLossLocked){
     setSetting('loss_guard_active','true')
     setSetting('loss_halt_active','true')
-    setSetting('emergency_stop','true')
-    setSetting('emergency_stop_reason','SINGLE_REALIZED_LOSS')
+    if(getSetting('emergency_stop_reason','').toUpperCase()==='SINGLE_REALIZED_LOSS'){
+      setSetting('emergency_stop','false')
+      setSetting('emergency_stop_reason','')
+    }
   }
 
   publish('loss_guard_ready',{
