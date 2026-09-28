@@ -17,7 +17,7 @@ export const PRODUCTION_STRATEGY = Object.freeze({
   targetBuyPercent: 10,
   maxPerProductPercent: 10,
   maxTotalExposurePercent: 100,
-  maxTotalExposureUsd: 50,
+  maxTotalExposureUsd: 100,
   maxConcurrentPositions: 999,
   hardStopLossPercent: 0.8,
   minimumNetProfitUsd: 0.10,
