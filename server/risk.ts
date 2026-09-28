@@ -828,7 +828,10 @@ export const tryLimitedLiveExecution = async (opts: {
   const availableAssetUsd = availableBase * price
 
   const limits = getRuntimeRiskLimits()
-  const maxFromPercent = totalPortfolioUsd * (limits.maxPositionPercent / 100)
+  const maxFromPercent = Math.max(
+    totalPortfolioUsd * (limits.maxPositionPercent / 100),
+    Math.min(Number(config.maxAdaptiveBuyUsd||25), Number(config.maxTotalExposureUsd||100))
+  )
   const hardCap = config.maxLiveOrderUsd
   const maxExposureUsd = Math.min(
     totalPortfolioUsd * (limits.maxTotalExposurePercent / 100),
@@ -852,10 +855,15 @@ export const tryLimitedLiveExecution = async (opts: {
     )
     const requestedBuyUsd=Number(opts.requestedBuyUsd||strategyTargetUsd)
     const remainingExposureUsd=Math.max(0,maxExposureUsd-botExposure.totalBotExposureUsd)
+    const maxAdaptiveBuyUsd=Math.max(strategyTargetUsd,Number(config.maxAdaptiveBuyUsd||25))
+    const minimumNeededUsd=Math.max(strategyTargetUsd,quoteMin)
+    const adaptiveTargetUsd=Math.min(
+      Math.max(requestedBuyUsd>0?requestedBuyUsd:strategyTargetUsd,minimumNeededUsd),
+      maxAdaptiveBuyUsd
+    )
     const rawAffordableUsd=Math.min(
       availableUsd,
-      requestedBuyUsd>0?requestedBuyUsd:strategyTargetUsd,
-      strategyTargetUsd,
+      adaptiveTargetUsd,
       maxFromPercent,
       remainingExposureUsd,
       quoteMax
