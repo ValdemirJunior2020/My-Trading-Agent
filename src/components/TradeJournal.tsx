@@ -27,6 +27,7 @@ const journalStatus=(event:any)=>{
   if(type==='live_order_rejected')return reason.includes('risk')?'BLOCKED BY RISK':'ORDER BLOCKED'
   if(type==='live_order_preview_approved')return 'PREVIEW OK'
   if(type==='mean_reversion_buy_signal')return 'BUY SIGNAL'
+  if(type==='mean_reversion_buy_skipped')return 'BUY SKIPPED'
   if(type==='mean_reversion_entry_result')return p.result?.executed?'ORDER PLACED':'ORDER BLOCKED'
   if(type==='mean_reversion_exit_signal')return 'EXIT SIGNAL'
   if(type==='mean_reversion_candle_closed')return p.deterministicReady?'SETUP READY':'WAIT'
@@ -58,7 +59,7 @@ const journalStatus=(event:any)=>{
 const statusGroup=(status:string):JournalFilter=>{
   if(status==='ORDER PLACED')return 'ORDER PLACED'
   if(status==='REJECTED BY AGENTS')return 'REJECTED'
-  if(status==='WAIT'||status==='NO TRADE'||status==='AGENT APPROVED'||status==='SETUP READY'||status==='BUY SIGNAL'||status==='EXIT SIGNAL')return 'WAIT'
+  if(status==='WAIT'||status==='NO TRADE'||status==='AGENT APPROVED'||status==='SETUP READY'||status==='BUY SIGNAL'||status==='BUY SKIPPED'||status==='EXIT SIGNAL')return 'WAIT'
   if(status.includes('BLOCKED')||status.includes('PREVIEW')||status==='FUNDING NEEDED'||status==='ROTATION READY'||status==='ROTATION CHECK FAILED'||status==='KILL SWITCH'||status==='FIRST LOSS PAUSE')return 'BLOCKED'
   if(status.includes('FAILED'))return 'FAILED'
   return 'ALL'
@@ -76,6 +77,7 @@ const JOURNAL_TYPES=new Set([
   'market_research_ranked',
   'unrealized_price_loss_pause',
   'mean_reversion_buy_signal',
+  'mean_reversion_buy_skipped',
   'mean_reversion_entry_result',
   'mean_reversion_exit_signal',
   'single_loss_kill_switch_triggered',
@@ -507,6 +509,1162 @@ export function TradeJournal({language}:Props){
                   : 'No deterministic entry trigger'
               ]
               return parts.filter(Boolean).join(' • ')
+            }
+            if(event.type==='mean_reversion_buy_skipped'){
+              return [
+                'BUY SKIPPED',
+                p.productId?String(p.productId):'',
+                p.reason?String(p.reason).replace(/_/g,' '):'Sizing check failed',
+                Number.isFinite(Number(p.requestedUsd))?('Requested 
+              const active=String(p.entryMode||'')==='ACTIVE_CAPITAL'
+              return [
+                active?'ACTIVE CAPITAL BUY SIGNAL':'STRONG BUY SIGNAL',
+                '5m Macro PASS',
+                active?'Ollama research priority':'5m close < lower BB',
+                Number.isFinite(Number(p.rsi))
+                  ? active
+                    ? ('RSI '+Number(p.rsi).toFixed(1)+' within 40–62')
+                    : ('RSI '+Number(p.rsi).toFixed(1)+' <30')
+                  : '',
+                Number.isFinite(Number(p.volumeRatio))
+                  ? active
+                    ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥0.75× VMA20')
+                    : ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥1.50× VMA20')
+                  : '',
+                active&&Number.isFinite(Number(p.macroExtensionPercent))
+                  ? ('SMA20 extension '+Number(p.macroExtensionPercent).toFixed(2)+'% / max 1.00%')
+                  : '',
+                Number.isFinite(Number(p.rules?.requestedBuyUsd))
+                  ? ('Dynamic buy $'+Number(p.rules.requestedBuyUsd).toFixed(2))
+                  : 'Dynamic $5-step buy',
+                'Max slippage 0.10%'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='market_research_ranked'){
+              const top=Array.isArray(p.topCandidates)?p.topCandidates.slice(0,8).join(', '):''
+              const sources=Array.isArray(p.sources)?p.sources.join(', '):''
+              return [
+                'OLLAMA MARKET RESEARCH',
+                'Sentiment '+String(p.marketSentiment||'UNKNOWN'),
+                sources?('Sources '+sources):'',
+                top?('Top candidates '+top):'',
+                p.activeCapitalPrioritySource?('Active-capital source '+String(p.activeCapitalPrioritySource).replace(/_/g,' ')):'',
+                p.status==='fallback'&&p.reason?('Research fallback '+String(p.reason)):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='unrealized_price_loss_pause'){
+              return [
+                'LOSS PAUSE / HOLD',
+                p.productId?String(p.productId):'',
+                Number.isFinite(Number(p.livePrice))?('Live $'+Number(p.livePrice).toFixed(6)):'',
+                Number.isFinite(Number(p.stopPrice))?('Threshold $'+Number(p.stopPrice).toFixed(6)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                'No SELL sent • new BUYs paused • wait for profitable exit'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='mean_reversion_entry_result'){
+              const result=p.result||{}
+              return result.executed
+                ? ('DETERMINISTIC ENTRY EXECUTED • $'+Number(result.notionalUsd||0).toFixed(2))
+                : 'DETERMINISTIC ENTRY BLOCKED • '+String(result.reason||'execution gate rejected')
+            }
+            if(event.type==='mean_reversion_exit_signal'){
+              return [
+                String(p.reason||'EXIT').replace(/_/g,' '),
+                Number.isFinite(Number(p.stopLossPercent))?('Loss-pause threshold '+Number(p.stopLossPercent).toFixed(2)+'% below fill; no normal loss sell'):'',
+                Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net after BUY + SELL fees $'+Number(p.minimumNetProfitUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                Number.isFinite(Number(p.trailingActivationNetPercent))?('Backup trailing +'+Number(p.trailingActivationNetPercent).toFixed(2)+'%'):'',
+                Number.isFinite(Number(p.trailingDistancePercent))?('Callback '+Number(p.trailingDistancePercent).toFixed(2)+'% from peak'):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='single_loss_kill_switch_triggered'){
+              return 'FIRST REALIZED LOSS • new BUYs paused • existing positions continue normal exits • no forced liquidation • manual reset required'
+            }
+            if(event.type==='single_loss_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • first-loss shutdown'
+            }
+            if(event.type==='rolling_kill_switch_triggered'){
+              return '3%/24h GUARD • new BUYs paused • no forced loss liquidation • profitable exits remain allowed • manual reset required'
+            }
+            if(event.type==='rolling_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • rolling 24h equity kill switch'
+            }
+            if(event.type==='live_execution_cycle'){
+              return pt
+                ? 'LEGACY STRATEGY RECORD • ciclo antigo dos agentes; não representa as regras atuais ao vivo'
+                : 'LEGACY STRATEGY RECORD • old agent-cycle logic; not the current live-entry rules'
+            }
+            return ''
+          })()
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const executionDetail=executionDetailFor(event)
+          const profit=netProfitFor(event,events)
+          const profitDetail=profit
+            ? 'NET PROFIT '+(profit.netProfit>=0?'+':'-')+'USD '+Math.abs(profit.netProfit).toFixed(4)
+              +' ('+(profit.netProfitPercent>=0?'+':'')+profit.netProfitPercent.toFixed(2)+'%) after buy + sell fees'
+            : ''
+          const approvalOnly=event.type==='live_execution_cycle'&&String(p.action||'').toUpperCase()==='AGENT_APPROVAL_ONLY'
+          const detail=String(
+            approvalOnly
+              ? (pt
+                  ? 'Agentes aprovaram a oportunidade. Nenhuma ordem foi bloqueada aqui; o motor determinístico separado decide a execução real.'
+                  : 'Agents approved the opportunity. No order was blocked here; the separate deterministic engine decides real execution.')
+              : ([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          )
+          const hoverHelp=strategyDetail
+            ? strategyHoverHelp(event,pt)
+            : (pt
+                ? 'Esta linha mostra o que o bot decidiu ou tentou fazer. RSI mede a força recente do preço. BB significa Bandas de Bollinger, uma faixa usada para comparar o preço atual com seu movimento recente.'
+                : 'This row shows what the bot decided or tried to do. RSI measures recent price momentum. BB means Bollinger Bands, a range used to compare the current price with its recent movement.')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const rawSide=String(p.side||'—').toUpperCase()
+          const displaySide=event.type==='capital_rotation_plan'
+            ? 'ROTATE'
+            : event.type==='live_order_placed'&&rawSide==='SELL'
+              ? 'SOLD'
+              : rawSide
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          const profitableSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit>0
+          )
+          const losingSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit<0
+          )
+          return <div className={'journal-table journal-row '+(profitableSell?'profit-row':losingSell?'loss-row':'')} key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(profitableSell?'profit':(displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className={'journal-net-pnl '+(profit?(profit.netProfit>=0?'positive':'negative'):'')}>
+              {profit
+                ? <>
+                    <b>{profit.netProfit>=0?'+':'-'}{'$'}{Math.abs(profit.netProfit).toFixed(2)}</b>
+                    <small>{profit.netProfitPercent>=0?'+':''}{profit.netProfitPercent.toFixed(2)}%</small>
+                  </>
+                : '—'}
+            </span>
+            <span className={'journal-detail journal-context '+(profitableSell?'profit-context':losingSell?'loss-context':'')} data-help={hoverHelp} title={hoverHelp} aria-label={hoverHelp}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.requestedUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.availableUsd))?('Available USD 
+              const active=String(p.entryMode||'')==='ACTIVE_CAPITAL'
+              return [
+                active?'ACTIVE CAPITAL BUY SIGNAL':'STRONG BUY SIGNAL',
+                '5m Macro PASS',
+                active?'Ollama research priority':'5m close < lower BB',
+                Number.isFinite(Number(p.rsi))
+                  ? active
+                    ? ('RSI '+Number(p.rsi).toFixed(1)+' within 40–62')
+                    : ('RSI '+Number(p.rsi).toFixed(1)+' <30')
+                  : '',
+                Number.isFinite(Number(p.volumeRatio))
+                  ? active
+                    ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥0.75× VMA20')
+                    : ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥1.50× VMA20')
+                  : '',
+                active&&Number.isFinite(Number(p.macroExtensionPercent))
+                  ? ('SMA20 extension '+Number(p.macroExtensionPercent).toFixed(2)+'% / max 1.00%')
+                  : '',
+                Number.isFinite(Number(p.rules?.requestedBuyUsd))
+                  ? ('Dynamic buy $'+Number(p.rules.requestedBuyUsd).toFixed(2))
+                  : 'Dynamic $5-step buy',
+                'Max slippage 0.10%'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='market_research_ranked'){
+              const top=Array.isArray(p.topCandidates)?p.topCandidates.slice(0,8).join(', '):''
+              const sources=Array.isArray(p.sources)?p.sources.join(', '):''
+              return [
+                'OLLAMA MARKET RESEARCH',
+                'Sentiment '+String(p.marketSentiment||'UNKNOWN'),
+                sources?('Sources '+sources):'',
+                top?('Top candidates '+top):'',
+                p.activeCapitalPrioritySource?('Active-capital source '+String(p.activeCapitalPrioritySource).replace(/_/g,' ')):'',
+                p.status==='fallback'&&p.reason?('Research fallback '+String(p.reason)):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='unrealized_price_loss_pause'){
+              return [
+                'LOSS PAUSE / HOLD',
+                p.productId?String(p.productId):'',
+                Number.isFinite(Number(p.livePrice))?('Live $'+Number(p.livePrice).toFixed(6)):'',
+                Number.isFinite(Number(p.stopPrice))?('Threshold $'+Number(p.stopPrice).toFixed(6)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                'No SELL sent • new BUYs paused • wait for profitable exit'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='mean_reversion_entry_result'){
+              const result=p.result||{}
+              return result.executed
+                ? ('DETERMINISTIC ENTRY EXECUTED • $'+Number(result.notionalUsd||0).toFixed(2))
+                : 'DETERMINISTIC ENTRY BLOCKED • '+String(result.reason||'execution gate rejected')
+            }
+            if(event.type==='mean_reversion_exit_signal'){
+              return [
+                String(p.reason||'EXIT').replace(/_/g,' '),
+                Number.isFinite(Number(p.stopLossPercent))?('Loss-pause threshold '+Number(p.stopLossPercent).toFixed(2)+'% below fill; no normal loss sell'):'',
+                Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net after BUY + SELL fees $'+Number(p.minimumNetProfitUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                Number.isFinite(Number(p.trailingActivationNetPercent))?('Backup trailing +'+Number(p.trailingActivationNetPercent).toFixed(2)+'%'):'',
+                Number.isFinite(Number(p.trailingDistancePercent))?('Callback '+Number(p.trailingDistancePercent).toFixed(2)+'% from peak'):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='single_loss_kill_switch_triggered'){
+              return 'FIRST REALIZED LOSS • new BUYs paused • existing positions continue normal exits • no forced liquidation • manual reset required'
+            }
+            if(event.type==='single_loss_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • first-loss shutdown'
+            }
+            if(event.type==='rolling_kill_switch_triggered'){
+              return '3%/24h GUARD • new BUYs paused • no forced loss liquidation • profitable exits remain allowed • manual reset required'
+            }
+            if(event.type==='rolling_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • rolling 24h equity kill switch'
+            }
+            if(event.type==='live_execution_cycle'){
+              return pt
+                ? 'LEGACY STRATEGY RECORD • ciclo antigo dos agentes; não representa as regras atuais ao vivo'
+                : 'LEGACY STRATEGY RECORD • old agent-cycle logic; not the current live-entry rules'
+            }
+            return ''
+          })()
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const executionDetail=executionDetailFor(event)
+          const profit=netProfitFor(event,events)
+          const profitDetail=profit
+            ? 'NET PROFIT '+(profit.netProfit>=0?'+':'-')+'USD '+Math.abs(profit.netProfit).toFixed(4)
+              +' ('+(profit.netProfitPercent>=0?'+':'')+profit.netProfitPercent.toFixed(2)+'%) after buy + sell fees'
+            : ''
+          const approvalOnly=event.type==='live_execution_cycle'&&String(p.action||'').toUpperCase()==='AGENT_APPROVAL_ONLY'
+          const detail=String(
+            approvalOnly
+              ? (pt
+                  ? 'Agentes aprovaram a oportunidade. Nenhuma ordem foi bloqueada aqui; o motor determinístico separado decide a execução real.'
+                  : 'Agents approved the opportunity. No order was blocked here; the separate deterministic engine decides real execution.')
+              : ([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          )
+          const hoverHelp=strategyDetail
+            ? strategyHoverHelp(event,pt)
+            : (pt
+                ? 'Esta linha mostra o que o bot decidiu ou tentou fazer. RSI mede a força recente do preço. BB significa Bandas de Bollinger, uma faixa usada para comparar o preço atual com seu movimento recente.'
+                : 'This row shows what the bot decided or tried to do. RSI measures recent price momentum. BB means Bollinger Bands, a range used to compare the current price with its recent movement.')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const rawSide=String(p.side||'—').toUpperCase()
+          const displaySide=event.type==='capital_rotation_plan'
+            ? 'ROTATE'
+            : event.type==='live_order_placed'&&rawSide==='SELL'
+              ? 'SOLD'
+              : rawSide
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          const profitableSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit>0
+          )
+          const losingSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit<0
+          )
+          return <div className={'journal-table journal-row '+(profitableSell?'profit-row':losingSell?'loss-row':'')} key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(profitableSell?'profit':(displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className={'journal-net-pnl '+(profit?(profit.netProfit>=0?'positive':'negative'):'')}>
+              {profit
+                ? <>
+                    <b>{profit.netProfit>=0?'+':'-'}{'$'}{Math.abs(profit.netProfit).toFixed(2)}</b>
+                    <small>{profit.netProfitPercent>=0?'+':''}{profit.netProfitPercent.toFixed(2)}%</small>
+                  </>
+                : '—'}
+            </span>
+            <span className={'journal-detail journal-context '+(profitableSell?'profit-context':losingSell?'loss-context':'')} data-help={hoverHelp} title={hoverHelp} aria-label={hoverHelp}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.availableUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.portfolioUsd))?('Portfolio 
+              const active=String(p.entryMode||'')==='ACTIVE_CAPITAL'
+              return [
+                active?'ACTIVE CAPITAL BUY SIGNAL':'STRONG BUY SIGNAL',
+                '5m Macro PASS',
+                active?'Ollama research priority':'5m close < lower BB',
+                Number.isFinite(Number(p.rsi))
+                  ? active
+                    ? ('RSI '+Number(p.rsi).toFixed(1)+' within 40–62')
+                    : ('RSI '+Number(p.rsi).toFixed(1)+' <30')
+                  : '',
+                Number.isFinite(Number(p.volumeRatio))
+                  ? active
+                    ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥0.75× VMA20')
+                    : ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥1.50× VMA20')
+                  : '',
+                active&&Number.isFinite(Number(p.macroExtensionPercent))
+                  ? ('SMA20 extension '+Number(p.macroExtensionPercent).toFixed(2)+'% / max 1.00%')
+                  : '',
+                Number.isFinite(Number(p.rules?.requestedBuyUsd))
+                  ? ('Dynamic buy $'+Number(p.rules.requestedBuyUsd).toFixed(2))
+                  : 'Dynamic $5-step buy',
+                'Max slippage 0.10%'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='market_research_ranked'){
+              const top=Array.isArray(p.topCandidates)?p.topCandidates.slice(0,8).join(', '):''
+              const sources=Array.isArray(p.sources)?p.sources.join(', '):''
+              return [
+                'OLLAMA MARKET RESEARCH',
+                'Sentiment '+String(p.marketSentiment||'UNKNOWN'),
+                sources?('Sources '+sources):'',
+                top?('Top candidates '+top):'',
+                p.activeCapitalPrioritySource?('Active-capital source '+String(p.activeCapitalPrioritySource).replace(/_/g,' ')):'',
+                p.status==='fallback'&&p.reason?('Research fallback '+String(p.reason)):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='unrealized_price_loss_pause'){
+              return [
+                'LOSS PAUSE / HOLD',
+                p.productId?String(p.productId):'',
+                Number.isFinite(Number(p.livePrice))?('Live $'+Number(p.livePrice).toFixed(6)):'',
+                Number.isFinite(Number(p.stopPrice))?('Threshold $'+Number(p.stopPrice).toFixed(6)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                'No SELL sent • new BUYs paused • wait for profitable exit'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='mean_reversion_entry_result'){
+              const result=p.result||{}
+              return result.executed
+                ? ('DETERMINISTIC ENTRY EXECUTED • $'+Number(result.notionalUsd||0).toFixed(2))
+                : 'DETERMINISTIC ENTRY BLOCKED • '+String(result.reason||'execution gate rejected')
+            }
+            if(event.type==='mean_reversion_exit_signal'){
+              return [
+                String(p.reason||'EXIT').replace(/_/g,' '),
+                Number.isFinite(Number(p.stopLossPercent))?('Loss-pause threshold '+Number(p.stopLossPercent).toFixed(2)+'% below fill; no normal loss sell'):'',
+                Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net after BUY + SELL fees $'+Number(p.minimumNetProfitUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                Number.isFinite(Number(p.trailingActivationNetPercent))?('Backup trailing +'+Number(p.trailingActivationNetPercent).toFixed(2)+'%'):'',
+                Number.isFinite(Number(p.trailingDistancePercent))?('Callback '+Number(p.trailingDistancePercent).toFixed(2)+'% from peak'):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='single_loss_kill_switch_triggered'){
+              return 'FIRST REALIZED LOSS • new BUYs paused • existing positions continue normal exits • no forced liquidation • manual reset required'
+            }
+            if(event.type==='single_loss_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • first-loss shutdown'
+            }
+            if(event.type==='rolling_kill_switch_triggered'){
+              return '3%/24h GUARD • new BUYs paused • no forced loss liquidation • profitable exits remain allowed • manual reset required'
+            }
+            if(event.type==='rolling_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • rolling 24h equity kill switch'
+            }
+            if(event.type==='live_execution_cycle'){
+              return pt
+                ? 'LEGACY STRATEGY RECORD • ciclo antigo dos agentes; não representa as regras atuais ao vivo'
+                : 'LEGACY STRATEGY RECORD • old agent-cycle logic; not the current live-entry rules'
+            }
+            return ''
+          })()
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const executionDetail=executionDetailFor(event)
+          const profit=netProfitFor(event,events)
+          const profitDetail=profit
+            ? 'NET PROFIT '+(profit.netProfit>=0?'+':'-')+'USD '+Math.abs(profit.netProfit).toFixed(4)
+              +' ('+(profit.netProfitPercent>=0?'+':'')+profit.netProfitPercent.toFixed(2)+'%) after buy + sell fees'
+            : ''
+          const approvalOnly=event.type==='live_execution_cycle'&&String(p.action||'').toUpperCase()==='AGENT_APPROVAL_ONLY'
+          const detail=String(
+            approvalOnly
+              ? (pt
+                  ? 'Agentes aprovaram a oportunidade. Nenhuma ordem foi bloqueada aqui; o motor determinístico separado decide a execução real.'
+                  : 'Agents approved the opportunity. No order was blocked here; the separate deterministic engine decides real execution.')
+              : ([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          )
+          const hoverHelp=strategyDetail
+            ? strategyHoverHelp(event,pt)
+            : (pt
+                ? 'Esta linha mostra o que o bot decidiu ou tentou fazer. RSI mede a força recente do preço. BB significa Bandas de Bollinger, uma faixa usada para comparar o preço atual com seu movimento recente.'
+                : 'This row shows what the bot decided or tried to do. RSI measures recent price momentum. BB means Bollinger Bands, a range used to compare the current price with its recent movement.')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const rawSide=String(p.side||'—').toUpperCase()
+          const displaySide=event.type==='capital_rotation_plan'
+            ? 'ROTATE'
+            : event.type==='live_order_placed'&&rawSide==='SELL'
+              ? 'SOLD'
+              : rawSide
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          const profitableSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit>0
+          )
+          const losingSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit<0
+          )
+          return <div className={'journal-table journal-row '+(profitableSell?'profit-row':losingSell?'loss-row':'')} key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(profitableSell?'profit':(displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className={'journal-net-pnl '+(profit?(profit.netProfit>=0?'positive':'negative'):'')}>
+              {profit
+                ? <>
+                    <b>{profit.netProfit>=0?'+':'-'}{'$'}{Math.abs(profit.netProfit).toFixed(2)}</b>
+                    <small>{profit.netProfitPercent>=0?'+':''}{profit.netProfitPercent.toFixed(2)}%</small>
+                  </>
+                : '—'}
+            </span>
+            <span className={'journal-detail journal-context '+(profitableSell?'profit-context':losingSell?'loss-context':'')} data-help={hoverHelp} title={hoverHelp} aria-label={hoverHelp}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.portfolioUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.targetUsd))?('10% target 
+              const active=String(p.entryMode||'')==='ACTIVE_CAPITAL'
+              return [
+                active?'ACTIVE CAPITAL BUY SIGNAL':'STRONG BUY SIGNAL',
+                '5m Macro PASS',
+                active?'Ollama research priority':'5m close < lower BB',
+                Number.isFinite(Number(p.rsi))
+                  ? active
+                    ? ('RSI '+Number(p.rsi).toFixed(1)+' within 40–62')
+                    : ('RSI '+Number(p.rsi).toFixed(1)+' <30')
+                  : '',
+                Number.isFinite(Number(p.volumeRatio))
+                  ? active
+                    ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥0.75× VMA20')
+                    : ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥1.50× VMA20')
+                  : '',
+                active&&Number.isFinite(Number(p.macroExtensionPercent))
+                  ? ('SMA20 extension '+Number(p.macroExtensionPercent).toFixed(2)+'% / max 1.00%')
+                  : '',
+                Number.isFinite(Number(p.rules?.requestedBuyUsd))
+                  ? ('Dynamic buy $'+Number(p.rules.requestedBuyUsd).toFixed(2))
+                  : 'Dynamic $5-step buy',
+                'Max slippage 0.10%'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='market_research_ranked'){
+              const top=Array.isArray(p.topCandidates)?p.topCandidates.slice(0,8).join(', '):''
+              const sources=Array.isArray(p.sources)?p.sources.join(', '):''
+              return [
+                'OLLAMA MARKET RESEARCH',
+                'Sentiment '+String(p.marketSentiment||'UNKNOWN'),
+                sources?('Sources '+sources):'',
+                top?('Top candidates '+top):'',
+                p.activeCapitalPrioritySource?('Active-capital source '+String(p.activeCapitalPrioritySource).replace(/_/g,' ')):'',
+                p.status==='fallback'&&p.reason?('Research fallback '+String(p.reason)):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='unrealized_price_loss_pause'){
+              return [
+                'LOSS PAUSE / HOLD',
+                p.productId?String(p.productId):'',
+                Number.isFinite(Number(p.livePrice))?('Live $'+Number(p.livePrice).toFixed(6)):'',
+                Number.isFinite(Number(p.stopPrice))?('Threshold $'+Number(p.stopPrice).toFixed(6)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                'No SELL sent • new BUYs paused • wait for profitable exit'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='mean_reversion_entry_result'){
+              const result=p.result||{}
+              return result.executed
+                ? ('DETERMINISTIC ENTRY EXECUTED • $'+Number(result.notionalUsd||0).toFixed(2))
+                : 'DETERMINISTIC ENTRY BLOCKED • '+String(result.reason||'execution gate rejected')
+            }
+            if(event.type==='mean_reversion_exit_signal'){
+              return [
+                String(p.reason||'EXIT').replace(/_/g,' '),
+                Number.isFinite(Number(p.stopLossPercent))?('Loss-pause threshold '+Number(p.stopLossPercent).toFixed(2)+'% below fill; no normal loss sell'):'',
+                Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net after BUY + SELL fees $'+Number(p.minimumNetProfitUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                Number.isFinite(Number(p.trailingActivationNetPercent))?('Backup trailing +'+Number(p.trailingActivationNetPercent).toFixed(2)+'%'):'',
+                Number.isFinite(Number(p.trailingDistancePercent))?('Callback '+Number(p.trailingDistancePercent).toFixed(2)+'% from peak'):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='single_loss_kill_switch_triggered'){
+              return 'FIRST REALIZED LOSS • new BUYs paused • existing positions continue normal exits • no forced liquidation • manual reset required'
+            }
+            if(event.type==='single_loss_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • first-loss shutdown'
+            }
+            if(event.type==='rolling_kill_switch_triggered'){
+              return '3%/24h GUARD • new BUYs paused • no forced loss liquidation • profitable exits remain allowed • manual reset required'
+            }
+            if(event.type==='rolling_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • rolling 24h equity kill switch'
+            }
+            if(event.type==='live_execution_cycle'){
+              return pt
+                ? 'LEGACY STRATEGY RECORD • ciclo antigo dos agentes; não representa as regras atuais ao vivo'
+                : 'LEGACY STRATEGY RECORD • old agent-cycle logic; not the current live-entry rules'
+            }
+            return ''
+          })()
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const executionDetail=executionDetailFor(event)
+          const profit=netProfitFor(event,events)
+          const profitDetail=profit
+            ? 'NET PROFIT '+(profit.netProfit>=0?'+':'-')+'USD '+Math.abs(profit.netProfit).toFixed(4)
+              +' ('+(profit.netProfitPercent>=0?'+':'')+profit.netProfitPercent.toFixed(2)+'%) after buy + sell fees'
+            : ''
+          const approvalOnly=event.type==='live_execution_cycle'&&String(p.action||'').toUpperCase()==='AGENT_APPROVAL_ONLY'
+          const detail=String(
+            approvalOnly
+              ? (pt
+                  ? 'Agentes aprovaram a oportunidade. Nenhuma ordem foi bloqueada aqui; o motor determinístico separado decide a execução real.'
+                  : 'Agents approved the opportunity. No order was blocked here; the separate deterministic engine decides real execution.')
+              : ([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          )
+          const hoverHelp=strategyDetail
+            ? strategyHoverHelp(event,pt)
+            : (pt
+                ? 'Esta linha mostra o que o bot decidiu ou tentou fazer. RSI mede a força recente do preço. BB significa Bandas de Bollinger, uma faixa usada para comparar o preço atual com seu movimento recente.'
+                : 'This row shows what the bot decided or tried to do. RSI measures recent price momentum. BB means Bollinger Bands, a range used to compare the current price with its recent movement.')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const rawSide=String(p.side||'—').toUpperCase()
+          const displaySide=event.type==='capital_rotation_plan'
+            ? 'ROTATE'
+            : event.type==='live_order_placed'&&rawSide==='SELL'
+              ? 'SOLD'
+              : rawSide
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          const profitableSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit>0
+          )
+          const losingSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit<0
+          )
+          return <div className={'journal-table journal-row '+(profitableSell?'profit-row':losingSell?'loss-row':'')} key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(profitableSell?'profit':(displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className={'journal-net-pnl '+(profit?(profit.netProfit>=0?'positive':'negative'):'')}>
+              {profit
+                ? <>
+                    <b>{profit.netProfit>=0?'+':'-'}{'$'}{Math.abs(profit.netProfit).toFixed(2)}</b>
+                    <small>{profit.netProfitPercent>=0?'+':''}{profit.netProfitPercent.toFixed(2)}%</small>
+                  </>
+                : '—'}
+            </span>
+            <span className={'journal-detail journal-context '+(profitableSell?'profit-context':losingSell?'loss-context':'')} data-help={hoverHelp} title={hoverHelp} aria-label={hoverHelp}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.targetUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.quoteMin))?('Coinbase min 
+              const active=String(p.entryMode||'')==='ACTIVE_CAPITAL'
+              return [
+                active?'ACTIVE CAPITAL BUY SIGNAL':'STRONG BUY SIGNAL',
+                '5m Macro PASS',
+                active?'Ollama research priority':'5m close < lower BB',
+                Number.isFinite(Number(p.rsi))
+                  ? active
+                    ? ('RSI '+Number(p.rsi).toFixed(1)+' within 40–62')
+                    : ('RSI '+Number(p.rsi).toFixed(1)+' <30')
+                  : '',
+                Number.isFinite(Number(p.volumeRatio))
+                  ? active
+                    ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥0.75× VMA20')
+                    : ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥1.50× VMA20')
+                  : '',
+                active&&Number.isFinite(Number(p.macroExtensionPercent))
+                  ? ('SMA20 extension '+Number(p.macroExtensionPercent).toFixed(2)+'% / max 1.00%')
+                  : '',
+                Number.isFinite(Number(p.rules?.requestedBuyUsd))
+                  ? ('Dynamic buy $'+Number(p.rules.requestedBuyUsd).toFixed(2))
+                  : 'Dynamic $5-step buy',
+                'Max slippage 0.10%'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='market_research_ranked'){
+              const top=Array.isArray(p.topCandidates)?p.topCandidates.slice(0,8).join(', '):''
+              const sources=Array.isArray(p.sources)?p.sources.join(', '):''
+              return [
+                'OLLAMA MARKET RESEARCH',
+                'Sentiment '+String(p.marketSentiment||'UNKNOWN'),
+                sources?('Sources '+sources):'',
+                top?('Top candidates '+top):'',
+                p.activeCapitalPrioritySource?('Active-capital source '+String(p.activeCapitalPrioritySource).replace(/_/g,' ')):'',
+                p.status==='fallback'&&p.reason?('Research fallback '+String(p.reason)):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='unrealized_price_loss_pause'){
+              return [
+                'LOSS PAUSE / HOLD',
+                p.productId?String(p.productId):'',
+                Number.isFinite(Number(p.livePrice))?('Live $'+Number(p.livePrice).toFixed(6)):'',
+                Number.isFinite(Number(p.stopPrice))?('Threshold $'+Number(p.stopPrice).toFixed(6)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                'No SELL sent • new BUYs paused • wait for profitable exit'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='mean_reversion_entry_result'){
+              const result=p.result||{}
+              return result.executed
+                ? ('DETERMINISTIC ENTRY EXECUTED • $'+Number(result.notionalUsd||0).toFixed(2))
+                : 'DETERMINISTIC ENTRY BLOCKED • '+String(result.reason||'execution gate rejected')
+            }
+            if(event.type==='mean_reversion_exit_signal'){
+              return [
+                String(p.reason||'EXIT').replace(/_/g,' '),
+                Number.isFinite(Number(p.stopLossPercent))?('Loss-pause threshold '+Number(p.stopLossPercent).toFixed(2)+'% below fill; no normal loss sell'):'',
+                Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net after BUY + SELL fees $'+Number(p.minimumNetProfitUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                Number.isFinite(Number(p.trailingActivationNetPercent))?('Backup trailing +'+Number(p.trailingActivationNetPercent).toFixed(2)+'%'):'',
+                Number.isFinite(Number(p.trailingDistancePercent))?('Callback '+Number(p.trailingDistancePercent).toFixed(2)+'% from peak'):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='single_loss_kill_switch_triggered'){
+              return 'FIRST REALIZED LOSS • new BUYs paused • existing positions continue normal exits • no forced liquidation • manual reset required'
+            }
+            if(event.type==='single_loss_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • first-loss shutdown'
+            }
+            if(event.type==='rolling_kill_switch_triggered'){
+              return '3%/24h GUARD • new BUYs paused • no forced loss liquidation • profitable exits remain allowed • manual reset required'
+            }
+            if(event.type==='rolling_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • rolling 24h equity kill switch'
+            }
+            if(event.type==='live_execution_cycle'){
+              return pt
+                ? 'LEGACY STRATEGY RECORD • ciclo antigo dos agentes; não representa as regras atuais ao vivo'
+                : 'LEGACY STRATEGY RECORD • old agent-cycle logic; not the current live-entry rules'
+            }
+            return ''
+          })()
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const executionDetail=executionDetailFor(event)
+          const profit=netProfitFor(event,events)
+          const profitDetail=profit
+            ? 'NET PROFIT '+(profit.netProfit>=0?'+':'-')+'USD '+Math.abs(profit.netProfit).toFixed(4)
+              +' ('+(profit.netProfitPercent>=0?'+':'')+profit.netProfitPercent.toFixed(2)+'%) after buy + sell fees'
+            : ''
+          const approvalOnly=event.type==='live_execution_cycle'&&String(p.action||'').toUpperCase()==='AGENT_APPROVAL_ONLY'
+          const detail=String(
+            approvalOnly
+              ? (pt
+                  ? 'Agentes aprovaram a oportunidade. Nenhuma ordem foi bloqueada aqui; o motor determinístico separado decide a execução real.'
+                  : 'Agents approved the opportunity. No order was blocked here; the separate deterministic engine decides real execution.')
+              : ([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          )
+          const hoverHelp=strategyDetail
+            ? strategyHoverHelp(event,pt)
+            : (pt
+                ? 'Esta linha mostra o que o bot decidiu ou tentou fazer. RSI mede a força recente do preço. BB significa Bandas de Bollinger, uma faixa usada para comparar o preço atual com seu movimento recente.'
+                : 'This row shows what the bot decided or tried to do. RSI measures recent price momentum. BB means Bollinger Bands, a range used to compare the current price with its recent movement.')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const rawSide=String(p.side||'—').toUpperCase()
+          const displaySide=event.type==='capital_rotation_plan'
+            ? 'ROTATE'
+            : event.type==='live_order_placed'&&rawSide==='SELL'
+              ? 'SOLD'
+              : rawSide
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          const profitableSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit>0
+          )
+          const losingSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit<0
+          )
+          return <div className={'journal-table journal-row '+(profitableSell?'profit-row':losingSell?'loss-row':'')} key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(profitableSell?'profit':(displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className={'journal-net-pnl '+(profit?(profit.netProfit>=0?'positive':'negative'):'')}>
+              {profit
+                ? <>
+                    <b>{profit.netProfit>=0?'+':'-'}{'$'}{Math.abs(profit.netProfit).toFixed(2)}</b>
+                    <small>{profit.netProfitPercent>=0?'+':''}{profit.netProfitPercent.toFixed(2)}%</small>
+                  </>
+                : '—'}
+            </span>
+            <span className={'journal-detail journal-context '+(profitableSell?'profit-context':losingSell?'loss-context':'')} data-help={hoverHelp} title={hoverHelp} aria-label={hoverHelp}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.quoteMin).toFixed(2)):'',
+                Number.isFinite(Number(p.quoteMax))&&Number(p.quoteMax)!==Infinity?('Coinbase max 
+              const active=String(p.entryMode||'')==='ACTIVE_CAPITAL'
+              return [
+                active?'ACTIVE CAPITAL BUY SIGNAL':'STRONG BUY SIGNAL',
+                '5m Macro PASS',
+                active?'Ollama research priority':'5m close < lower BB',
+                Number.isFinite(Number(p.rsi))
+                  ? active
+                    ? ('RSI '+Number(p.rsi).toFixed(1)+' within 40–62')
+                    : ('RSI '+Number(p.rsi).toFixed(1)+' <30')
+                  : '',
+                Number.isFinite(Number(p.volumeRatio))
+                  ? active
+                    ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥0.75× VMA20')
+                    : ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥1.50× VMA20')
+                  : '',
+                active&&Number.isFinite(Number(p.macroExtensionPercent))
+                  ? ('SMA20 extension '+Number(p.macroExtensionPercent).toFixed(2)+'% / max 1.00%')
+                  : '',
+                Number.isFinite(Number(p.rules?.requestedBuyUsd))
+                  ? ('Dynamic buy $'+Number(p.rules.requestedBuyUsd).toFixed(2))
+                  : 'Dynamic $5-step buy',
+                'Max slippage 0.10%'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='market_research_ranked'){
+              const top=Array.isArray(p.topCandidates)?p.topCandidates.slice(0,8).join(', '):''
+              const sources=Array.isArray(p.sources)?p.sources.join(', '):''
+              return [
+                'OLLAMA MARKET RESEARCH',
+                'Sentiment '+String(p.marketSentiment||'UNKNOWN'),
+                sources?('Sources '+sources):'',
+                top?('Top candidates '+top):'',
+                p.activeCapitalPrioritySource?('Active-capital source '+String(p.activeCapitalPrioritySource).replace(/_/g,' ')):'',
+                p.status==='fallback'&&p.reason?('Research fallback '+String(p.reason)):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='unrealized_price_loss_pause'){
+              return [
+                'LOSS PAUSE / HOLD',
+                p.productId?String(p.productId):'',
+                Number.isFinite(Number(p.livePrice))?('Live $'+Number(p.livePrice).toFixed(6)):'',
+                Number.isFinite(Number(p.stopPrice))?('Threshold $'+Number(p.stopPrice).toFixed(6)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                'No SELL sent • new BUYs paused • wait for profitable exit'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='mean_reversion_entry_result'){
+              const result=p.result||{}
+              return result.executed
+                ? ('DETERMINISTIC ENTRY EXECUTED • $'+Number(result.notionalUsd||0).toFixed(2))
+                : 'DETERMINISTIC ENTRY BLOCKED • '+String(result.reason||'execution gate rejected')
+            }
+            if(event.type==='mean_reversion_exit_signal'){
+              return [
+                String(p.reason||'EXIT').replace(/_/g,' '),
+                Number.isFinite(Number(p.stopLossPercent))?('Loss-pause threshold '+Number(p.stopLossPercent).toFixed(2)+'% below fill; no normal loss sell'):'',
+                Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net after BUY + SELL fees $'+Number(p.minimumNetProfitUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                Number.isFinite(Number(p.trailingActivationNetPercent))?('Backup trailing +'+Number(p.trailingActivationNetPercent).toFixed(2)+'%'):'',
+                Number.isFinite(Number(p.trailingDistancePercent))?('Callback '+Number(p.trailingDistancePercent).toFixed(2)+'% from peak'):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='single_loss_kill_switch_triggered'){
+              return 'FIRST REALIZED LOSS • new BUYs paused • existing positions continue normal exits • no forced liquidation • manual reset required'
+            }
+            if(event.type==='single_loss_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • first-loss shutdown'
+            }
+            if(event.type==='rolling_kill_switch_triggered'){
+              return '3%/24h GUARD • new BUYs paused • no forced loss liquidation • profitable exits remain allowed • manual reset required'
+            }
+            if(event.type==='rolling_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • rolling 24h equity kill switch'
+            }
+            if(event.type==='live_execution_cycle'){
+              return pt
+                ? 'LEGACY STRATEGY RECORD • ciclo antigo dos agentes; não representa as regras atuais ao vivo'
+                : 'LEGACY STRATEGY RECORD • old agent-cycle logic; not the current live-entry rules'
+            }
+            return ''
+          })()
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const executionDetail=executionDetailFor(event)
+          const profit=netProfitFor(event,events)
+          const profitDetail=profit
+            ? 'NET PROFIT '+(profit.netProfit>=0?'+':'-')+'USD '+Math.abs(profit.netProfit).toFixed(4)
+              +' ('+(profit.netProfitPercent>=0?'+':'')+profit.netProfitPercent.toFixed(2)+'%) after buy + sell fees'
+            : ''
+          const approvalOnly=event.type==='live_execution_cycle'&&String(p.action||'').toUpperCase()==='AGENT_APPROVAL_ONLY'
+          const detail=String(
+            approvalOnly
+              ? (pt
+                  ? 'Agentes aprovaram a oportunidade. Nenhuma ordem foi bloqueada aqui; o motor determinístico separado decide a execução real.'
+                  : 'Agents approved the opportunity. No order was blocked here; the separate deterministic engine decides real execution.')
+              : ([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          )
+          const hoverHelp=strategyDetail
+            ? strategyHoverHelp(event,pt)
+            : (pt
+                ? 'Esta linha mostra o que o bot decidiu ou tentou fazer. RSI mede a força recente do preço. BB significa Bandas de Bollinger, uma faixa usada para comparar o preço atual com seu movimento recente.'
+                : 'This row shows what the bot decided or tried to do. RSI measures recent price momentum. BB means Bollinger Bands, a range used to compare the current price with its recent movement.')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const rawSide=String(p.side||'—').toUpperCase()
+          const displaySide=event.type==='capital_rotation_plan'
+            ? 'ROTATE'
+            : event.type==='live_order_placed'&&rawSide==='SELL'
+              ? 'SOLD'
+              : rawSide
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          const profitableSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit>0
+          )
+          const losingSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit<0
+          )
+          return <div className={'journal-table journal-row '+(profitableSell?'profit-row':losingSell?'loss-row':'')} key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(profitableSell?'profit':(displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className={'journal-net-pnl '+(profit?(profit.netProfit>=0?'positive':'negative'):'')}>
+              {profit
+                ? <>
+                    <b>{profit.netProfit>=0?'+':'-'}{'$'}{Math.abs(profit.netProfit).toFixed(2)}</b>
+                    <small>{profit.netProfitPercent>=0?'+':''}{profit.netProfitPercent.toFixed(2)}%</small>
+                  </>
+                : '—'}
+            </span>
+            <span className={'journal-detail journal-context '+(profitableSell?'profit-context':losingSell?'loss-context':'')} data-help={hoverHelp} title={hoverHelp} aria-label={hoverHelp}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.quoteMax).toFixed(2)):'',
+                Number.isFinite(Number(p.buyStepUsd))?('Step 
+              const active=String(p.entryMode||'')==='ACTIVE_CAPITAL'
+              return [
+                active?'ACTIVE CAPITAL BUY SIGNAL':'STRONG BUY SIGNAL',
+                '5m Macro PASS',
+                active?'Ollama research priority':'5m close < lower BB',
+                Number.isFinite(Number(p.rsi))
+                  ? active
+                    ? ('RSI '+Number(p.rsi).toFixed(1)+' within 40–62')
+                    : ('RSI '+Number(p.rsi).toFixed(1)+' <30')
+                  : '',
+                Number.isFinite(Number(p.volumeRatio))
+                  ? active
+                    ? ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥0.75× VMA20')
+                    : ('Volume '+Number(p.volumeRatio).toFixed(2)+'× / ≥1.50× VMA20')
+                  : '',
+                active&&Number.isFinite(Number(p.macroExtensionPercent))
+                  ? ('SMA20 extension '+Number(p.macroExtensionPercent).toFixed(2)+'% / max 1.00%')
+                  : '',
+                Number.isFinite(Number(p.rules?.requestedBuyUsd))
+                  ? ('Dynamic buy $'+Number(p.rules.requestedBuyUsd).toFixed(2))
+                  : 'Dynamic $5-step buy',
+                'Max slippage 0.10%'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='market_research_ranked'){
+              const top=Array.isArray(p.topCandidates)?p.topCandidates.slice(0,8).join(', '):''
+              const sources=Array.isArray(p.sources)?p.sources.join(', '):''
+              return [
+                'OLLAMA MARKET RESEARCH',
+                'Sentiment '+String(p.marketSentiment||'UNKNOWN'),
+                sources?('Sources '+sources):'',
+                top?('Top candidates '+top):'',
+                p.activeCapitalPrioritySource?('Active-capital source '+String(p.activeCapitalPrioritySource).replace(/_/g,' ')):'',
+                p.status==='fallback'&&p.reason?('Research fallback '+String(p.reason)):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='unrealized_price_loss_pause'){
+              return [
+                'LOSS PAUSE / HOLD',
+                p.productId?String(p.productId):'',
+                Number.isFinite(Number(p.livePrice))?('Live $'+Number(p.livePrice).toFixed(6)):'',
+                Number.isFinite(Number(p.stopPrice))?('Threshold $'+Number(p.stopPrice).toFixed(6)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                'No SELL sent • new BUYs paused • wait for profitable exit'
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='mean_reversion_entry_result'){
+              const result=p.result||{}
+              return result.executed
+                ? ('DETERMINISTIC ENTRY EXECUTED • $'+Number(result.notionalUsd||0).toFixed(2))
+                : 'DETERMINISTIC ENTRY BLOCKED • '+String(result.reason||'execution gate rejected')
+            }
+            if(event.type==='mean_reversion_exit_signal'){
+              return [
+                String(p.reason||'EXIT').replace(/_/g,' '),
+                Number.isFinite(Number(p.stopLossPercent))?('Loss-pause threshold '+Number(p.stopLossPercent).toFixed(2)+'% below fill; no normal loss sell'):'',
+                Number.isFinite(Number(p.minimumNetProfitUsd))?('Min net after BUY + SELL fees $'+Number(p.minimumNetProfitUsd).toFixed(2)):'',
+                Number.isFinite(Number(p.estimatedNetProfitUsd))?('Estimated net P/L $'+Number(p.estimatedNetProfitUsd).toFixed(4)):'',
+                Number.isFinite(Number(p.trailingActivationNetPercent))?('Backup trailing +'+Number(p.trailingActivationNetPercent).toFixed(2)+'%'):'',
+                Number.isFinite(Number(p.trailingDistancePercent))?('Callback '+Number(p.trailingDistancePercent).toFixed(2)+'% from peak'):''
+              ].filter(Boolean).join(' • ')
+            }
+            if(event.type==='single_loss_kill_switch_triggered'){
+              return 'FIRST REALIZED LOSS • new BUYs paused • existing positions continue normal exits • no forced liquidation • manual reset required'
+            }
+            if(event.type==='single_loss_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • first-loss shutdown'
+            }
+            if(event.type==='rolling_kill_switch_triggered'){
+              return '3%/24h GUARD • new BUYs paused • no forced loss liquidation • profitable exits remain allowed • manual reset required'
+            }
+            if(event.type==='rolling_kill_switch_liquidation_fill'){
+              return 'EMERGENCY LIQUIDATION FILL • rolling 24h equity kill switch'
+            }
+            if(event.type==='live_execution_cycle'){
+              return pt
+                ? 'LEGACY STRATEGY RECORD • ciclo antigo dos agentes; não representa as regras atuais ao vivo'
+                : 'LEGACY STRATEGY RECORD • old agent-cycle logic; not the current live-entry rules'
+            }
+            return ''
+          })()
+          const generatedDetail=[
+            decision?('Decision: '+decision):'',
+            confidence!=null?('Confidence: '+confidence.toFixed(0)+'%'):'',
+            p.attempted===false?'No execution attempted':''
+          ].filter(Boolean).join(' • ')
+          const executionDetail=executionDetailFor(event)
+          const profit=netProfitFor(event,events)
+          const profitDetail=profit
+            ? 'NET PROFIT '+(profit.netProfit>=0?'+':'-')+'USD '+Math.abs(profit.netProfit).toFixed(4)
+              +' ('+(profit.netProfitPercent>=0?'+':'')+profit.netProfitPercent.toFixed(2)+'%) after buy + sell fees'
+            : ''
+          const approvalOnly=event.type==='live_execution_cycle'&&String(p.action||'').toUpperCase()==='AGENT_APPROVAL_ONLY'
+          const detail=String(
+            approvalOnly
+              ? (pt
+                  ? 'Agentes aprovaram a oportunidade. Nenhuma ordem foi bloqueada aqui; o motor determinístico separado decide a execução real.'
+                  : 'Agents approved the opportunity. No order was blocked here; the separate deterministic engine decides real execution.')
+              : ([executionDetail,profitDetail].filter(Boolean).join(' • ')||rotationDetail||strategyDetail||p.reason||p.error||p.preview?.warning?.join?.(', ')||generatedDetail||'—')
+          )
+          const hoverHelp=strategyDetail
+            ? strategyHoverHelp(event,pt)
+            : (pt
+                ? 'Esta linha mostra o que o bot decidiu ou tentou fazer. RSI mede a força recente do preço. BB significa Bandas de Bollinger, uma faixa usada para comparar o preço atual com seu movimento recente.'
+                : 'This row shows what the bot decided or tried to do. RSI measures recent price momentum. BB means Bollinger Bands, a range used to compare the current price with its recent movement.')
+          const orderId=String(p.orderId||p.orderResult?.success_response?.order_id||'—')
+          const displayCoin=String(p.productId||p.buyProductId||'—')
+          const rawSide=String(p.side||'—').toUpperCase()
+          const displaySide=event.type==='capital_rotation_plan'
+            ? 'ROTATE'
+            : event.type==='live_order_placed'&&rawSide==='SELL'
+              ? 'SOLD'
+              : rawSide
+          const displayAmount=event.type==='capital_rotation_plan'?money(p.suggestedSellUsd):money(p.notionalUsd)
+          const profitableSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit>0
+          )
+          const losingSell=Boolean(
+            event.type==='live_order_placed' &&
+            rawSide==='SELL' &&
+            profit &&
+            profit.netProfit<0
+          )
+          return <div className={'journal-table journal-row '+(profitableSell?'profit-row':losingSell?'loss-row':'')} key={event.id}>
+            <span className="journal-time">
+              <b>{new Date(event.createdAt).toLocaleDateString([], {month:'short',day:'2-digit'})}</b>
+              <small>{new Date(event.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</small>
+            </span>
+            <span><b className={'journal-status '+statusClass(status)}><i/>{status}</b></span>
+            <span className="journal-asset"><b>{displayCoin.split('-')[0]}</b><small>{displayCoin}</small></span>
+            <span><b className={'journal-side-pill '+(profitableSell?'profit':(displaySide==='SELL'||displaySide==='SOLD')?'sell':displaySide==='BUY'?'buy':'neutral')}>{displaySide}</b></span>
+            <span className="journal-amount">{displayAmount}</span>
+            <span className="journal-order-id" title={orderId}>{orderId==='—'?'—':orderId.slice(0,8)+'…'+orderId.slice(-4)}</span>
+            <span className={'journal-net-pnl '+(profit?(profit.netProfit>=0?'positive':'negative'):'')}>
+              {profit
+                ? <>
+                    <b>{profit.netProfit>=0?'+':'-'}{'$'}{Math.abs(profit.netProfit).toFixed(2)}</b>
+                    <small>{profit.netProfitPercent>=0?'+':''}{profit.netProfitPercent.toFixed(2)}%</small>
+                  </>
+                : '—'}
+            </span>
+            <span className={'journal-detail journal-context '+(profitableSell?'profit-context':losingSell?'loss-context':'')} data-help={hoverHelp} title={hoverHelp} aria-label={hoverHelp}>{detail}</span>
+          </div>
+        })}
+      </div>
+
+      <div className="journal-pagination">
+        <span>{pt?'Página':'Page'} {currentPage} / {totalPages}</span>
+        <div>
+          <button onClick={()=>setPage(1)} disabled={currentPage===1}>«</button>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={currentPage===1}>‹</button>
+          <b>{currentPage}</b>
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages}>›</button>
+          <button onClick={()=>setPage(totalPages)} disabled={currentPage===totalPages}>»</button>
+        </div>
+      </div>
+    </section>
+  </main>
+}
++Number(p.buyStepUsd).toFixed(2)):'',
+                p.error?('Error '+String(p.error)):''
+              ].filter(Boolean).join(' • ')
             }
             if(event.type==='mean_reversion_buy_signal'){
               const active=String(p.entryMode||'')==='ACTIVE_CAPITAL'
