@@ -2,6 +2,7 @@ import { config, coinbaseConfigured } from './config.js'
 import { getCandles, getProduct, listAccounts } from './coinbase.js'
 import { publish } from './events.js'
 import { scanCryptoMarket } from './scanner.js'
+import { researchCryptoCandidates } from './marketResearch.js'
 import { tryLimitedLiveExecution, checkRollingEquityKillSwitch, emergencyStopActive, getOpenBotExposureSummary } from './risk.js'
 import { getChallengeSnapshot } from './challenge.js'
 import { confirmedMeanReversionEntryDecision, getBotManagedLots, getBotManagedPosition } from './bollingerStrategy.js'
@@ -670,10 +671,30 @@ const seedUniverse=async()=>{
     ?scan.universe.map((x:any)=>String(x).toUpperCase())
     :[]
   const openBotProducts=getOpenBotExposureSummary().positions.map(row=>row.productId)
-  const discovered=rows.length?liquidUniverse:fallbackUniverse
+  const discovered=(rows.length?liquidUniverse:fallbackUniverse).slice(0,60)
+
+  // Research is advisory prioritization only. Ollama sees recent public
+  // headlines from multiple sources and may reorder valid Coinbase candidates,
+  // but it cannot invent symbols or authorize execution.
+  const research=await researchCryptoCandidates(discovered)
+  const researchOrder=research.rankedProductIds.length
+    ?research.rankedProductIds
+    :discovered
+
+  publish('market_research_ranked',{
+    status:research.status,
+    marketSentiment:research.marketSentiment,
+    sourceCount:research.sourceCount,
+    sources:research.sources,
+    itemCount:research.itemCount,
+    model:research.model||null,
+    reason:research.reason||null,
+    topCandidates:researchOrder.slice(0,12)
+  },'research')
+
   // Always keep current bot-managed holdings in the stream so exits are never
-  // dropped just because a coin falls out of the current liquidity ranking.
-  products=[...new Set<string>([...openBotProducts,...discovered])].slice(0,60)
+  // dropped just because a coin falls out of the current liquidity/news ranking.
+  products=[...new Set<string>([...openBotProducts,...researchOrder,...discovered])].slice(0,60)
 
   for(let i=0;i<products.length;i+=4){
     const batch=products.slice(i,i+4)
