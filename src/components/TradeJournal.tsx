@@ -211,7 +211,7 @@ const strategyHoverHelp=(event:any,pt:boolean)=>{
       : 'Legacy agent-pipeline record. It no longer represents the current live-entry rules.'
   }
   return pt
-    ? 'Este evento pertence ao motor determinístico atual: compras dinâmicas em passos de $5 conforme o caixa disponível, saída somente quando a prévia cobre todas as taxas e deixa pelo menos $0,02 líquido, stop de 0,8%, primeiro prejuízo realizado = desligamento total e kill switch de 3%/24h.'
+    ? 'Este evento pertence ao motor determinístico atual: compras dinâmicas em passos de $5 conforme o caixa disponível, saída normal somente quando a prévia cobre todas as taxas e deixa pelo menos $0,10 líquido, limite de 0,8% vira LOSS PAUSE sem venda no prejuízo, e o guard de 3%/24h pausa novas compras sem liquidação forçada.'
     : 'This event belongs to the current deterministic engine: dynamic $5-step buys based on available cash, fee-aware exits only when previewed proceeds cover all costs plus at least $0.10 net, a 0.8% loss-pause threshold that does not sell negative, and a separate 3%/24h emergency kill switch.'
 }
 
@@ -543,7 +543,7 @@ export function TradeJournal({language}:Props){
               return 'EMERGENCY LIQUIDATION FILL • first-loss shutdown'
             }
             if(event.type==='rolling_kill_switch_triggered'){
-              return '3%/24h KILL SWITCH • open orders canceled • bot positions liquidated • manual reset required'
+              return '3%/24h GUARD • new BUYs paused • no forced loss liquidation • profitable exits remain allowed • manual reset required'
             }
             if(event.type==='rolling_kill_switch_liquidation_fill'){
               return 'EMERGENCY LIQUIDATION FILL • rolling 24h equity kill switch'
