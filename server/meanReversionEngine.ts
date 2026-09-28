@@ -33,6 +33,7 @@ const exitAttemptAt=new Map<string,number>()
 const breakoutPeaks=new Map<string,number>()
 const meanReversionPeaks=new Map<string,number>()
 const lastHandledClosedStart=new Map<string,number>()
+const researchPriorityProducts=new Set<string>()
 
 let ws:WebSocket|null=null
 let reconnectTimer:NodeJS.Timeout|null=null
@@ -231,7 +232,36 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
   const position=refreshPosition(productId,state,true)
   const globalExposure=getOpenBotExposureSummary()
   const openBotProductIds=globalExposure.positions.map(row=>row.productId)
-  const deterministicReady=Boolean(entryDecision.ready&&macro.ready&&position.qty<=0)
+
+  const macroMiddle=Number(macro.middleBand||0)
+  const macroExtensionPercent=macroMiddle>0
+    ?((candle.close-macroMiddle)/macroMiddle)*100
+    :Infinity
+  const researchPriority=researchPriorityProducts.has(productId)
+
+  const strongEntryReady=Boolean(
+    entryDecision.ready&&
+    macro.ready&&
+    position.qty<=0
+  )
+
+  const activeCapitalReady=Boolean(
+    !strongEntryReady&&
+    researchPriority&&
+    macro.ready&&
+    position.qty<=0&&
+    currentRsi>=config.activeCapitalRsiMin&&
+    currentRsi<=config.activeCapitalRsiMax&&
+    entryDecision.volumeRatio>=config.activeCapitalMinimumVolumeRatio&&
+    macroExtensionPercent<=config.activeCapitalMaxMacroExtensionPercent
+  )
+
+  const deterministicReady=Boolean(strongEntryReady||activeCapitalReady)
+  const entryMode=strongEntryReady
+    ?'STRONG_ENTRY'
+    :activeCapitalReady
+      ?'ACTIVE_CAPITAL'
+      :'WAIT'
 
   publish('mean_reversion_candle_closed',{
     productId,
@@ -252,12 +282,24 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     volumeRatio:entryDecision.volumeRatio,
     minimumVolumeRatio:config.entryMinimumVolumeRatio,
     macro5m:macro,
+    macroExtensionPercent,
+    researchPriority,
+    strongEntryReady,
+    activeCapitalReady,
+    entryMode,
     deterministicReady,
-    entryBlockers:[
-      ...entryDecision.blockers,
-      ...(macro.ready?[]:['FIVE_MINUTE_MACRO_FILTER_BLOCKED']),
-      ...(position.qty>0?['PRODUCT_ALREADY_HAS_OPEN_BOT_POSITION']:[])
-    ]
+    entryBlockers:deterministicReady
+      ?[]
+      :[
+          ...entryDecision.blockers,
+          ...(macro.ready?[]:['FIVE_MINUTE_MACRO_FILTER_BLOCKED']),
+          ...(researchPriority?[]:['NOT_IN_OLLAMA_RESEARCH_PRIORITY']),
+          ...(currentRsi>=config.activeCapitalRsiMin?[]:['ACTIVE_CAPITAL_RSI_TOO_LOW']),
+          ...(currentRsi<=config.activeCapitalRsiMax?[]:['ACTIVE_CAPITAL_RSI_TOO_HIGH']),
+          ...(entryDecision.volumeRatio>=config.activeCapitalMinimumVolumeRatio?[]:['ACTIVE_CAPITAL_VOLUME_TOO_LOW']),
+          ...(macroExtensionPercent<=config.activeCapitalMaxMacroExtensionPercent?[]:['ACTIVE_CAPITAL_TOO_EXTENDED_ABOVE_SMA20']),
+          ...(position.qty>0?['PRODUCT_ALREADY_HAS_OPEN_BOT_POSITION']:[])
+        ]
   },'strategy')
 
   if(!deterministicReady)return
@@ -284,16 +326,32 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     rsi:currentRsi,
     volumeRatio:entryDecision.volumeRatio,
     macro5m:macro,
-    rules:{
-      macro5mCloseAboveBollingerMiddle:true,
-      fiveMinuteCloseStrictlyBelowLowerBand:true,
-      currentRsiStrictlyBelow:config.entryRsiStrictlyBelow,
-      minimumVolumeRatio:config.entryMinimumVolumeRatio,
-      volumeLookbackCandles:config.entryVolumeLookbackCandles,
-      requestedBuyUsd:executable.requestedUsd,
-      buyStepUsd:config.buyStepUsd,
-      maxEntrySlippagePercent:config.maxSlippagePercent
-    }
+    entryMode,
+    researchPriority,
+    macroExtensionPercent,
+    rules:entryMode==='STRONG_ENTRY'
+      ?{
+          macro5mCloseAboveBollingerMiddle:true,
+          fiveMinuteCloseStrictlyBelowLowerBand:true,
+          currentRsiStrictlyBelow:config.entryRsiStrictlyBelow,
+          minimumVolumeRatio:config.entryMinimumVolumeRatio,
+          volumeLookbackCandles:config.entryVolumeLookbackCandles,
+          requestedBuyUsd:executable.requestedUsd,
+          buyStepUsd:config.buyStepUsd,
+          maxEntrySlippagePercent:config.maxSlippagePercent
+        }
+      :{
+          mode:'ACTIVE_CAPITAL',
+          ollamaResearchPriority:true,
+          macro5mCloseAboveBollingerMiddle:true,
+          rsiMin:config.activeCapitalRsiMin,
+          rsiMax:config.activeCapitalRsiMax,
+          minimumVolumeRatio:config.activeCapitalMinimumVolumeRatio,
+          maximumMacroExtensionPercent:config.activeCapitalMaxMacroExtensionPercent,
+          requestedBuyUsd:executable.requestedUsd,
+          buyStepUsd:config.buyStepUsd,
+          maxEntrySlippagePercent:config.maxSlippagePercent
+        }
   },'strategy')
 
   // Serialize BUY execution across all products. This prevents simultaneous
@@ -704,6 +762,11 @@ const seedUniverse=async()=>{
     ?research.rankedProductIds
     :discovered
 
+  researchPriorityProducts.clear()
+  for(const productId of researchOrder.slice(0,config.activeCapitalResearchTopN)){
+    researchPriorityProducts.add(productId)
+  }
+
   publish('market_research_ranked',{
     status:research.status,
     marketSentiment:research.marketSentiment,
@@ -712,7 +775,8 @@ const seedUniverse=async()=>{
     itemCount:research.itemCount,
     model:research.model||null,
     reason:research.reason||null,
-    topCandidates:researchOrder.slice(0,12)
+    topCandidates:researchOrder.slice(0,12),
+    activeCapitalPriorityCount:researchPriorityProducts.size
   },'research')
 
   // Always keep current bot-managed holdings in the stream so exits are never
