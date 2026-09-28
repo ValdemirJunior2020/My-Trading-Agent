@@ -13,8 +13,9 @@ const num = (value: string | undefined, fallback: number) => {
 
 export const PRODUCTION_STRATEGY = Object.freeze({
   buyStepUsd: 5,
+  targetBuyUsd: 50,
   targetBuyPercent: 10,
-  maxPerProductPercent: 10,
+  maxPerProductPercent: 50,
   maxTotalExposurePercent: 100,
   maxConcurrentPositions: 999,
   hardStopLossPercent: 0.8,
@@ -54,6 +55,7 @@ export const config = {
   maxDailyLossPercent: num(process.env.MAX_DAILY_LOSS_PERCENT, 2),
   maxTotalExposurePercent: PRODUCTION_STRATEGY.maxTotalExposurePercent,
   maxOpenBotPositions: PRODUCTION_STRATEGY.maxConcurrentPositions,
+  targetBuyUsd: PRODUCTION_STRATEGY.targetBuyUsd,
   targetBuyPercent: PRODUCTION_STRATEGY.targetBuyPercent,
   buyStepUsd: PRODUCTION_STRATEGY.buyStepUsd,
   // Dynamic sizing uses available cash + runtime exposure limits.
