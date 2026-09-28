@@ -181,7 +181,12 @@ export const getBotManagedLots=(productId:string):BotManagedLot[]=>{
       }
     }
   }
-  return lots.filter(lot=>lot.qty>1e-12&&lot.costUsd>0)
+  // Ignore economically meaningless residual dust left by Coinbase base-size
+  // rounding after an otherwise complete SELL. Dust below our configured live
+  // order minimum must not block a future clean entry or keep the exit engine busy.
+  return lots.filter(
+    lot=>lot.qty>1e-12&&lot.costUsd+1e-9>=config.minLiveOrderUsd
+  )
 }
 
 export const getBotManagedPosition=(productId:string)=>{
