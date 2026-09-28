@@ -180,7 +180,7 @@ const statusClass=(status:string)=>{
 const strategyHoverHelp=(event:any,pt:boolean)=>{
   const p=event?.payload||{}
   if(event?.type==='mean_reversion_candle_closed'){
-    const macro=p.macro10m||{}
+    const macro=p.macro5m||{}
     const rsi=Number(p.rsi)
     const ratio=Number(p.volumeRatio)
     const lowerPass=p.closeBelowLowerBand===true
@@ -188,14 +188,14 @@ const strategyHoverHelp=(event:any,pt:boolean)=>{
     return pt
       ? [
           'Regra atual determinística.',
-          '10m macro: '+(macroPass?'PASSOU':'BLOQUEOU')+' — último candle fechado de 10m deve fechar acima da banda média/SMA20.',
+          '5m macro: '+(macroPass?'PASSOU':'BLOQUEOU')+' — último candle fechado de 10m deve fechar acima da banda média/SMA20.',
           '5m Bollinger: '+(lowerPass?'PASSOU':'BLOQUEOU')+' — o fechamento deve ficar estritamente abaixo da banda inferior.',
           Number.isFinite(rsi)?'RSI14: '+rsi.toFixed(1)+' — precisa ser <30.':'',
           Number.isFinite(ratio)?'Volume: '+ratio.toFixed(2)+'× VMA20 — precisa ser ≥1.50×.':''
         ].filter(Boolean).join(' ')
       : [
           'Current deterministic rule set.',
-          '10m macro: '+(macroPass?'PASS':'BLOCK')+' — latest fully closed 10m candle must close above Bollinger middle/SMA20.',
+          '5m macro: '+(macroPass?'PASS':'BLOCK')+' — latest fully closed 5m candle must close above Bollinger middle/SMA20.',
           '5m Bollinger: '+(lowerPass?'PASS':'BLOCK')+' — the 5m close must be strictly below the lower band.',
           Number.isFinite(rsi)?'RSI14: '+rsi.toFixed(1)+' — must be <30.':'',
           Number.isFinite(ratio)?'Volume: '+ratio.toFixed(2)+'× VMA20 — must be ≥1.50×.':''
@@ -469,9 +469,9 @@ export function TradeJournal({language}:Props){
           const ds=p.deterministicStrategy||{}
           const strategyDetail=(()=>{
             if(event.type==='mean_reversion_candle_closed'){
-              const macro=p.macro10m||{}
+              const macro=p.macro5m||{}
               const parts=[
-                '10m Macro '+(macro.ready===true?'PASS':'FAIL'),
+                '5m Macro '+(macro.ready===true?'PASS':'FAIL'),
                 Number.isFinite(Number(macro.latestClose))&&Number.isFinite(Number(macro.middleBand))
                   ? ('Close '+Number(macro.latestClose).toFixed(6)+' vs SMA20 '+Number(macro.middleBand).toFixed(6))
                   : '',
@@ -492,7 +492,7 @@ export function TradeJournal({language}:Props){
             if(event.type==='mean_reversion_buy_signal'){
               return [
                 'DETERMINISTIC BUY SIGNAL',
-                '10m Macro PASS',
+                '5m Macro PASS',
                 '5m close < lower BB',
                 Number.isFinite(Number(p.rsi))?('RSI '+Number(p.rsi).toFixed(1)+' <30'):'',
                 Number.isFinite(Number(p.volumeRatio))?('Volume '+Number(p.volumeRatio).toFixed(2)+'× VMA20'):'',
