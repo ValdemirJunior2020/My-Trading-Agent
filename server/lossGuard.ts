@@ -29,7 +29,7 @@ export const getLossGuardState=()=>{
           })()
         :0),
     resetAt:getSetting('loss_guard_reset_at','')||getSetting('rolling_kill_switch_reset_at','')||null,
-    behavior:'First realized losing SELL pauses new BUYs, keeps existing-position exits active, does not liquidate other positions, and requires manual reset. The 3% rolling 24-hour equity kill switch remains the full-liquidation emergency layer.'
+    behavior:'First realized losing SELL pauses new BUYs, keeps existing-position exits active, does not liquidate other positions, and requires manual reset. The 3% rolling 24-hour equity guard pauses new BUYs without forced loss liquidation; profitable exits remain allowed.'
   }
 }
 
@@ -86,7 +86,7 @@ export const initializeLossGuard=async()=>{
   const state=getLossGuardState()
 
   // A latched first-loss state pauses new BUYs only. Existing-position exits
-  // remain active. The rolling kill switch remains the full emergency layer.
+  // remain active. The rolling guard remains a separate portfolio-level BUY pause without forced loss liquidation.
   if(state.singleLossLocked){
     setSetting('loss_guard_active','true')
     setSetting('loss_halt_active','true')
