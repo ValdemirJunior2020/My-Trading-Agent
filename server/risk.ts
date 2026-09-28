@@ -629,7 +629,10 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
     productId, side, notionalUsd, totalPortfolioUsd, availableUsd, currentAssetUsd
   } = input
   const availableAssetUsd = Number(input.availableAssetUsd ?? currentAssetUsd)
-  const maxPositionUsd = totalPortfolioUsd * (limits.maxPositionPercent / 100)
+  const maxPositionUsd = Math.max(
+    totalPortfolioUsd * (limits.maxPositionPercent / 100),
+    Math.min(Number(config.maxAdaptiveBuyUsd||25), Number(config.maxTotalExposureUsd||100))
+  )
   const maxExposureUsd = Math.min(
     totalPortfolioUsd * (limits.maxTotalExposurePercent / 100),
     Number(config.maxTotalExposureUsd||100)
