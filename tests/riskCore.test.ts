@@ -18,7 +18,7 @@ test('blocks a BUY that would exceed total bot exposure',()=>{
   assert.match(result.reasons.join(' '),/total bot exposure/i)
 })
 
-test('blocks a new BUY after max open positions is reached',()=>{
+test('does not use a global open-position-count gate when cash and exposure remain valid',()=>{
   const result=assessExposureLimits({
     side:'BUY',
     notionalUsd:5,
@@ -30,8 +30,8 @@ test('blocks a new BUY after max open positions is reached',()=>{
     maxTotalExposureUsd:100,
     maxOpenBotPositions:8
   })
-  assert.equal(result.approved,false)
-  assert.match(result.reasons.join(' '),/maximum number of open bot positions/i)
+  assert.equal(result.approved,true)
+  assert.equal(result.projectedOpenBotPositions,9)
 })
 
 test('does not add another position count for an existing coin',()=>{
@@ -199,7 +199,7 @@ test('capital preservation blocks another BUY after any realized loss',()=>{
   assert.match(result.reasons.join(' '),/realized bot loss/i)
 })
 
-test('capital preservation allows BUY only with no loss and no open bot position',()=>{
+test('capital preservation allows multiple different positions when there is no realized loss',()=>{
   const clear=assessCapitalPreservationBuy({
     enabled:true,
     realizedPnlTodayUsd:0,
@@ -213,7 +213,7 @@ test('capital preservation allows BUY only with no loss and no open bot position
     openBotPositions:1
   })
   assert.equal(clear.approved,true)
-  assert.equal(openPosition.approved,false)
+  assert.equal(openPosition.approved,true)
 })
 
 
