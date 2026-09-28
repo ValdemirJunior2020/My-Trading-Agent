@@ -484,7 +484,9 @@ export const getOpenBotExposureSummary=()=>{
   }
 
   const positions=[...inventory.entries()]
-    .filter(([,row])=>row.qty>1e-12&&row.costUsd>0)
+    // Coinbase rounding can leave tiny residual base quantities after a SELL.
+    // Do not count sub-minimum dust as an open bot position or exposure.
+    .filter(([,row])=>row.qty>1e-12&&row.costUsd+1e-9>=config.minLiveOrderUsd)
     .map(([productId,row])=>({productId,qty:row.qty,costUsd:row.costUsd}))
 
   return {
