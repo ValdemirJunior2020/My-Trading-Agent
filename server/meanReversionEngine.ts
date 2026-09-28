@@ -130,22 +130,31 @@ const refreshPosition=(productId:string,state:ProductState,force=false)=>{
 
 const smallAccountBuyIsExecutable=async(productId:string)=>{
   try{
-    const [product,accounts]=await Promise.all([
+    const [product,accounts,portfolio]=await Promise.all([
       getProduct(productId),
-      listAccounts()
+      listAccounts(),
+      getChallengeSnapshot()
     ])
     const usdAccount=(accounts as any[]).find((a:any)=>String(a.currency||'').toUpperCase()==='USD')
     const availableUsd=Number(usdAccount?.availableBalance?.value??usdAccount?.availableBalance??0)||0
+    const portfolioUsd=Number((portfolio as any)?.currentPortfolioUsd||0)||0
     const quoteMin=Math.max(config.minLiveOrderUsd,Number((product as any)?.quote_min_size||0))
     const quoteMax=Number((product as any)?.quote_max_size||Infinity)
     const step=Math.max(0.01,Number(config.buyStepUsd||5))
-    const affordable=Math.floor((Math.min(availableUsd,quoteMax)+1e-9)/step)*step
+    const targetUsd=portfolioUsd>0
+      ?portfolioUsd*(Number(config.targetBuyPercent||10)/100)
+      :availableUsd*(Number(config.targetBuyPercent||10)/100)
+    const cappedUsd=Math.min(targetUsd,availableUsd,quoteMax)
+    const affordable=Math.floor((cappedUsd+1e-9)/step)*step
     const requestedUsd=Number(affordable.toFixed(2))
 
     return {
       ok:requestedUsd+1e-8>=quoteMin&&requestedUsd>0,
       requestedUsd,
       availableUsd,
+      portfolioUsd,
+      targetBuyPercent:config.targetBuyPercent,
+      targetUsd,
       quoteMin,
       quoteMax,
       buyStepUsd:step
