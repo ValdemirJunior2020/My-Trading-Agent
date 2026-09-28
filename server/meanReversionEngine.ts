@@ -31,6 +31,7 @@ const executionLocks=new Set<string>()
 const exitAttemptAt=new Map<string,number>()
 const breakoutPeaks=new Map<string,number>()
 const meanReversionPeaks=new Map<string,number>()
+const lastHandledClosedStart=new Map<string,number>()
 
 let ws:WebSocket|null=null
 let reconnectTimer:NodeJS.Timeout|null=null
@@ -155,6 +156,12 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
   if(emergencyStopActive())return
   const state=states.get(productId)
   if(!state)return
+
+  const lastHandled=Number(lastHandledClosedStart.get(productId)||0)
+  if(candle.start<=lastHandled)return
+  // Claim the candle before any async work so duplicate websocket snapshots or
+  // overlapping callbacks cannot evaluate the same closed 5m candle twice.
+  lastHandledClosedStart.set(productId,candle.start)
 
   appendClosed(state,candle)
 
@@ -288,7 +295,9 @@ const handleClosedCandle=async(productId:string,candle:Candle)=>{
     }
   },'strategy')
 
-  const lock='BUY:'+productId
+  // Serialize BUY execution across all products. This prevents simultaneous
+  // signals from sizing against the same pre-order cash/exposure snapshot.
+  const lock='BUY:GLOBAL'
   if(executionLocks.has(lock))return
   executionLocks.add(lock)
   try{
@@ -634,6 +643,10 @@ const seedProduct=async(productId:string)=>{
     .filter(c=>c.start<nowBucket)
     .sort((a,b)=>a.start-b.start)
     .slice(-MAX_HISTORY)
+
+  // Seed the watermark from REST history so process restarts do not replay the
+  // most recent already-closed candle when the websocket snapshot arrives.
+  lastHandledClosedStart.set(productId,Number(closed.at(-1)?.start||0))
 
   states.set(productId,{
     closed,
