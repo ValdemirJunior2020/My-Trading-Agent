@@ -848,7 +848,7 @@ export const tryLimitedLiveExecution = async (opts: {
   let quoteSizeUsd: number | undefined
 
   if (side === 'BUY') {
-    const quoteMin=Math.max(config.minLiveOrderUsd,Number(productInfo?.quote_min_size||0))
+    const quoteMin=Math.max(0,Number(productInfo?.quote_min_size||0))
     const quoteMax=Number(productInfo?.quote_max_size||Infinity)
     const quoteIncrement=Number(productInfo?.quote_increment||0.01)
     const buyStepUsd=Math.max(0.01,Number(config.buyStepUsd||5))
