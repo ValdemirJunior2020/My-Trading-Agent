@@ -2,7 +2,7 @@ import { useEffect,useMemo,useRef,useState } from 'react'
 import { api } from '../lib/api'
 
 interface Props {language:'en'|'pt'}
-type JournalFilter='ALL'|'ORDER PLACED'|'REJECTED'|'WAIT'|'BLOCKED'|'FAILED'
+type JournalFilter='ALL'|'ORDER PLACED'|'SOLD'|'REJECTED'|'WAIT'|'BLOCKED'|'FAILED'
 
 const money=(value:unknown)=>{
   const n=Number(value)
@@ -353,8 +353,12 @@ export function TradeJournal({language}:Props){
     const q=search.trim().toLowerCase()
     const filtered=events.filter(event=>{
       const status=journalStatus(event)
-      if(filter!=='ALL'&&statusGroup(status)!==filter)return false
       const p=event?.payload||{}
+      const isSold=
+        event?.type==='live_order_placed' &&
+        String(p.side||'').toUpperCase()==='SELL'
+      if(filter==='SOLD'&&!isSold)return false
+      if(filter!=='ALL'&&filter!=='SOLD'&&statusGroup(status)!==filter)return false
       const coin=String(p.productId||p.buyProductId||'').toUpperCase()
       if(assetFilter!=='ALL'&&coin!==assetFilter)return false
       if(q){
@@ -388,7 +392,7 @@ export function TradeJournal({language}:Props){
   const failed=events.filter(e=>statusGroup(journalStatus(e))==='FAILED').length
   const cycles=events.filter(e=>e.type==='live_execution_cycle').length
 
-  const filters:JournalFilter[]=['ALL','ORDER PLACED','REJECTED','WAIT','BLOCKED','FAILED']
+  const filters:JournalFilter[]=['ALL','ORDER PLACED','SOLD','REJECTED','WAIT','BLOCKED','FAILED']
 
   return <main className="journal-page">
     <section className="panel journal-panel">
