@@ -221,3 +221,50 @@ export const shouldClearLegacyLossHaltEmergency=(input:{
   if(!Number.isFinite(lossAt))return false
   return manualAt<=lossAt
 }
+
+
+export const advanceProfitRecyclePool=(input:{
+  baselineUsd:number
+  lockedUsd:number
+  profitableSellNetProceedsUsd:number
+  multiplier?:number
+})=>{
+  const multiplier=Math.max(2,Number(input.multiplier||2))
+  let baselineUsd=Math.max(0,Number(input.baselineUsd)||0)
+  let lockedUsd=Math.max(0,Number(input.lockedUsd)||0)
+  const addedUsd=Math.max(0,Number(input.profitableSellNetProceedsUsd)||0)
+
+  lockedUsd+=addedUsd
+
+  if(baselineUsd<=0&&lockedUsd>0){
+    baselineUsd=lockedUsd
+    return {
+      baselineUsd,
+      lockedUsd,
+      unlockedUsd:0,
+      thresholdUsd:baselineUsd*multiplier,
+      doubled:false
+    }
+  }
+
+  const thresholdUsd=baselineUsd*multiplier
+  if(baselineUsd>0&&lockedUsd+1e-9>=thresholdUsd){
+    const unlockedUsd=Math.max(0,lockedUsd-baselineUsd)
+    lockedUsd=baselineUsd
+    return {
+      baselineUsd,
+      lockedUsd,
+      unlockedUsd,
+      thresholdUsd,
+      doubled:true
+    }
+  }
+
+  return {
+    baselineUsd,
+    lockedUsd,
+    unlockedUsd:0,
+    thresholdUsd,
+    doubled:false
+  }
+}
