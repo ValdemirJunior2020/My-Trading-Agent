@@ -1,5 +1,5 @@
 import { config } from './config.js'
-import { advanceProfitRecyclePool,assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from './riskCore.js'
+import { advanceProfitRecyclePool,assessAlreadyProfitableSell,assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from './riskCore.js'
 import { getSetting, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
@@ -263,93 +263,28 @@ const currentBotInventoryForEmergency=()=>{
 const liquidateBotInventoryForEmergency=async(
   executionSource:'ROLLING_24H_KILL_SWITCH'|'SINGLE_LOSS_KILL_SWITCH'
 )=>{
-  const results:any[]=[]
-  for(const position of currentBotInventoryForEmergency()){
-    try{
-      const product:any=await getProduct(position.productId)
-      const baseMin=Math.max(0,Number(product?.base_min_size||0))
-      if(position.qty+1e-12<baseMin){
-        results.push({productId:position.productId,executed:false,reason:'POSITION_BELOW_COINBASE_SELL_MINIMUM',qty:position.qty,baseMin})
-        continue
-      }
-
-      const preview=await previewMarketOrder({
-        productId:position.productId,
-        side:'SELL',
-        baseSize:position.qty
-      })
-      const previewErrors=Array.isArray(preview.errs)?preview.errs.filter(Boolean):[]
-      if(previewErrors.length||!preview.preview_id){
-        results.push({productId:position.productId,executed:false,reason:previewErrors.join(', ')||'NO_PREVIEW_ID'})
-        continue
-      }
-
-      const order=await createMarketOrder({
-        productId:position.productId,
-        side:'SELL',
-        baseSize:position.qty,
-        previewId:preview.preview_id
-      })
-      const orderId=String(order.success_response?.order_id||'')
-      const fill=await waitForOrderFill(orderId,10000)
-      const eventTimestamp=new Date().toISOString()
-      const actualFillPrice=Number(fill.filledPrice||0)
-      const executedQty=Number(fill.executedQty||position.qty||0)
-      const notionalUsd=actualFillPrice*executedQty
-      const eventType=executionSource==='ROLLING_24H_KILL_SWITCH'
-        ?'rolling_kill_switch_liquidation_fill'
-        :'single_loss_kill_switch_liquidation_fill'
-
-      const payload={
-        timestampIso:eventTimestamp,
-        monotonicNs:process.hrtime.bigint().toString(),
-        productId:position.productId,
-        side:'SELL',
-        notionalUsd,
-        orderId,
-        requestedQty:position.qty,
-        actualFillPrice,
-        executedQty,
-        preview,
-        fill,
-        exitReason:executionSource,
-        executionSource
-      }
-
-      publish(eventType,payload,'risk')
-      // Record emergency liquidation as a normal placed SELL too so bot
-      // inventory reconstruction remains correct across restarts.
-      publish('live_order_placed',payload,'execution')
-
-      results.push({
-        productId:position.productId,
-        executed:true,
-        orderId,
-        actualFillPrice,
-        executedQty
-      })
-    }catch(error){
-      const message=error instanceof Error?error.message:String(error)
-      publish(
-        executionSource==='ROLLING_24H_KILL_SWITCH'
-          ?'rolling_kill_switch_liquidation_failed'
-          :'single_loss_kill_switch_liquidation_failed',
-        {
-          timestampIso:new Date().toISOString(),
-          monotonicNs:process.hrtime.bigint().toString(),
-          productId:position.productId,
-          executionSource,
-          error:message
-        },
-        'risk'
-      )
-      results.push({productId:position.productId,executed:false,error:message})
-    }
+  // HARD SAFETY RULE: risk events may pause new BUYs, but they must never
+  // force-sell a bot position at a loss. Positions are held until the normal
+  // live/current-price + Coinbase-preview profit gates approve a green exit.
+  const positions=currentBotInventoryForEmergency()
+  const results=positions.map(position=>({
+    productId:position.productId,
+    executed:false,
+    reason:'HOLD_PROFIT_ONLY_NO_FORCED_LIQUIDATION',
+    executionSource,
+    qty:position.qty,
+    costUsd:position.costUsd
+  }))
+  if(results.length){
+    publish('profit_only_emergency_hold',{
+      executionSource,
+      positions:results,
+      rule:'NO_AUTOMATED_RED_SELLS'
+    },'risk')
   }
   return results
 }
 
-let lastRollingEquitySnapshotAt=0
 const triggerSingleLossEmergency=async(input:{
   productId:string
   realizedNetProfitUsd:number
@@ -1041,6 +976,32 @@ export const tryLimitedLiveExecution = async (opts: {
   }
 
   try {
+    if(side==='SELL'){
+      const currentProfitGate=assessAlreadyProfitableSell({
+        currentLivePrice:price,
+        feeLoadedEntryPrice:Number(opts.avgEntryPrice||0)
+      })
+      if(!currentProfitGate.approved){
+        const reason=currentProfitGate.reason
+        publish('live_order_rejected',{
+          productId,
+          side,
+          notionalUsd,
+          currentLivePrice:price,
+          feeLoadedEntryPrice:Number(opts.avgEntryPrice||0),
+          reason,
+          rule:'SELL_ONLY_WHEN_ALREADY_PROFITABLE_NOW'
+        },'risk')
+        return {
+          executed:false,
+          reason,
+          preflight,
+          currentLivePrice:price,
+          feeLoadedEntryPrice:Number(opts.avgEntryPrice||0)
+        }
+      }
+    }
+
     const preview = await previewMarketOrder({ productId, side, quoteSizeUsd, baseSize })
     const previewErrors = Array.isArray(preview.errs) ? preview.errs.filter(Boolean) : []
     if (previewErrors.length > 0 || !preview.preview_id) {
@@ -1065,7 +1026,512 @@ export const tryLimitedLiveExecution = async (opts: {
       const previewNetProfitUsd=previewNetProceeds-previewCostBasis
 
       if(!(estimatedFillPrice>0)||!(previewQty>0)||!(feeLoadedEntry>0)||previewNetProfitUsd+1e-9<requiredNetProfitUsd){
-        const reason='SELL preview net profit $'
+        const reason='HOLD: current Coinbase SELL preview net profit 
+          +(Number.isFinite(previewNetProfitUsd)?previewNetProfitUsd.toFixed(4):'0.0000')
+          +' is below required 
+          +' after estimated Coinbase fee.'
+
+        publish('live_order_preview_rejected',{
+          productId,side,notionalUsd,preview,estimatedFillPrice,
+          previewCommission,previewQty,previewCostBasis,
+          previewNetProceeds,previewNetProfitUsd,requiredNetProfitUsd,reason
+        },'risk')
+
+        return {executed:false,reason,preflight,preview,previewNetProfitUsd,requiredNetProfitUsd}
+      }
+    }
+
+    // Production entry/exit math is deterministic. Legacy static take-profit
+    // economics gates are intentionally bypassed because this strategy has no
+    // fixed take-profit; it uses an 8% net trailing activation milestone.
+    const adverseSlippagePercent =
+      estimatedFillPrice > 0 && slippageReferencePrice > 0
+        ? side === 'BUY'
+          ? Math.max(0, ((estimatedFillPrice - slippageReferencePrice) / slippageReferencePrice) * 100)
+          : Math.max(0, ((slippageReferencePrice - estimatedFillPrice) / slippageReferencePrice) * 100)
+        : 0
+
+    if (adverseSlippagePercent > config.maxSlippagePercent) {
+      const reason =
+        'Preview slippage ' + adverseSlippagePercent.toFixed(3) +
+        '% exceeds max ' + config.maxSlippagePercent.toFixed(3) + '%'
+      publish('live_order_preview_rejected', {
+        productId,
+        side,
+        notionalUsd,
+        preview,
+        referencePrice: slippageReferencePrice,
+        estimatedFillPrice,
+        adverseSlippagePercent,
+        maxSlippagePercent: config.maxSlippagePercent,
+        reason
+      }, 'risk')
+      return { executed: false, reason, preflight, preview, adverseSlippagePercent }
+    }
+
+    publish('live_order_preview_approved', {
+      productId,
+      side,
+      notionalUsd,
+      commissionTotal: preview.commission_total || null,
+      estimatedFillPrice: preview.est_average_filled_price || null,
+      adverseSlippagePercent,
+      maxSlippagePercent: config.maxSlippagePercent,
+      warnings: preview.warning || []
+    }, 'execution')
+
+    // Re-check the global stop immediately before sending the real order.
+    // This closes the gap where another trade could realize a loss after this
+    // preview passed but before this order reached Coinbase.
+    const finalExecutionGate=assessEmergencyExecutionGate({
+      emergencyStop:emergencyStopActive(),
+      tradingMode:config.tradingMode,
+      liveTradingEnabled:config.liveTradingEnabled,
+      autoTradingEnabled:config.autoTradingEnabled,
+      manualApprovalRequired:config.manualApprovalRequired,
+      lossHaltActive:getSetting('loss_halt_active','false')==='true',
+      protectiveExit:side==='SELL',
+      emergencyStopReason:getSetting('emergency_stop_reason','')
+    })
+    if(!finalExecutionGate.approved){
+      const reason=finalExecutionGate.reasons[0]||'Global execution stop is active'
+      publish('live_order_rejected',{productId,side,notionalUsd,reasons:finalExecutionGate.reasons,reason},'risk')
+      return {executed:false,reason,reasons:finalExecutionGate.reasons,preflight,preview}
+    }
+
+    const orderResult = await createMarketOrder({
+      productId,
+      side,
+      quoteSizeUsd,
+      baseSize,
+      previewId: preview.preview_id
+    })
+
+    const orderId=String(orderResult.success_response?.order_id||'')
+    const fill=await waitForOrderFill(orderId,10000)
+    const placedAt = new Date().toISOString()
+    const actualFillPrice=Number(fill.filledPrice||0)
+    const actualSlippagePercent =
+      actualFillPrice>0 && slippageReferencePrice>0
+        ? side==='BUY'
+          ? Math.max(0,((actualFillPrice-slippageReferencePrice)/slippageReferencePrice)*100)
+          : Math.max(0,((slippageReferencePrice-actualFillPrice)/slippageReferencePrice)*100)
+        : 0
+
+    const executedQty=Number(fill.executedQty||baseSize||0)
+    const sellCommission=side==='SELL'?Number(preview.commission_total||0):0
+    const realizedSell=calculateRealizedSellMetrics({
+      avgEntryPrice:side==='SELL'?Number(opts.avgEntryPrice||0):0,
+      executedQty,
+      actualFillPrice:side==='SELL'?actualFillPrice:0,
+      sellCommission
+    })
+    const sellCostBasisUsd=realizedSell.sellCostBasisUsd
+    const realizedNetProceedsUsd=realizedSell.realizedNetProceedsUsd
+    const realizedNetProfitUsd=realizedSell.realizedNetProfitUsd
+    const realizedNetProfitPercent=realizedSell.realizedNetProfitPercent
+
+    setSetting('live_last_order_at_' + productId, placedAt)
+    setSetting('live_last_order_id_' + productId, orderId)
+
+    publish('live_order_placed', {
+      productId,
+      side,
+      notionalUsd,
+      orderId,
+      placedAt,
+      preview,
+      fill,
+      actualFillPrice,
+      executedQty:fill.executedQty,
+      actualSlippagePercent,
+      sourceLotOrderId:opts.sourceLotOrderId||null,
+      exitReason:opts.exitReason||null,
+      executionSource:opts.executionSource||'UNKNOWN',
+      realizedNetProfitUsd,
+      realizedNetProfitPercent,
+      realizedNetProceedsUsd:side==='SELL'?realizedNetProceedsUsd:null,
+      sellCostBasisUsd:side==='SELL'?sellCostBasisUsd:null
+    }, 'execution')
+
+    if(side==='SELL'&&Number(realizedNetProfitUsd)>0){
+      recordProfitableSellForRecyclePool({
+        productId,
+        realizedNetProceedsUsd:Number(realizedNetProceedsUsd),
+        realizedNetProfitUsd:Number(realizedNetProfitUsd)
+      })
+    }
+
+    if(side==='SELL'&&Number(realizedNetProfitUsd)<0){
+      await triggerSingleLossEmergency({
+        productId,
+        realizedNetProfitUsd:Number(realizedNetProfitUsd),
+        realizedNetProfitPercent:Number.isFinite(Number(realizedNetProfitPercent))
+          ?Number(realizedNetProfitPercent)
+          :null
+      })
+    }
+
+    return {
+      executed: true,
+      productId,
+      side,
+      notionalUsd,
+      quoteSizeUsd,
+      baseSize,
+      confidencePercent,
+      orderId,
+      orderResult,
+      preview,
+      fill,
+      actualFillPrice,
+      executedQty:fill.executedQty,
+      actualSlippagePercent,
+      preflight
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    publish('live_order_failed', { productId, side, notionalUsd, error: message }, 'execution')
+    return { executed: false, reason: message, preflight }
+  }
+}
+
+          +(Number.isFinite(previewNetProfitUsd)?previewNetProfitUsd.toFixed(4):'0.0000')
+          +' is below required $'+requiredNetProfitUsd.toFixed(4)
+          +' after estimated Coinbase fee.'
+
+        publish('live_order_preview_rejected',{
+          productId,side,notionalUsd,preview,estimatedFillPrice,
+          previewCommission,previewQty,previewCostBasis,
+          previewNetProceeds,previewNetProfitUsd,requiredNetProfitUsd,reason
+        },'risk')
+
+        return {executed:false,reason,preflight,preview,previewNetProfitUsd,requiredNetProfitUsd}
+      }
+    }
+
+    // Production entry/exit math is deterministic. Legacy static take-profit
+    // economics gates are intentionally bypassed because this strategy has no
+    // fixed take-profit; it uses an 8% net trailing activation milestone.
+    const adverseSlippagePercent =
+      estimatedFillPrice > 0 && slippageReferencePrice > 0
+        ? side === 'BUY'
+          ? Math.max(0, ((estimatedFillPrice - slippageReferencePrice) / slippageReferencePrice) * 100)
+          : Math.max(0, ((slippageReferencePrice - estimatedFillPrice) / slippageReferencePrice) * 100)
+        : 0
+
+    if (adverseSlippagePercent > config.maxSlippagePercent) {
+      const reason =
+        'Preview slippage ' + adverseSlippagePercent.toFixed(3) +
+        '% exceeds max ' + config.maxSlippagePercent.toFixed(3) + '%'
+      publish('live_order_preview_rejected', {
+        productId,
+        side,
+        notionalUsd,
+        preview,
+        referencePrice: slippageReferencePrice,
+        estimatedFillPrice,
+        adverseSlippagePercent,
+        maxSlippagePercent: config.maxSlippagePercent,
+        reason
+      }, 'risk')
+      return { executed: false, reason, preflight, preview, adverseSlippagePercent }
+    }
+
+    publish('live_order_preview_approved', {
+      productId,
+      side,
+      notionalUsd,
+      commissionTotal: preview.commission_total || null,
+      estimatedFillPrice: preview.est_average_filled_price || null,
+      adverseSlippagePercent,
+      maxSlippagePercent: config.maxSlippagePercent,
+      warnings: preview.warning || []
+    }, 'execution')
+
+    // Re-check the global stop immediately before sending the real order.
+    // This closes the gap where another trade could realize a loss after this
+    // preview passed but before this order reached Coinbase.
+    const finalExecutionGate=assessEmergencyExecutionGate({
+      emergencyStop:emergencyStopActive(),
+      tradingMode:config.tradingMode,
+      liveTradingEnabled:config.liveTradingEnabled,
+      autoTradingEnabled:config.autoTradingEnabled,
+      manualApprovalRequired:config.manualApprovalRequired,
+      lossHaltActive:getSetting('loss_halt_active','false')==='true',
+      protectiveExit:side==='SELL',
+      emergencyStopReason:getSetting('emergency_stop_reason','')
+    })
+    if(!finalExecutionGate.approved){
+      const reason=finalExecutionGate.reasons[0]||'Global execution stop is active'
+      publish('live_order_rejected',{productId,side,notionalUsd,reasons:finalExecutionGate.reasons,reason},'risk')
+      return {executed:false,reason,reasons:finalExecutionGate.reasons,preflight,preview}
+    }
+
+    const orderResult = await createMarketOrder({
+      productId,
+      side,
+      quoteSizeUsd,
+      baseSize,
+      previewId: preview.preview_id
+    })
+
+    const orderId=String(orderResult.success_response?.order_id||'')
+    const fill=await waitForOrderFill(orderId,10000)
+    const placedAt = new Date().toISOString()
+    const actualFillPrice=Number(fill.filledPrice||0)
+    const actualSlippagePercent =
+      actualFillPrice>0 && slippageReferencePrice>0
+        ? side==='BUY'
+          ? Math.max(0,((actualFillPrice-slippageReferencePrice)/slippageReferencePrice)*100)
+          : Math.max(0,((slippageReferencePrice-actualFillPrice)/slippageReferencePrice)*100)
+        : 0
+
+    const executedQty=Number(fill.executedQty||baseSize||0)
+    const sellCommission=side==='SELL'?Number(preview.commission_total||0):0
+    const realizedSell=calculateRealizedSellMetrics({
+      avgEntryPrice:side==='SELL'?Number(opts.avgEntryPrice||0):0,
+      executedQty,
+      actualFillPrice:side==='SELL'?actualFillPrice:0,
+      sellCommission
+    })
+    const sellCostBasisUsd=realizedSell.sellCostBasisUsd
+    const realizedNetProceedsUsd=realizedSell.realizedNetProceedsUsd
+    const realizedNetProfitUsd=realizedSell.realizedNetProfitUsd
+    const realizedNetProfitPercent=realizedSell.realizedNetProfitPercent
+
+    setSetting('live_last_order_at_' + productId, placedAt)
+    setSetting('live_last_order_id_' + productId, orderId)
+
+    publish('live_order_placed', {
+      productId,
+      side,
+      notionalUsd,
+      orderId,
+      placedAt,
+      preview,
+      fill,
+      actualFillPrice,
+      executedQty:fill.executedQty,
+      actualSlippagePercent,
+      sourceLotOrderId:opts.sourceLotOrderId||null,
+      exitReason:opts.exitReason||null,
+      executionSource:opts.executionSource||'UNKNOWN',
+      realizedNetProfitUsd,
+      realizedNetProfitPercent,
+      realizedNetProceedsUsd:side==='SELL'?realizedNetProceedsUsd:null,
+      sellCostBasisUsd:side==='SELL'?sellCostBasisUsd:null
+    }, 'execution')
+
+    if(side==='SELL'&&Number(realizedNetProfitUsd)>0){
+      recordProfitableSellForRecyclePool({
+        productId,
+        realizedNetProceedsUsd:Number(realizedNetProceedsUsd),
+        realizedNetProfitUsd:Number(realizedNetProfitUsd)
+      })
+    }
+
+    if(side==='SELL'&&Number(realizedNetProfitUsd)<0){
+      await triggerSingleLossEmergency({
+        productId,
+        realizedNetProfitUsd:Number(realizedNetProfitUsd),
+        realizedNetProfitPercent:Number.isFinite(Number(realizedNetProfitPercent))
+          ?Number(realizedNetProfitPercent)
+          :null
+      })
+    }
+
+    return {
+      executed: true,
+      productId,
+      side,
+      notionalUsd,
+      quoteSizeUsd,
+      baseSize,
+      confidencePercent,
+      orderId,
+      orderResult,
+      preview,
+      fill,
+      actualFillPrice,
+      executedQty:fill.executedQty,
+      actualSlippagePercent,
+      preflight
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    publish('live_order_failed', { productId, side, notionalUsd, error: message }, 'execution')
+    return { executed: false, reason: message, preflight }
+  }
+}
++requiredNetProfitUsd.toFixed(4)
+          +' after estimated Coinbase fee.'
+
+        publish('live_order_preview_rejected',{
+          productId,side,notionalUsd,preview,estimatedFillPrice,
+          previewCommission,previewQty,previewCostBasis,
+          previewNetProceeds,previewNetProfitUsd,requiredNetProfitUsd,reason
+        },'risk')
+
+        return {executed:false,reason,preflight,preview,previewNetProfitUsd,requiredNetProfitUsd}
+      }
+    }
+
+    // Production entry/exit math is deterministic. Legacy static take-profit
+    // economics gates are intentionally bypassed because this strategy has no
+    // fixed take-profit; it uses an 8% net trailing activation milestone.
+    const adverseSlippagePercent =
+      estimatedFillPrice > 0 && slippageReferencePrice > 0
+        ? side === 'BUY'
+          ? Math.max(0, ((estimatedFillPrice - slippageReferencePrice) / slippageReferencePrice) * 100)
+          : Math.max(0, ((slippageReferencePrice - estimatedFillPrice) / slippageReferencePrice) * 100)
+        : 0
+
+    if (adverseSlippagePercent > config.maxSlippagePercent) {
+      const reason =
+        'Preview slippage ' + adverseSlippagePercent.toFixed(3) +
+        '% exceeds max ' + config.maxSlippagePercent.toFixed(3) + '%'
+      publish('live_order_preview_rejected', {
+        productId,
+        side,
+        notionalUsd,
+        preview,
+        referencePrice: slippageReferencePrice,
+        estimatedFillPrice,
+        adverseSlippagePercent,
+        maxSlippagePercent: config.maxSlippagePercent,
+        reason
+      }, 'risk')
+      return { executed: false, reason, preflight, preview, adverseSlippagePercent }
+    }
+
+    publish('live_order_preview_approved', {
+      productId,
+      side,
+      notionalUsd,
+      commissionTotal: preview.commission_total || null,
+      estimatedFillPrice: preview.est_average_filled_price || null,
+      adverseSlippagePercent,
+      maxSlippagePercent: config.maxSlippagePercent,
+      warnings: preview.warning || []
+    }, 'execution')
+
+    // Re-check the global stop immediately before sending the real order.
+    // This closes the gap where another trade could realize a loss after this
+    // preview passed but before this order reached Coinbase.
+    const finalExecutionGate=assessEmergencyExecutionGate({
+      emergencyStop:emergencyStopActive(),
+      tradingMode:config.tradingMode,
+      liveTradingEnabled:config.liveTradingEnabled,
+      autoTradingEnabled:config.autoTradingEnabled,
+      manualApprovalRequired:config.manualApprovalRequired,
+      lossHaltActive:getSetting('loss_halt_active','false')==='true',
+      protectiveExit:side==='SELL',
+      emergencyStopReason:getSetting('emergency_stop_reason','')
+    })
+    if(!finalExecutionGate.approved){
+      const reason=finalExecutionGate.reasons[0]||'Global execution stop is active'
+      publish('live_order_rejected',{productId,side,notionalUsd,reasons:finalExecutionGate.reasons,reason},'risk')
+      return {executed:false,reason,reasons:finalExecutionGate.reasons,preflight,preview}
+    }
+
+    const orderResult = await createMarketOrder({
+      productId,
+      side,
+      quoteSizeUsd,
+      baseSize,
+      previewId: preview.preview_id
+    })
+
+    const orderId=String(orderResult.success_response?.order_id||'')
+    const fill=await waitForOrderFill(orderId,10000)
+    const placedAt = new Date().toISOString()
+    const actualFillPrice=Number(fill.filledPrice||0)
+    const actualSlippagePercent =
+      actualFillPrice>0 && slippageReferencePrice>0
+        ? side==='BUY'
+          ? Math.max(0,((actualFillPrice-slippageReferencePrice)/slippageReferencePrice)*100)
+          : Math.max(0,((slippageReferencePrice-actualFillPrice)/slippageReferencePrice)*100)
+        : 0
+
+    const executedQty=Number(fill.executedQty||baseSize||0)
+    const sellCommission=side==='SELL'?Number(preview.commission_total||0):0
+    const realizedSell=calculateRealizedSellMetrics({
+      avgEntryPrice:side==='SELL'?Number(opts.avgEntryPrice||0):0,
+      executedQty,
+      actualFillPrice:side==='SELL'?actualFillPrice:0,
+      sellCommission
+    })
+    const sellCostBasisUsd=realizedSell.sellCostBasisUsd
+    const realizedNetProceedsUsd=realizedSell.realizedNetProceedsUsd
+    const realizedNetProfitUsd=realizedSell.realizedNetProfitUsd
+    const realizedNetProfitPercent=realizedSell.realizedNetProfitPercent
+
+    setSetting('live_last_order_at_' + productId, placedAt)
+    setSetting('live_last_order_id_' + productId, orderId)
+
+    publish('live_order_placed', {
+      productId,
+      side,
+      notionalUsd,
+      orderId,
+      placedAt,
+      preview,
+      fill,
+      actualFillPrice,
+      executedQty:fill.executedQty,
+      actualSlippagePercent,
+      sourceLotOrderId:opts.sourceLotOrderId||null,
+      exitReason:opts.exitReason||null,
+      executionSource:opts.executionSource||'UNKNOWN',
+      realizedNetProfitUsd,
+      realizedNetProfitPercent,
+      realizedNetProceedsUsd:side==='SELL'?realizedNetProceedsUsd:null,
+      sellCostBasisUsd:side==='SELL'?sellCostBasisUsd:null
+    }, 'execution')
+
+    if(side==='SELL'&&Number(realizedNetProfitUsd)>0){
+      recordProfitableSellForRecyclePool({
+        productId,
+        realizedNetProceedsUsd:Number(realizedNetProceedsUsd),
+        realizedNetProfitUsd:Number(realizedNetProfitUsd)
+      })
+    }
+
+    if(side==='SELL'&&Number(realizedNetProfitUsd)<0){
+      await triggerSingleLossEmergency({
+        productId,
+        realizedNetProfitUsd:Number(realizedNetProfitUsd),
+        realizedNetProfitPercent:Number.isFinite(Number(realizedNetProfitPercent))
+          ?Number(realizedNetProfitPercent)
+          :null
+      })
+    }
+
+    return {
+      executed: true,
+      productId,
+      side,
+      notionalUsd,
+      quoteSizeUsd,
+      baseSize,
+      confidencePercent,
+      orderId,
+      orderResult,
+      preview,
+      fill,
+      actualFillPrice,
+      executedQty:fill.executedQty,
+      actualSlippagePercent,
+      preflight
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    publish('live_order_failed', { productId, side, notionalUsd, error: message }, 'execution')
+    return { executed: false, reason: message, preflight }
+  }
+}
+
           +(Number.isFinite(previewNetProfitUsd)?previewNetProfitUsd.toFixed(4):'0.0000')
           +' is below required $'+requiredNetProfitUsd.toFixed(4)
           +' after estimated Coinbase fee.'
