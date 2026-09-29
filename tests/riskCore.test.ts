@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from '../server/riskCore.js'
+import { advanceProfitRecyclePool,assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from '../server/riskCore.js'
 
 test('blocks a BUY that would exceed total bot exposure',()=>{
   const result=assessExposureLimits({
@@ -349,4 +349,50 @@ test('Loss Guard emergency reason is never cleared as legacy loss-halt state',()
     lossHaltTriggeredAt:'2026-09-27T10:38:12.000Z',
     latestManualEmergencyAt:''
   }),false)
+})
+
+
+test('profit recycle pool locks the first profitable sell as its baseline',()=>{
+  const result=advanceProfitRecyclePool({
+    baselineUsd:0,
+    lockedUsd:0,
+    profitableSellNetProceedsUsd:10
+  })
+  assert.equal(result.baselineUsd,10)
+  assert.equal(result.lockedUsd,10)
+  assert.equal(result.unlockedUsd,0)
+  assert.equal(result.thresholdUsd,20)
+  assert.equal(result.doubled,false)
+})
+
+test('profit recycle pool unlocks growth only after the locked pool doubles',()=>{
+  const below=advanceProfitRecyclePool({
+    baselineUsd:10,
+    lockedUsd:10,
+    profitableSellNetProceedsUsd:9.99
+  })
+  assert.equal(below.doubled,false)
+  assert.equal(Number(below.lockedUsd.toFixed(2)),19.99)
+  assert.equal(below.unlockedUsd,0)
+
+  const doubled=advanceProfitRecyclePool({
+    baselineUsd:10,
+    lockedUsd:10,
+    profitableSellNetProceedsUsd:10
+  })
+  assert.equal(doubled.doubled,true)
+  assert.equal(doubled.lockedUsd,10)
+  assert.equal(doubled.unlockedUsd,10)
+  assert.equal(doubled.thresholdUsd,20)
+})
+
+test('profit recycle pool unlocks only the amount above the protected baseline',()=>{
+  const result=advanceProfitRecyclePool({
+    baselineUsd:10,
+    lockedUsd:18,
+    profitableSellNetProceedsUsd:7
+  })
+  assert.equal(result.doubled,true)
+  assert.equal(result.lockedUsd,10)
+  assert.equal(result.unlockedUsd,15)
 })
