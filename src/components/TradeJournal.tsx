@@ -546,7 +546,7 @@ export function TradeJournal({language}:Props){
                   : '',
                 Number.isFinite(Number(p.rules?.requestedBuyUsd))
                   ? ('Target buy $'+Number(p.rules.requestedBuyUsd).toFixed(2))
-                  : 'Target buy $10 • adaptive to Coinbase minimum • total bot exposure $100',
+                  : 'Target buy $10 • adaptive to Coinbase minimum • keep $20 reserve • total bot exposure $100',
                 'Max slippage 0.10%'
               ].filter(Boolean).join(' • ')
             }
