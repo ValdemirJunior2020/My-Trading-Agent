@@ -1,5 +1,5 @@
 import { config } from './config.js'
-import { assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from './riskCore.js'
+import { advanceProfitRecyclePool,assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from './riskCore.js'
 import { getSetting, setSetting, livePlacedOrders, addEquitySnapshot, pruneEquitySnapshots, equitySnapshotsSince, recentEvents } from './db.js'
 import { createMarketOrder, listAccounts, getProduct, previewMarketOrder, waitForOrderFill, listOpenOrders, cancelOrders } from './coinbase.js'
 import { getChallengeSnapshot } from './challenge.js'
@@ -23,6 +23,51 @@ export const getRuntimeRiskLimits = (): RuntimeRiskLimits => ({
   maxTotalExposurePercent: config.maxTotalExposurePercent,
   maxDailyLossPercent: storedNumber('risk_max_daily_loss_percent', config.maxDailyLossPercent)
 })
+
+
+const getProfitRecycleState=()=>{
+  const baselineUsd=Math.max(0,storedNumber('profit_recycle_baseline_usd',0))
+  const lockedUsd=Math.max(0,storedNumber('profit_recycle_locked_usd',0))
+  return {
+    baselineUsd,
+    lockedUsd,
+    thresholdUsd:baselineUsd>0?baselineUsd*2:0
+  }
+}
+
+const recordProfitableSellForRecyclePool=(input:{
+  productId:string
+  realizedNetProceedsUsd:number
+  realizedNetProfitUsd:number
+})=>{
+  if(!(Number(input.realizedNetProfitUsd)>0)||!(Number(input.realizedNetProceedsUsd)>0)){
+    return getProfitRecycleState()
+  }
+
+  const current=getProfitRecycleState()
+  const next=advanceProfitRecyclePool({
+    baselineUsd:current.baselineUsd,
+    lockedUsd:current.lockedUsd,
+    profitableSellNetProceedsUsd:Number(input.realizedNetProceedsUsd),
+    multiplier:2
+  })
+
+  setSetting('profit_recycle_baseline_usd',String(next.baselineUsd))
+  setSetting('profit_recycle_locked_usd',String(next.lockedUsd))
+
+  publish(next.doubled?'profit_recycle_pool_unlocked':'profit_recycle_pool_locked',{
+    productId:input.productId,
+    realizedNetProceedsUsd:Number(input.realizedNetProceedsUsd),
+    realizedNetProfitUsd:Number(input.realizedNetProfitUsd),
+    baselineUsd:next.baselineUsd,
+    lockedUsd:next.lockedUsd,
+    unlockedUsd:next.unlockedUsd,
+    thresholdUsd:next.thresholdUsd,
+    rule:'PROFITABLE_SELL_PROCEEDS_STAY_LOCKED_UNTIL_RECYCLE_POOL_DOUBLES'
+  },'risk')
+
+  return next
+}
 
 export const saveRuntimeRiskLimits = (input: Partial<RuntimeRiskLimits>) => {
   const current = getRuntimeRiskLimits()
@@ -825,6 +870,8 @@ export const tryLimitedLiveExecution = async (opts: {
   const baseAccount = accounts.find((a: any) => String(a.currency).toUpperCase() === baseCurrency)
 
   const availableUsd = balanceValue(usdAccount?.availableBalance)
+  const recycleState=getProfitRecycleState()
+  const buyableUsdAfterRecycleLock=Math.max(0,availableUsd-recycleState.lockedUsd)
   const availableBase = balanceValue(baseAccount?.availableBalance)
   const heldBase = balanceValue(baseAccount?.hold)
   const currentAssetUsd = (availableBase + heldBase) * price
@@ -867,7 +914,7 @@ export const tryLimitedLiveExecution = async (opts: {
       maxAdaptiveBuyUsd
     )
     const rawAffordableUsd=Math.min(
-      availableUsd,
+      buyableUsdAfterRecycleLock,
       adaptiveTargetUsd,
       maxFromPercent,
       remainingExposureUsd,
@@ -888,7 +935,9 @@ export const tryLimitedLiveExecution = async (opts: {
       const blocker=
         availableUsd+1e-8<buyStepUsd
           ?'INSUFFICIENT_AVAILABLE_USD'
-          :maxFromPercent+1e-8<buyStepUsd
+          :buyableUsdAfterRecycleLock+1e-8<buyStepUsd
+            ?'PROFIT_RECYCLE_POOL_LOCKED_UNTIL_DOUBLE'
+            :maxFromPercent+1e-8<buyStepUsd
             ?'POSITION_CAP_BELOW_BUY_STEP'
             :remainingExposureUsd+1e-8<buyStepUsd
               ?'REMAINING_EXPOSURE_BELOW_BUY_STEP'
@@ -899,6 +948,10 @@ export const tryLimitedLiveExecution = async (opts: {
         executed:false,
         reason:blocker,
         availableUsd,
+        buyableUsdAfterRecycleLock,
+        profitRecycleBaselineUsd:recycleState.baselineUsd,
+        profitRecycleLockedUsd:recycleState.lockedUsd,
+        profitRecycleThresholdUsd:recycleState.thresholdUsd,
         requestedBuyUsd,
         rawAffordableUsd,
         steppedUsd,
@@ -1139,6 +1192,14 @@ export const tryLimitedLiveExecution = async (opts: {
       realizedNetProceedsUsd:side==='SELL'?realizedNetProceedsUsd:null,
       sellCostBasisUsd:side==='SELL'?sellCostBasisUsd:null
     }, 'execution')
+
+    if(side==='SELL'&&Number(realizedNetProfitUsd)>0){
+      recordProfitableSellForRecyclePool({
+        productId,
+        realizedNetProceedsUsd:Number(realizedNetProceedsUsd),
+        realizedNetProfitUsd:Number(realizedNetProfitUsd)
+      })
+    }
 
     if(side==='SELL'&&Number(realizedNetProfitUsd)<0){
       await triggerSingleLossEmergency({
