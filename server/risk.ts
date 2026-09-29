@@ -631,10 +631,7 @@ export const evaluateLiveOrder = (input: LiveOrderPreflightInput) => {
   const availableAssetUsd = Number(input.availableAssetUsd ?? currentAssetUsd)
   const maxPositionUsd = Math.max(
     totalPortfolioUsd * (limits.maxPositionPercent / 100),
-    Math.min(
-      Number(config.maxTotalExposureUsd||100),
-      Number(config.maxTotalExposureUsd||100) * (Number(config.maxAdaptiveBuyPercentOfPool||50) / 100)
-    )
+    Math.max(0,Number(config.maxTotalExposureUsd||100)-Number(config.adaptiveReserveUsd||20))
   )
   const maxExposureUsd = Math.min(
     totalPortfolioUsd * (limits.maxTotalExposurePercent / 100),
@@ -836,10 +833,7 @@ export const tryLimitedLiveExecution = async (opts: {
   const limits = getRuntimeRiskLimits()
   const maxFromPercent = Math.max(
     totalPortfolioUsd * (limits.maxPositionPercent / 100),
-    Math.min(
-      Number(config.maxTotalExposureUsd||100),
-      Number(config.maxTotalExposureUsd||100) * (Number(config.maxAdaptiveBuyPercentOfPool||50) / 100)
-    )
+    Math.max(0,Number(config.maxTotalExposureUsd||100)-Number(config.adaptiveReserveUsd||20))
   )
   const hardCap = config.maxLiveOrderUsd
   const maxExposureUsd = Math.min(
@@ -864,11 +858,9 @@ export const tryLimitedLiveExecution = async (opts: {
     )
     const requestedBuyUsd=Number(opts.requestedBuyUsd||strategyTargetUsd)
     const remainingExposureUsd=Math.max(0,maxExposureUsd-botExposure.totalBotExposureUsd)
-    const adaptivePoolCeilingUsd=Math.max(
-      strategyTargetUsd,
-      maxExposureUsd * (Number(config.maxAdaptiveBuyPercentOfPool||50) / 100)
-    )
-    const maxAdaptiveBuyUsd=Math.min(remainingExposureUsd,adaptivePoolCeilingUsd)
+    const reserveUsd=Math.max(0,Number(config.adaptiveReserveUsd||20))
+    const spendableAdaptiveUsd=Math.max(0,remainingExposureUsd-reserveUsd)
+    const maxAdaptiveBuyUsd=spendableAdaptiveUsd
     const minimumNeededUsd=Math.max(strategyTargetUsd,quoteMin)
     const adaptiveTargetUsd=Math.min(
       Math.max(requestedBuyUsd>0?requestedBuyUsd:strategyTargetUsd,minimumNeededUsd),
