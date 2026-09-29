@@ -45,6 +45,26 @@ export const assessExposureLimits=(input:ExposureAssessmentInput)=>{
 }
 
 
+export const assessAlreadyProfitableSell=(input:{
+  currentLivePrice:number
+  feeLoadedEntryPrice:number
+})=>{
+  const currentLivePrice=Number(input.currentLivePrice)
+  const feeLoadedEntryPrice=Number(input.feeLoadedEntryPrice)
+  const alreadyProfitableNow=
+    currentLivePrice>0 &&
+    feeLoadedEntryPrice>0 &&
+    currentLivePrice>feeLoadedEntryPrice
+  return {
+    approved:alreadyProfitableNow,
+    currentLivePrice,
+    feeLoadedEntryPrice,
+    reason:alreadyProfitableNow
+      ?''
+      :'HOLD: current live price is not already above the fee-loaded entry price.'
+  }
+}
+
 export const calculateRealizedSellMetrics=(input:{
   avgEntryPrice:number
   executedQty:number
