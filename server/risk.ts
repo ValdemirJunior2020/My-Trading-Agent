@@ -1026,7 +1026,10 @@ export const tryLimitedLiveExecution = async (opts: {
       const previewNetProfitUsd=previewNetProceeds-previewCostBasis
 
       if(!(estimatedFillPrice>0)||!(previewQty>0)||!(feeLoadedEntry>0)||previewNetProfitUsd+1e-9<requiredNetProfitUsd){
-        const reason='HOLD: current Coinbase SELL preview net profit 
+        const reason='HOLD: current Coinbase SELL preview net profit $'
+          +(Number.isFinite(previewNetProfitUsd)?previewNetProfitUsd.toFixed(4):'0.0000')
+          +' is below required $'+requiredNetProfitUsd.toFixed(4)
+          +' after estimated Coinbase fee.'
 
         publish('live_order_preview_rejected',{
           productId,side,notionalUsd,preview,estimatedFillPrice,
