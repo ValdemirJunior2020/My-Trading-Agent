@@ -285,6 +285,8 @@ const liquidateBotInventoryForEmergency=async(
   return results
 }
 
+let lastRollingEquitySnapshotAt=0
+
 const triggerSingleLossEmergency=async(input:{
   productId:string
   realizedNetProfitUsd:number
