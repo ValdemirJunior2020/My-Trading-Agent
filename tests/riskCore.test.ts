@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { advanceProfitRecyclePool,assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from '../server/riskCore.js'
+import { advanceProfitRecyclePool,assessAlreadyProfitableSell,assessCapitalPreservationBuy,assessDailyRealizedLoss,assessEmergencyExecutionGate,assessExposureLimits,assessProfitFirstEntryEconomics,assessSellMinimum,calculateRealizedSellMetrics,shouldClearLegacyLossHaltEmergency } from '../server/riskCore.js'
 
 test('blocks a BUY that would exceed total bot exposure',()=>{
   const result=assessExposureLimits({
@@ -395,4 +395,19 @@ test('profit recycle pool unlocks only the amount above the protected baseline',
   assert.equal(result.doubled,true)
   assert.equal(result.lockedUsd,10)
   assert.equal(result.unlockedUsd,15)
+})
+
+
+test('SELL requires the coin to already be profitable at the current live price',()=>{
+  const red=assessAlreadyProfitableSell({
+    currentLivePrice:9.99,
+    feeLoadedEntryPrice:10
+  })
+  const green=assessAlreadyProfitableSell({
+    currentLivePrice:10.01,
+    feeLoadedEntryPrice:10
+  })
+  assert.equal(red.approved,false)
+  assert.match(red.reason,/HOLD/i)
+  assert.equal(green.approved,true)
 })
