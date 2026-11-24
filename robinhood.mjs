@@ -5,7 +5,7 @@ import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/st
 import {UnauthorizedError} from '@modelcontextprotocol/sdk/client/auth.js';
 import http from 'node:http';
 const endpoint='https://agent.robinhood.com/mcp/trading';
-export const allowed=new Set(['get_equity_quotes','get_equity_historicals','get_equity_news','get_market_hours','get_equity_instruments','get_index_historicals']);
+export const allowed=new Set(['get_equity_quotes','get_equity_historicals','get_equity_price_book','get_equity_fundamentals','get_index_historicals','get_index_quotes']);
 export async function marketCall(client,name,args){if(!allowed.has(name))throw Error('Blocked: not an approved market data tool');return client.callTool({name,arguments:args})}
 async function main(){
  // Credentials and OAuth tokens are kept in process memory; never written to Git or logs.
