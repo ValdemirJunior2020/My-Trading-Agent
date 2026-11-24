@@ -32,3 +32,6 @@ Authenticated Robinhood startup automatically starts market monitoring after the
 
 ## LION GUARD v0.10.0
 Historical replay only: gross loss cap, 30 minute cooldown, two consecutive loss lock, 5% realized drawdown, prior-bar volatility friction, high-volatility entry filter and chronological five-date training/two-date testing folds. Each symbol-day has independent capital; no portfolio-wide drawdown or actual historical spreads. Earnings calendar is not connected. Continuous automated paper execution remains blocked. Run local tests before use.
+
+## v0.11 experimental automatic paper cycle
+Save Automatic paper settings to arm a local simulator; manual settings do not arm it. Uses fresh Robinhood quotes, modeled breakout targets and simulated fills only. No brokerage orders. Stop requests attempt a virtual exit at a fresh regular-session quote; if unavailable the position remains unresolved. Optional after-hours historical batch. Earnings events are not verified. Calendar limited to remaining 2026. Requires local testing; not production ready.
