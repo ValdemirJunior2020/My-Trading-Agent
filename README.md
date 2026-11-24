@@ -20,3 +20,6 @@ OAuth transport restart fixed; callback timeout 30 minutes. Run npm run robinhoo
 
 ## v0.7 live market research adapter
 Run npm run start:robinhood, authorize in browser, then open dashboard and Start monitoring. Market-only quote and historical requests use observed MCP schemas; no account or order requests. Credentials in process memory; authorize again after restart. Quote and bid/ask timestamps must be within 90 seconds. This is timestamp-based freshness, not a guarantee of exchange feed latency. Calendar covers Nov 24–Dec 31 2026 only; unknown dates fail closed. Individual missing symbols show insufficient data. Early session may lack 22 completed bars. Automatic paper execution remains blocked, no verified trade targets or account state supplied to scanner. No live orders. Reconnection after token/session failure may require restart. Tests require local execution.
+
+## Windows automatic startup
+Double-click THE-LION-START.bat once in the repository. Registers current-user Windows logon startup, checks dependencies and port 8790, starts Ollama if available, and launches the local Robinhood server. Browser authorization is still manual each restart. Monitoring must be started manually. To remove automatic startup run THE-LION-START.bat --uninstall. No automatic Git pulls or real orders.
