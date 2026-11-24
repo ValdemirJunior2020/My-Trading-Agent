@@ -26,3 +26,6 @@ Double-click THE-LION-START.bat once in the repository. Registers current-user W
 
 ## v0.8.1 Windows credential persistence
 OAuth client registration and tokens are encrypted with Windows DPAPI CurrentUser under %LOCALAPPDATA%\NexusTradingLion\robinhood.dpapi, outside the repository. SDK attempts token reuse/refresh; Robinhood may require consent again. One initial authorization per Windows user/computer. No automated consent clicks. To clear the saved local session, stop the server and run npm run robinhood:forget; revoke server-side access separately in Robinhood settings. Windows runtime validation required. Market-only allowlist unchanged.
+
+## v0.8.3 automatic research scanner
+Authenticated Robinhood startup automatically starts market monitoring after the local server binds successfully. Closed sessions remain suspended and are rechecked on the configured interval. Stop monitoring remains effective for the running instance; restarting re-enables research by default. To start without automatic monitoring use npm run start:robinhood -- --manual-monitor. No automatic paper session or brokerage orders are started.
