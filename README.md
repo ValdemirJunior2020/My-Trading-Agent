@@ -23,3 +23,6 @@ Run npm run start:robinhood, authorize in browser, then open dashboard and Start
 
 ## Windows automatic startup
 Double-click THE-LION-START.bat once in the repository. Registers current-user Windows logon startup, checks dependencies and port 8790, starts Ollama if available, and launches the local Robinhood server. Browser authorization is still manual each restart. Monitoring must be started manually. To remove automatic startup run THE-LION-START.bat --uninstall. No automatic Git pulls or real orders.
+
+## v0.8.1 Windows credential persistence
+OAuth client registration and tokens are encrypted with Windows DPAPI CurrentUser under %LOCALAPPDATA%\NexusTradingLion\robinhood.dpapi, outside the repository. SDK attempts token reuse/refresh; Robinhood may require consent again. One initial authorization per Windows user/computer. No automated consent clicks. To clear the saved local session, stop the server and run npm run robinhood:forget; revoke server-side access separately in Robinhood settings. Windows runtime validation required. Market-only allowlist unchanged.

@@ -31,7 +31,7 @@ if not errorlevel 1 (
 ) else (
  echo Ollama not found in PATH. Start or install it separately for AI commentary.
 )
-echo Authorize Robinhood using the link printed below.
+echo Reusing encrypted Robinhood session if available. Authorize only if requested.
 echo Paper mode only. Leave this window open.
 start "THE LION - Dashboard opener" /min powershell -NoProfile -Command "for($i=0;$i -lt 900;$i++){try{Invoke-WebRequest 'http://127.0.0.1:8790/' -UseBasicParsing -TimeoutSec 2 | Out-Null; Start-Process 'http://127.0.0.1:8790/'; break}catch{Start-Sleep -Seconds 2}}"
 call npm run start:robinhood
