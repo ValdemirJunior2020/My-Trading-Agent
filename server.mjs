@@ -2,7 +2,10 @@ import http from 'node:http';
 import {readFile,mkdir,writeFile,rename} from 'node:fs/promises';
 import {initial,apply,report,day} from './paper.mjs';
 import {createMonitor} from './monitor.mjs';
-const monitor=await createMonitor();
+import {createProvider} from './robinhood-data.mjs';
+let provider=null;
+if(process.argv.includes('--robinhood')){try{const {connectRobinhood,marketCall}=await import('./robinhood.mjs');const client=await connectRobinhood();provider=createProvider((name,args,signal)=>{if(signal?.aborted)throw Error('Stopped');return marketCall(client,name,args)});console.log('Robinhood market session authenticated. No account or order tools enabled.')}catch{console.error('Robinhood authentication failed; starting offline.')}} 
+const monitor=await createMonitor({provider});
 const dir=new URL('./data/',import.meta.url),file=new URL('paper.json',dir),tmp=new URL('paper.tmp',dir);await mkdir(dir,{recursive:true});let state;
 try{state=JSON.parse(await readFile(file,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e;state=initial()}
 for(const t of state.trades){t.openedDay??=day(t.opened);t.closedDay??=day(t.closed)}

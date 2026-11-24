@@ -1,13 +1,14 @@
 {
   "name": "nexus-trading-lion",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test",
     "robinhood:connect": "node robinhood.mjs",
-    "robinhood:sample": "node robinhood.mjs --sample"
+    "robinhood:sample": "node robinhood.mjs --sample",
+    "start:robinhood": "node server.mjs --robinhood"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.0"
