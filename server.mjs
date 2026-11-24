@@ -3,16 +3,22 @@ import {readFile,mkdir,writeFile,rename} from 'node:fs/promises';
 import {initial,apply,report,day} from './paper.mjs';
 import {createMonitor} from './monitor.mjs';
 import {createProvider} from './robinhood-data.mjs';
-let provider=null;
-if(process.argv.includes('--robinhood')){try{const {connectRobinhood,marketCall}=await import('./robinhood.mjs');const client=await connectRobinhood();provider=createProvider((name,args,signal)=>{if(signal?.aborted)throw Error('Stopped');return marketCall(client,name,args)});console.log('Robinhood market session authenticated. No account or order tools enabled.')}catch{console.error('Robinhood authentication failed; starting offline.')}} 
+import {replay} from './replay.mjs';
+import {payload,normalizeBars} from './robinhood-data.mjs';
+let provider=null,historyCall=null;
+if(process.argv.includes('--robinhood')){try{const {connectRobinhood,marketCall}=await import('./robinhood.mjs');const client=await connectRobinhood();historyCall=(args)=>marketCall(client,'get_equity_historicals',args);provider=createProvider((name,args,signal)=>{if(signal?.aborted)throw Error('Stopped');return marketCall(client,name,args)});console.log('Robinhood market session authenticated. No account or order tools enabled.')}catch{console.error('Robinhood authentication failed; starting offline.')}} 
 const monitor=await createMonitor({provider});
 const dir=new URL('./data/',import.meta.url),file=new URL('paper.json',dir),tmp=new URL('paper.tmp',dir);await mkdir(dir,{recursive:true});let state;
 try{state=JSON.parse(await readFile(file,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e;state=initial()}
 for(const t of state.trades){t.openedDay??=day(t.opened);t.closedDay??=day(t.closed)}
-let queue=Promise.resolve();const routes={'/':['index.html','text/html'],'/app.mjs':['app.mjs','text/javascript'],'/risk.mjs':['risk.mjs','text/javascript'],'/style.css':['style.css','text/css'],'/paper-ui.mjs':['paper-ui.mjs','text/javascript'],'/monitor-ui.mjs':['monitor-ui.mjs','text/javascript'],'/decision-help.mjs':['decision-help.mjs','text/javascript'],'/chart.mjs':['chart.mjs','text/javascript'],'/session-ui.mjs':['session-ui.mjs','text/javascript']};
+let queue=Promise.resolve();const routes={'/replay-ui.mjs':['replay-ui.mjs','text/javascript'],'/':['index.html','text/html'],'/app.mjs':['app.mjs','text/javascript'],'/risk.mjs':['risk.mjs','text/javascript'],'/style.css':['style.css','text/css'],'/paper-ui.mjs':['paper-ui.mjs','text/javascript'],'/monitor-ui.mjs':['monitor-ui.mjs','text/javascript'],'/decision-help.mjs':['decision-help.mjs','text/javascript'],'/chart.mjs':['chart.mjs','text/javascript'],'/session-ui.mjs':['session-ui.mjs','text/javascript']};
 const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value))};
 const server=http.createServer(async(req,res)=>{
  if(req.headers.host!=='127.0.0.1:8790'&&req.headers.host!=='localhost:8790')return json(res,403,{error:'Local host only'});
+ if(req.url==='/api/replay'&&req.method==='POST'){
+ if(!['http://127.0.0.1:8790','http://localhost:8790'].includes(req.headers.origin)||req.headers['content-type']!=='application/json')return json(res,403,{error:'Local origin required'});
+ try{if(!historyCall)throw Error('Start with Robinhood authentication');let body='';for await(const c of req){body+=c;if(body.length>4000)throw Error('Request too large')}const {ticker,date}=JSON.parse(body);if(typeof ticker!=='string'||!/^[A-Z][A-Z0-9.]{0,9}$/.test(ticker)||typeof date!=='string'||!/^2026-(11|12)-[0-9]{2}$/.test(date))throw Error('Use a ticker and a November or December 2026 date');const start=new Date(date+'T14:30:00Z'),end=new Date(date+'T21:00:00Z');if(!Number.isFinite(start.getTime())||start.toISOString().slice(0,10)!==date||end.getTime()>Date.now())throw Error('Choose a completed historical session');const r=await historyCall({symbols:[ticker],start_time:start.toISOString(),end_time:end.toISOString(),interval:'5minute',bounds:'regular',adjustment_type:'none'});const bars=normalizeBars(payload(r),ticker,end.getTime()).filter(b=>b.time>=start.getTime()&&b.time<end.getTime());const result={ticker,date,...replay(bars)};await writeFile(new URL('last-replay.json',dir),JSON.stringify(result,null,2));return json(res,200,result)}catch(e){return json(res,400,{error:e.message})}
+ }
  if(req.url==='/api/monitor'&&req.method==='GET')return json(res,200,monitor.get());
  if(req.url==='/api/monitor'&&req.method==='POST'){
  if(!['http://127.0.0.1:8790','http://localhost:8790'].includes(req.headers.origin)||req.headers['content-type']!=='application/json')return json(res,403,{error:'Local origin required'});
