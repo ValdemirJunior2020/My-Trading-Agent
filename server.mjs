@@ -24,6 +24,6 @@ const server=http.createServer(async(req,res)=>{
   try{let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)throw Error('Request too large')}const action=JSON.parse(body);
   const task=queue.then(async()=>{const next=structuredClone(state);try{apply(next,action)}catch(e){next.events.push({time:new Date().toISOString(),type:'rejected',action:action.type,reason:e.message});await writeFile(tmp,JSON.stringify(next,null,2));await rename(tmp,file);state=next;throw e}await writeFile(tmp,JSON.stringify(next,null,2));await rename(tmp,file);state=next});queue=task.catch(()=>{});await task;return json(res,200,{state,report:report(state)})}catch(e){return json(res,400,{error:e.message})}
  }
- const route=routes[req.url];if(req.method!=='GET'||!route){res.writeHead(404);return res.end('Not found')}
+ const route=routes[new URL(req.url,'http://127.0.0.1:8790').pathname];if(req.method!=='GET'||!route){res.writeHead(404);return res.end('Not found')}
  try{const data=await readFile(new URL(route[0],import.meta.url));res.writeHead(200,{'Content-Type':route[1]+'; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; object-src 'none'; frame-ancestors 'none'"});res.end(data)}catch{res.writeHead(500);res.end('Unavailable')}
 });server.on('error',e=>{console.error(e.code==='EADDRINUSE'?'Port 8790 already occupied. Close the previous THE LION instance.':e.message);process.exitCode=1});server.listen(8790,'127.0.0.1',()=>console.log('THE LION: http://127.0.0.1:8790'));

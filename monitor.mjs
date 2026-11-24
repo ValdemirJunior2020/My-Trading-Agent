@@ -18,7 +18,7 @@ export async function createMonitor({provider=null}={}){
  }catch{if(enabled&&g===generation){publish('SUSPENDED','Market data or Ollama unavailable');await log({type:'connection-error'}).catch(()=>{})}}
  finally{clearTimeout(timeout);busy=false;if(enabled){snapshot.next=new Date(Date.now()+config.seconds*1000).toISOString();timer=setTimeout(tick,config.seconds*1000)}}
  }
- return {get:()=>snapshot,async command(a){if(a.type==='stop'||a.type==='emergency'){enabled=false;generation++;clearTimeout(timer);controller?.abort();publish('STOPPED','Monitoring stopped');await log({type:a.type});return}
+ return {get:()=>({...snapshot,providerConfigured:!!provider,enabled}),async command(a){if(a.type==='stop'||a.type==='emergency'){enabled=false;generation++;clearTimeout(timer);controller?.abort();publish('STOPPED','Monitoring stopped');await log({type:a.type});return}
  if(a.type==='settings'){if(!Array.isArray(a.symbols)||a.symbols.length<1||a.symbols.length>20||a.symbols.some(x=>typeof x!=='string'||!/^[A-Z][A-Z0-9.]{0,9}$/.test(x))||!Number.isInteger(a.seconds)||a.seconds<60||a.seconds>300||!Number.isInteger(a.consolidationMinutes)||a.consolidationMinutes<15||a.consolidationMinutes>60||a.consolidationMinutes%5!==0)throw Error('Use 1–20 valid symbols and 60–300 seconds');if(enabled||busy)throw Error('Stop monitoring before changing settings');config={symbols:[...new Set(a.symbols)],seconds:a.seconds,consolidationMinutes:a.consolidationMinutes};const tmp=new URL('monitor-settings.tmp',dir);await writeFile(tmp,JSON.stringify(config));await rename(tmp,settingsFile);publish('STOPPED','Settings saved');return}
  if(a.type==='start'){if(enabled||busy)return;enabled=true;await log({type:'start'});void tick();return}throw Error('Unknown monitor command')}}
 }
