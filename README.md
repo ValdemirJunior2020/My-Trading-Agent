@@ -29,3 +29,6 @@ OAuth client registration and tokens are encrypted with Windows DPAPI CurrentUse
 
 ## v0.8.3 automatic research scanner
 Authenticated Robinhood startup automatically starts market monitoring after the local server binds successfully. Closed sessions remain suspended and are rechecked on the configured interval. Stop monitoring remains effective for the running instance; restarting re-enables research by default. To start without automatic monitoring use npm run start:robinhood -- --manual-monitor. No automatic paper session or brokerage orders are started.
+
+## LION GUARD v0.10.0
+Historical replay only: gross loss cap, 30 minute cooldown, two consecutive loss lock, 5% realized drawdown, prior-bar volatility friction, high-volatility entry filter and chronological five-date training/two-date testing folds. Each symbol-day has independent capital; no portfolio-wide drawdown or actual historical spreads. Earnings calendar is not connected. Continuous automated paper execution remains blocked. Run local tests before use.
