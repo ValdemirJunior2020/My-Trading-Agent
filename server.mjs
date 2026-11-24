@@ -1,18 +1,19 @@
 import http from 'node:http';
 import {readFile,mkdir,writeFile,rename} from 'node:fs/promises';
-import {initial,apply,report} from './paper.mjs';
+import {initial,apply,report,day} from './paper.mjs';
 import {createMonitor} from './monitor.mjs';
 const monitor=await createMonitor();
 const dir=new URL('./data/',import.meta.url),file=new URL('paper.json',dir),tmp=new URL('paper.tmp',dir);await mkdir(dir,{recursive:true});let state;
 try{state=JSON.parse(await readFile(file,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e;state=initial()}
-let queue=Promise.resolve();const routes={'/':['index.html','text/html'],'/app.mjs':['app.mjs','text/javascript'],'/risk.mjs':['risk.mjs','text/javascript'],'/style.css':['style.css','text/css'],'/paper-ui.mjs':['paper-ui.mjs','text/javascript'],'/monitor-ui.mjs':['monitor-ui.mjs','text/javascript'],'/decision-help.mjs':['decision-help.mjs','text/javascript'],'/chart.mjs':['chart.mjs','text/javascript']};
+for(const t of state.trades){t.openedDay??=day(t.opened);t.closedDay??=day(t.closed)}
+let queue=Promise.resolve();const routes={'/':['index.html','text/html'],'/app.mjs':['app.mjs','text/javascript'],'/risk.mjs':['risk.mjs','text/javascript'],'/style.css':['style.css','text/css'],'/paper-ui.mjs':['paper-ui.mjs','text/javascript'],'/monitor-ui.mjs':['monitor-ui.mjs','text/javascript'],'/decision-help.mjs':['decision-help.mjs','text/javascript'],'/chart.mjs':['chart.mjs','text/javascript'],'/session-ui.mjs':['session-ui.mjs','text/javascript']};
 const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value))};
 const server=http.createServer(async(req,res)=>{
  if(req.headers.host!=='127.0.0.1:8790'&&req.headers.host!=='localhost:8790')return json(res,403,{error:'Local host only'});
  if(req.url==='/api/monitor'&&req.method==='GET')return json(res,200,monitor.get());
  if(req.url==='/api/monitor'&&req.method==='POST'){
  if(!['http://127.0.0.1:8790','http://localhost:8790'].includes(req.headers.origin)||req.headers['content-type']!=='application/json')return json(res,403,{error:'Local origin required'});
- try{let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)throw Error('Request too large')}const a=JSON.parse(body);await monitor.command(a);if(a.type==='emergency'){const task=queue.then(async()=>{const next=structuredClone(state);apply(next,{type:'stop'});await writeFile(tmp,JSON.stringify(next,null,2));await rename(tmp,file);state=next});queue=task.catch(()=>{});await task}return json(res,200,monitor.get())}catch(e){return json(res,400,{error:e.message})}
+ try{let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)throw Error('Request too large')}const a=JSON.parse(body);await monitor.command(a);if(a.type==='emergency'){const task=queue.then(async()=>{const next=structuredClone(state);apply(next,{type:next.session?'session-emergency':'stop'});await writeFile(tmp,JSON.stringify(next,null,2));await rename(tmp,file);state=next});queue=task.catch(()=>{});await task}return json(res,200,monitor.get())}catch(e){return json(res,400,{error:e.message})}
  }
  if(req.url==='/api/paper'&&req.method==='GET')return json(res,200,{state,report:report(state)});
  if(req.url==='/api/paper'&&req.method==='POST'){
