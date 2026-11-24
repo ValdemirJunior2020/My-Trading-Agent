@@ -14,3 +14,6 @@ Leaderboard ranking uses heuristic scores, not probabilities: momentum = clamp(5
 
 ## v0.6 daily control foundation
 Daily paper session settings, allocation preview, start/pause/stop/emergency, server-side allocation and loss checks, session reports, allowed/excluded symbols. Legacy fixed $100/$5/two trades/one position caps remain hard ceilings. Automatic mode is explicitly BLOCKED; spread/time/exit settings are stored for future verified market engine, not enforced for manual hypothetical fills. No historical replay, partial fill model, settlement engine, or live execution yet. Report drawdown uses closed trade equity only, not marked-to-market. Existing journal stays intact. Run npm test locally.
+
+## Robinhood verification v0.6.1
+OAuth transport restart fixed; callback timeout 30 minutes. Run npm run robinhood:sample to authorize and retrieve market-only PINS/SPY quotes, PINS candles and price book. Inspect response timestamps and data schema before writing the live adapter. Credentials stay in memory, not in files. No account/order tools. This is a one-time diagnostic, not continuous monitoring.
