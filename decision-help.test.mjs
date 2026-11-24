@@ -1,0 +1,1 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {explainDecision} from './decision-help.mjs';test('missing data never gives positive evidence',()=>{assert.equal(explainDecision({status:'INSUFFICIENT DATA'}).positive,'None confirmed.')});test('wait explains next conditions',()=>{assert.match(explainDecision({status:'WAIT'}).next,/completed candle/)});
