@@ -1,11 +1,4 @@
-# NEXUS TRADING AI — THE LION
-
-Local, simulation-only stock research workstation. No brokerage API, order execution, transfers, credentials or account access. No dependencies; Node.js 20+.
-
-Run `npm test`, then `npm start`. Open http://127.0.0.1:8788. On Windows, double-click START.bat.
-
-The initial version is a manual-input risk calculator and paper journal. It does not claim live market data, verified catalysts, automatic market scanning or Robinhood connectivity. Until a verified read-only feed and exchange calendar are implemented, all market evaluations are INSUFFICIENT DATA. Hypothetical calculations are educational only. Journal data stays in browser local storage; no actual account balances are collected.
-
-Risk defaults: $100 maximum position, $5 daily planned loss, one position, two trades, 2:1 minimum reward/risk, $2.50 per-trade planned risk. Long stocks/ETFs only; no options, shorts, leverage, penny stocks, averaging down or revenge trading. Use settled funds only. Real execution is intentionally absent. Stop button disables calculations until manually resumed. $50 aspiration is not a trading requirement. Actual fills and losses may differ from estimates.
-
-Future work: verified read-only market feed, completed 5-minute candle indicators and exchange calendar, catalyst validation, persistent simulated fills with enforceable position/trade limits, deduplicated alerts and daily reports. Do not enable live execution. No cloud deployment configured.
+# THE LION v0.2
+Node 22+. Run npm install, npm test, npm start. Dashboard http://127.0.0.1:8790.
+Manual paper practice with $100 virtual cash, whole shares, one position, two closed/opened trades per ET day, $5 daily planned loss and $2.50 per trade. The data/paper.json file stores journal, simulated positions, outcomes, rejected requests, lessons and stop/resume events. It is ignored by Git. Do not delete it. Manual prices are not live or verified. No automatic fills, settlement simulation, verified exchange calendar, data scanner, or strategy engine yet. Daily report shows realized results and position, not live unrealized P&L. Do not treat manual practice as a verified trade proposal.
+Robinhood: npm run robinhood:connect starts an experimental official MCP OAuth discovery probe on loopback port 8791. Review requested permissions before approving. Do not fund the dedicated MCP account. If broader account permissions are unacceptable, cancel. Tokens are held in memory and discarded at exit. The probe only lists approved market-data tool schemas; it does not call account/order tools or connect the dashboard to live data. Authentication, schema, freshness, and feed coverage require verification with your account. No real execution code. Official reference: https://robinhood.com/us/en/support/articles/trading-with-your-agent/
