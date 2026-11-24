@@ -5,7 +5,7 @@ import {createMonitor} from './monitor.mjs';
 const monitor=await createMonitor();
 const dir=new URL('./data/',import.meta.url),file=new URL('paper.json',dir),tmp=new URL('paper.tmp',dir);await mkdir(dir,{recursive:true});let state;
 try{state=JSON.parse(await readFile(file,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e;state=initial()}
-let queue=Promise.resolve();const routes={'/':['index.html','text/html'],'/app.mjs':['app.mjs','text/javascript'],'/risk.mjs':['risk.mjs','text/javascript'],'/style.css':['style.css','text/css'],'/paper-ui.mjs':['paper-ui.mjs','text/javascript'],'/monitor-ui.mjs':['monitor-ui.mjs','text/javascript'],'/decision-help.mjs':['decision-help.mjs','text/javascript']};
+let queue=Promise.resolve();const routes={'/':['index.html','text/html'],'/app.mjs':['app.mjs','text/javascript'],'/risk.mjs':['risk.mjs','text/javascript'],'/style.css':['style.css','text/css'],'/paper-ui.mjs':['paper-ui.mjs','text/javascript'],'/monitor-ui.mjs':['monitor-ui.mjs','text/javascript'],'/decision-help.mjs':['decision-help.mjs','text/javascript'],'/chart.mjs':['chart.mjs','text/javascript']};
 const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value))};
 const server=http.createServer(async(req,res)=>{
  if(req.headers.host!=='127.0.0.1:8790'&&req.headers.host!=='localhost:8790')return json(res,403,{error:'Local host only'});
