@@ -11,7 +11,7 @@ export function automaticStep(s,{now=Date.now(),quotes={},snapshots={},symbols=[
  if(s.position?.source==='AUTO PAPER'){
  const p=s.position,q=quotes[p.ticker];if(!fresh(q,now)){status('EXIT WAIT','No fresh exit quote; virtual position remains open');return changed}
  const mark=q.bid*(1-p.friction),equity=s.balance+(mark-p.entry)*p.shares,peak=Math.max(a.peak??s.balance,equity);if(peak!==a.peak){a.peak=peak;changed=true}
- const end=hh>=c.end||!session.open||date!==p.openedDay;
+ const cutoff=['2026-11-27','2026-12-24'].includes(date)?'12:55':'15:55';const end=hh>=c.end||hh>=cutoff||!session.open||date!==p.openedDay;
  const exit=mark<=p.stop?'Stop loss':mark>=p.target?'Profit target':(peak-equity)/peak>=.05?'Drawdown exit':end&&c.closeAtEnd?'Session end':a.exitRequested?'Manual stop request':null;
  if(exit){const pnl=(mark-p.entry)*p.shares;s.balance+=pnl;s.trades.push({...p,exit:mark,closed:time,closedDay:date,pnl,reason:exit});s.position=null;event('auto-paper-close',{ticker:p.ticker,pnl,reason:exit});if(pnl<0)a.cooldownUntil=now+1800000;if(a.exitRequested){a.armed=false;a.exitRequested=false;status('STOPPED','Exit request completed')}return true}
  status('HOLD','Monitoring virtual position');return changed
@@ -32,4 +32,4 @@ export function automaticStep(s,{now=Date.now(),quotes={},snapshots={},symbols=[
  }
  status('SCANNING','No qualifying experimental setup');return changed
 }
-export function configureAutomation(s,c){if(s.position)throw Error('Close virtual position before changing settings');s.automation={armed:c.mode==='automatic',status:c.mode==='automatic'?'WAITING':'STOPPED',reason:'Saved configuration',day:null,lastSignal:{},peak:s.balance,autoTrain:c.autoTrain===true};s.stopped=true}
+export function configureAutomation(s,c){if(s.position)throw Error('Close virtual position before changing settings');const prior=s.automation||{};s.automation={armed:c.mode==='automatic',status:c.mode==='automatic'?'WAITING':'STOPPED',reason:'Saved configuration',day:prior.day??null,startBalance:prior.startBalance, lastSignal:prior.lastSignal||{},peak:prior.peak??s.balance,cooldownUntil:prior.cooldownUntil||0,lastTrainingDay:prior.lastTrainingDay,autoTrain:c.autoTrain===true};s.stopped=true}
