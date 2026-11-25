@@ -1,3 +1,4 @@
+import {positions,setPositions} from './portfolio.mjs';
 import {calculate} from './risk.mjs';
 import {sessionCommand,entryRules,summary} from './session.mjs';
 export const initial=()=>({balance:100,position:null,trades:[],events:[],stopped:false});
@@ -10,7 +11,7 @@ export function apply(s,a,now=new Date()){
  if(a.type==='note'){log('lesson',{note:String(a.note||'').slice(0,2000)});return}
  if(a.type==='close'){
   if(!s.position||!Number.isFinite(a.price)||a.price<=0)throw Error('Open position and valid hypothetical exit required');
-  const p=s.position,pnl=p.shares*(a.price-p.entry)-p.fees;const t={...p,exit:a.price,closed:time,closedDay:d,pnl,reason:String(a.reason||'manual exit').slice(0,500)};s.balance+=pnl;s.trades.push(t);s.position=null;log('paper_close',t);return
+  if(s.position.source==='AUTO PAPER')throw Error('Use session stop for automatic positions');const p=s.position,pnl=p.shares*(a.price-p.entry)-p.fees;const t={...p,exit:a.price,closed:time,closedDay:d,pnl,reason:String(a.reason||'manual exit').slice(0,500)};s.balance+=pnl;s.trades.push(t);setPositions(s,[]);log('paper_close',t);return
  }
  if(a.type!=='open')throw Error('Unknown action');
  if(s.stopped||s.position)throw Error('Stopped or position already open');
@@ -19,5 +20,5 @@ export function apply(s,a,now=new Date()){
  // Manual practice is intentionally not classified as verified market research.
  if(a.asset!=='stock-etf'||!/^[A-Z][A-Z0-9.]{0,9}$/.test(a.ticker||''))throw Error('Confirm stock/ETF and valid ticker');
  const limits=entryRules(s,a,d);const r=calculate({entry:a.entry,stop:a.stop,target:a.target,capital:limits?.capital??s.balance,remainingLoss:Math.min(5-loss,limits?.remainingLoss??5),fees:a.fees||0});if(!r.ok||r.ratio<(limits?.minRatio??2))throw Error('Risk check failed: '+r.reason);
- s.position={ticker:a.ticker,entry:a.entry,stop:a.stop,target:a.target,shares:r.shares,fees:a.fees||0,opened:time,openedDay:d,source:'MANUAL HYPOTHETICAL',reason:String(a.reason||'').slice(0,500)};log('paper_open',s.position)
+ s.position={ticker:a.ticker,entry:a.entry,stop:a.stop,target:a.target,shares:r.shares,fees:a.fees||0,opened:time,openedDay:d,source:'MANUAL HYPOTHETICAL',reason:String(a.reason||'').slice(0,500)};setPositions(s,[s.position]);log('paper_open',s.position)
 }
