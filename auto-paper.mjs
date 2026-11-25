@@ -1,3 +1,4 @@
+import {fractionalSize} from './research-universe.mjs';
 import {analyze} from './market.mjs';
 import {guardReason,regimeFor,frictionFor} from './guard.mjs';
 import {regularSession} from './robinhood-data.mjs';
@@ -26,8 +27,10 @@ export function automaticStep(s,{now=Date.now(),quotes={},snapshots={},symbols=[
  // Do not open in the last five minutes before configured or exchange close.
  const minutes=Number(hh.slice(0,2))*60+Number(hh.slice(3)),endMinutes=Math.min(Number(c.end.slice(0,2))*60+Number(c.end.slice(3)),['2026-11-27','2026-12-24'].includes(date)?780:960);
  if(minutes>=endMinutes-5){status('WAITING','Entry cutoff');return changed}
- for(const ticker of symbols){if(c.excluded.includes(ticker)||(c.allowed.length&&!c.allowed.includes(ticker)))continue;const q=snapshots[ticker];if(!fresh(q,now))continue;const r=analyze(q,now);if(r.status!=='BREAKOUT DETECTED'||regimeFor(r.bars)==='HIGH VOLATILITY'||r.metrics.spread>c.maxSpread/100)continue;const last=r.bars.at(-1);if(a.lastSignal?.[ticker]===last.time)continue;
- const friction=frictionFor(r.bars),entry=q.ask*(1+friction),stop=r.metrics.resistance*(1-friction),risk=entry-stop;if(!(risk>0)||entry<5)continue;const target=entry+c.minRatio*risk;const remain=Math.min(c.maxLoss-grossLoss,c.maxLoss+net,2.5,a.peak*.05-(a.peak-s.balance));const shares=Math.floor(Math.min(c.maxTrade/entry,c.budget/entry,s.balance/entry,remain/risk));if(shares<1)continue;
+ const rejected={},candidates=[];const reject=k=>{rejected[k]=(rejected[k]||0)+1};for(const ticker of symbols){if(c.excluded.includes(ticker)||(c.allowed.length&&!c.allowed.includes(ticker))){reject('Excluded');continue}const q=snapshots[ticker];if(!fresh(q,now)){reject('Missing or stale quote');continue}const r=analyze(q,now);if(r.status!=='BREAKOUT DETECTED'){reject(r.status);continue}if(regimeFor(r.bars)==='HIGH VOLATILITY'){reject('High volatility');continue}if(r.metrics.spread>c.maxSpread/100){reject('Spread too wide');continue}const last=r.bars.at(-1);if(a.lastSignal?.[ticker]===last.time){reject('Already evaluated signal');continue}
+ const friction=frictionFor(r.bars),entry=q.ask*(1+friction),stop=r.metrics.resistance*(1-friction),risk=entry-stop;if(!(risk>0)||entry<5){reject('Invalid entry or stop');continue}const target=entry+c.minRatio*risk;const remain=Math.min(c.maxLoss-grossLoss,c.maxLoss+net,2.5,a.peak*.05-(a.peak-s.balance));const shares=fractionalSize({entry,risk,capital:Math.min(c.maxTrade,c.budget,s.balance),remaining:remain});if(!shares){reject('Allocation or risk limit');continue}candidates.push({ticker,entry,stop,target,shares,friction,last,r});}
+ a.scan={time,checked:symbols.length,rejected,qualified:candidates.length};changed=true;
+ candidates.sort((a,b)=>b.r.score-a.r.score||a.ticker.localeCompare(b.ticker));for(const {ticker,entry,stop,target,shares,friction,last,r} of candidates){
  a.lastSignal??={};a.lastSignal[ticker]=last.time;s.position={ticker,entry,stop,target,shares,fees:0,friction,opened:time,openedDay:date,source:'AUTO PAPER',reason:'Experimental completed-bar breakout; modeled target',signalTime:last.time};event('auto-paper-open',{ticker,entry,stop,target,shares,metrics:r.metrics});status('HOLD','Virtual entry opened');return true
  }
  status('SCANNING','No qualifying experimental setup');return changed

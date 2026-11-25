@@ -6,6 +6,7 @@ import {createProvider} from './robinhood-data.mjs';
 import {replay} from './replay.mjs';
 import {payload,normalizeBars,normalizeQuote,regularSession} from './robinhood-data.mjs';
 import {createTraining,universe} from './training.mjs';
+import {eligiblePool,nextBatch,researchPool} from './research-universe.mjs';
 import {automaticStep,configureAutomation} from './auto-paper.mjs';
 let provider=null,historyCall=null,quoteCall=null;
 if(process.argv.includes('--robinhood')){try{const {connectRobinhood,marketCall}=await import('./robinhood.mjs');const client=await connectRobinhood();historyCall=(args)=>marketCall(client,'get_equity_historicals',args);quoteCall=(args)=>marketCall(client,'get_equity_quotes',args);provider=createProvider((name,args,signal)=>{if(signal?.aborted)throw Error('Stopped');return marketCall(client,name,args)});console.log('Robinhood market session authenticated. No account or order tools enabled.')}catch{console.error('Robinhood authentication failed; starting offline.')}} 
@@ -13,16 +14,16 @@ const monitor=await createMonitor({provider});
 const dir=new URL('./data/',import.meta.url),file=new URL('paper.json',dir),tmp=new URL('paper.tmp',dir);await mkdir(dir,{recursive:true});let state;
 try{state=JSON.parse(await readFile(file,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e;state=initial()}
 for(const t of state.trades){t.openedDay??=day(t.opened);t.closedDay??=day(t.closed)}
-const training=createTraining({history:historyCall,dir});
+const training=createTraining({history:historyCall,dir});await training.restore();
 let queue=Promise.resolve();
-let autoBusy=false,lastTrainingDay=null;
+let autoBusy=false,lastTrainingDay=null,scanOffset=0;
 async function cycle(){if(autoBusy||!provider||!state.automation?.armed)return;autoBusy=true;try{
- const now=Date.now(),session=regularSession(now),symbols=monitor.get().config.symbols,quotes={},snapshots={},position=state.position;
+ const now=Date.now(),session=regularSession(now),watch=monitor.get().config.symbols,pool=eligiblePool(watch,state.session.config),batch=nextBatch(pool,scanOffset),symbols=batch.symbols,quotes={},snapshots={},position=state.position;
  if(position?.source==='AUTO PAPER'&&session.open){try{quotes[position.ticker]=normalizeQuote(payload(await quoteCall({symbols:[position.ticker]})),position.ticker,Date.now())}catch{}}
- if(!position&&session.open&&training.get().status!=='RUNNING'){for(const ticker of symbols){if(!state.automation?.armed||state.position)break;try{snapshots[ticker]=await provider.snapshot(ticker)}catch{} }}
+ if(!position&&session.open&&training.get().status!=='RUNNING'){scanOffset=batch.next;for(const ticker of symbols){if(!state.automation?.armed||state.position)break;try{snapshots[ticker]=await provider.snapshot(ticker)}catch{} }}
  const job=queue.then(async()=>{const next=structuredClone(state);if(automaticStep(next,{now:Date.now(),quotes,snapshots,symbols})){await writeFile(tmp,JSON.stringify(next,null,2));await rename(tmp,file);state=next}});queue=job.catch(()=>{});await job;
  const date=session.date;const et=new Intl.DateTimeFormat('en-GB',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date());
- if(state.automation?.armed&&state.automation.autoTrain&&session.verified&&!session.open&&!['2026-11-26','2026-12-25'].includes(date)&&![0,6].includes(new Date(date+'T12:00:00Z').getUTCDay())&&et>='16:10'&&date!==lastTrainingDay&&date!==state.automation.lastTrainingDay&&training.get().status!=='RUNNING'&&!state.position){training.start({symbols,days:10});lastTrainingDay=date;const save=queue.then(async()=>{const next=structuredClone(state);if(next.automation){next.automation.lastTrainingDay=date;await writeFile(tmp,JSON.stringify(next,null,2));await rename(tmp,file);state=next}});queue=save.catch(()=>{});await save}
+ if(state.automation?.armed&&state.automation.autoTrain&&session.verified&&!session.open&&!['2026-11-26','2026-12-25'].includes(date)&&![0,6].includes(new Date(date+'T12:00:00Z').getUTCDay())&&et>='16:10'&&date!==lastTrainingDay&&date!==state.automation.lastTrainingDay&&training.get().status!=='RUNNING'&&!state.position){training.start({symbols:pool.slice(0,20),days:10});lastTrainingDay=date;const save=queue.then(async()=>{const next=structuredClone(state);if(next.automation){next.automation.lastTrainingDay=date;await writeFile(tmp,JSON.stringify(next,null,2));await rename(tmp,file);state=next}});queue=save.catch(()=>{});await save}
  }catch{console.error('Automatic paper cycle unavailable; no new fill assumed')}finally{autoBusy=false}}
 const routes={'/dashboard-layout.mjs':['dashboard-layout.mjs','text/javascript'],'/training-ui.mjs':['training-ui.mjs','text/javascript'],'/replay-ui.mjs':['replay-ui.mjs','text/javascript'],'/':['index.html','text/html'],'/app.mjs':['app.mjs','text/javascript'],'/risk.mjs':['risk.mjs','text/javascript'],'/style.css':['style.css','text/css'],'/paper-ui.mjs':['paper-ui.mjs','text/javascript'],'/monitor-ui.mjs':['monitor-ui.mjs','text/javascript'],'/decision-help.mjs':['decision-help.mjs','text/javascript'],'/chart.mjs':['chart.mjs','text/javascript'],'/session-ui.mjs':['session-ui.mjs','text/javascript']};
 const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value))};
@@ -39,7 +40,7 @@ const server=http.createServer(async(req,res)=>{
  if(!['http://127.0.0.1:8790','http://localhost:8790'].includes(req.headers.origin)||req.headers['content-type']!=='application/json')return json(res,403,{error:'Local origin required'});
  try{let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)throw Error('Request too large')}const a=JSON.parse(body);await monitor.command(a);if(a.type==='emergency'||a.type==='stop'){const task=queue.then(async()=>{const next=structuredClone(state);if(next.automation){next.automation.armed=next.position?.source==='AUTO PAPER';next.automation.exitRequested=next.automation.armed;next.automation.status='STOPPED'}apply(next,{type:next.session?(a.type==='emergency'?'session-emergency':'session-stop'):'stop'});await writeFile(tmp,JSON.stringify(next,null,2));await rename(tmp,file);state=next});queue=task.catch(()=>{});await task}return json(res,200,monitor.get())}catch(e){return json(res,400,{error:e.message})}
  }
- if(req.url==='/api/paper'&&req.method==='GET')return json(res,200,{state,report:{...report(state),automation:state.automation}});
+ if(req.url==='/api/paper'&&req.method==='GET')return json(res,200,{state,report:{...report(state),automation:state.automation?{...state.automation,poolSize:eligiblePool(monitor.get().config.symbols,state.session.config).length}:null}});
  if(req.url==='/api/paper'&&req.method==='POST'){
   if(!['http://127.0.0.1:8790','http://localhost:8790'].includes(req.headers.origin)||req.headers['content-type']!=='application/json')return json(res,403,{error:'Local origin required'});
   try{let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)throw Error('Request too large')}const action=JSON.parse(body);

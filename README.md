@@ -35,3 +35,6 @@ Historical replay only: gross loss cap, 30 minute cooldown, two consecutive loss
 
 ## v0.11 experimental automatic paper cycle
 Save Automatic paper settings to arm a local simulator; manual settings do not arm it. Uses fresh Robinhood quotes, modeled breakout targets and simulated fills only. No brokerage orders. Stop requests attempt a virtual exit at a fresh regular-session quote; if unavailable the position remains unresolved. Optional after-hours historical batch. Earnings events are not verified. Calendar limited to remaining 2026. Requires local testing; not production ready.
+
+## v0.12 expanded automatic paper research
+Rotating curated pool of 101 symbols, 12 per automatic scan, explicit allowlist overrides expansion. Fractional virtual fills rounded down to six decimals, minimum $1 notional. Historical replay remains whole-share; restored journal uses latest 400 records deduplicated by symbol/date. Some tickers may be stale or unavailable; only verified snapshots qualify. No live orders or new market tools.
