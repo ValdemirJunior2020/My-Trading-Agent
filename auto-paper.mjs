@@ -1,3 +1,4 @@
+import {trailingProfit} from './profit-protection.mjs';
 import {signalFor} from './lab-strategies.mjs';
 import {positions,setPositions,invested,reservedRisk} from './portfolio.mjs';
 import {fractionalSize} from './research-universe.mjs';
@@ -19,7 +20,8 @@ export function automaticStep(s,{now=Date.now(),quotes={},snapshots={},symbols=[
   const drawdown=allFresh&&Number.isFinite(equity)&&a.peak>0&&(a.peak-equity)/a.peak>=.05;
   const cutoff=['2026-11-27','2026-12-24'].includes(date)?'12:55':'15:55',atEnd=hh>=c.end||hh>=cutoff;
   const remaining=[];for(const p of list){const q=quotes[p.ticker];if(!fresh(q,now)){remaining.push(p);continue}const mark=p.mark.price,pnl=(mark-p.entry)*p.shares-(p.fees||0);
-   const exit=a.exitRequested?'Manual stop request':mark<=p.stop?'Stop loss':drawdown?'Drawdown exit':mark>=p.target?'Profit target':c.earlyProfit>0&&pnl>=c.earlyProfit?'Early profit':atEnd&&c.closeAtEnd&&(!c.holdLosers||pnl>=0)?'Session end':null;
+   const trail=c.trailingProfit===true&&trailingProfit(p,pnl,{activation:c.earlyProfit||1});
+   const exit=a.exitRequested?'Manual stop request':mark<=p.stop?'Stop loss':drawdown?'Drawdown exit':mark>=p.target?'Profit target':trail?'Trailing profit exit':!c.trailingProfit&&c.earlyProfit>0&&pnl>=c.earlyProfit?'Early profit':atEnd&&c.closeAtEnd&&(!c.holdLosers||pnl>=0)?'Session end':null;
    if(!exit){remaining.push(p);continue}s.balance+=pnl;s.trades.push({...p,entryReason:p.reason,exit:mark,closed:time,closedDay:date,pnl,reason:exit});event('auto-paper-close',{ticker:p.ticker,pnl,reason:exit});if(pnl<0)a.cooldownUntil=now+1800000;
   }setPositions(s,remaining);if(drawdown){a.exitRequested=true}
   if(a.exitRequested){if(!remaining.length){a.armed=false;a.exitRequested=false;status('STOPPED','Exit request completed')}else status('EXIT WAIT','Awaiting remaining verified exit quotes');return true}
