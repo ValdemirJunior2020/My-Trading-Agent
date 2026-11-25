@@ -7,6 +7,7 @@ import {replay} from './replay.mjs';
 import {payload,normalizeBars,normalizeQuote,regularSession} from './robinhood-data.mjs';
 import {createTraining,universe} from './training.mjs';
 import {eligiblePool,nextBatch,researchPool} from './research-universe.mjs';
+import {positionView} from './position-view.mjs';
 import {automaticStep,configureAutomation} from './auto-paper.mjs';
 let provider=null,historyCall=null,quoteCall=null;
 if(process.argv.includes('--robinhood')){try{const {connectRobinhood,marketCall}=await import('./robinhood.mjs');const client=await connectRobinhood();historyCall=(args)=>marketCall(client,'get_equity_historicals',args);quoteCall=(args)=>marketCall(client,'get_equity_quotes',args);provider=createProvider((name,args,signal)=>{if(signal?.aborted)throw Error('Stopped');return marketCall(client,name,args)});console.log('Robinhood market session authenticated. No account or order tools enabled.')}catch{console.error('Robinhood authentication failed; starting offline.')}} 
@@ -40,7 +41,7 @@ const server=http.createServer(async(req,res)=>{
  if(!['http://127.0.0.1:8790','http://localhost:8790'].includes(req.headers.origin)||req.headers['content-type']!=='application/json')return json(res,403,{error:'Local origin required'});
  try{let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)throw Error('Request too large')}const a=JSON.parse(body);await monitor.command(a);if(a.type==='emergency'||a.type==='stop'){const task=queue.then(async()=>{const next=structuredClone(state);if(next.automation){next.automation.armed=next.position?.source==='AUTO PAPER';next.automation.exitRequested=next.automation.armed;next.automation.status='STOPPED'}apply(next,{type:next.session?(a.type==='emergency'?'session-emergency':'session-stop'):'stop'});await writeFile(tmp,JSON.stringify(next,null,2));await rename(tmp,file);state=next});queue=task.catch(()=>{});await task}return json(res,200,monitor.get())}catch(e){return json(res,400,{error:e.message})}
  }
- if(req.url==='/api/paper'&&req.method==='GET')return json(res,200,{state,report:{...report(state),automation:state.automation?{...state.automation,poolSize:eligiblePool(monitor.get().config.symbols,state.session.config).length}:null}});
+ if(req.url==='/api/paper'&&req.method==='GET')return json(res,200,{state,report:{...report(state),livePosition:positionView(state),lastClosed:state.trades.at(-1)||null,automation:state.automation?{...state.automation,poolSize:eligiblePool(monitor.get().config.symbols,state.session.config).length}:null}});
  if(req.url==='/api/paper'&&req.method==='POST'){
   if(!['http://127.0.0.1:8790','http://localhost:8790'].includes(req.headers.origin)||req.headers['content-type']!=='application/json')return json(res,403,{error:'Local origin required'});
   try{let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)throw Error('Request too large')}const action=JSON.parse(body);
