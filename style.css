@@ -17,3 +17,5 @@ pre{overflow-wrap:anywhere;word-break:break-word}#training-metrics{grid-template
 #daily-settings{align-items:start}#daily-settings .setting-help{display:block;font-size:12px;line-height:1.45;letter-spacing:0;color:#b9c6d8;font-weight:400}#daily-settings>button{align-self:end}
 
 #live-position-card{border-color:#cba766}#live-position-card .pnl-positive{color:#7ee787}#live-position-card .pnl-negative{color:#ff9c9c}#live-position-reason{line-height:1.45}
+
+.lab-status-row{display:flex;align-items:center;gap:10px;min-height:48px}.lab-status-row p{margin:0}.lab-activity{width:44px;height:44px;object-fit:contain;border-radius:8px;flex:none}.lab-activity[hidden],.lab-image-failed{display:none!important}
