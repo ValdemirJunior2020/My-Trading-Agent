@@ -18,7 +18,7 @@ const dir=new URL('./data/',import.meta.url),file=new URL('paper.json',dir),tmp=
 try{state=JSON.parse(await readFile(file,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e;state=initial()}
 setPositions(state,positions(state));
 for(const t of state.trades){t.openedDay??=day(t.opened);t.closedDay??=day(t.closed)}
-const labFile=new URL('lab.json',dir),labTmp=new URL('lab.tmp',dir);let lab;try{lab=JSON.parse(await readFile(labFile,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e;lab=createLab()}upgradeLab(lab);if(autoStartLab(lab)){await writeFile(labTmp,JSON.stringify(lab,null,2));await rename(labTmp,labFile)}
+const labFile=new URL('lab.json',dir),labTmp=new URL('lab.tmp',dir);let lab;try{lab=JSON.parse(await readFile(labFile,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e;lab=createLab()}const needsLabMigration=!lab.accounts['hold-until-profit'];upgradeLab(lab);const labStarted=autoStartLab(lab);if(needsLabMigration||labStarted){await writeFile(labTmp,JSON.stringify(lab,null,2));await rename(labTmp,labFile)}
 const training=createTraining({history:historyCall,dir});await training.restore();
 let queue=Promise.resolve();
 let autoBusy=false,lastTrainingDay=null,scanOffset=0;
